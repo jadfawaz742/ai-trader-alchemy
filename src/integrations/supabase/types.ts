@@ -14,7 +14,90 @@ export type Database = {
   }
   public: {
     Tables: {
-      [_ in never]: never
+      market_data: {
+        Row: {
+          created_at: string
+          current_price: number | null
+          id: string
+          last_updated: string
+          market_cap: number | null
+          pe_ratio: number | null
+          price_change: number | null
+          price_change_percent: number | null
+          raw_data: Json | null
+          symbol: string
+          volume: number | null
+        }
+        Insert: {
+          created_at?: string
+          current_price?: number | null
+          id?: string
+          last_updated?: string
+          market_cap?: number | null
+          pe_ratio?: number | null
+          price_change?: number | null
+          price_change_percent?: number | null
+          raw_data?: Json | null
+          symbol: string
+          volume?: number | null
+        }
+        Update: {
+          created_at?: string
+          current_price?: number | null
+          id?: string
+          last_updated?: string
+          market_cap?: number | null
+          pe_ratio?: number | null
+          price_change?: number | null
+          price_change_percent?: number | null
+          raw_data?: Json | null
+          symbol?: string
+          volume?: number | null
+        }
+        Relationships: []
+      }
+      stock_analysis: {
+        Row: {
+          analysis_type: string
+          company_name: string | null
+          confidence_score: number | null
+          created_at: string
+          id: string
+          llm_analysis: string
+          market_data: Json | null
+          recommendation: string | null
+          sentiment_score: number | null
+          symbol: string
+          updated_at: string
+        }
+        Insert: {
+          analysis_type?: string
+          company_name?: string | null
+          confidence_score?: number | null
+          created_at?: string
+          id?: string
+          llm_analysis: string
+          market_data?: Json | null
+          recommendation?: string | null
+          sentiment_score?: number | null
+          symbol: string
+          updated_at?: string
+        }
+        Update: {
+          analysis_type?: string
+          company_name?: string | null
+          confidence_score?: number | null
+          created_at?: string
+          id?: string
+          llm_analysis?: string
+          market_data?: Json | null
+          recommendation?: string | null
+          sentiment_score?: number | null
+          symbol?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
