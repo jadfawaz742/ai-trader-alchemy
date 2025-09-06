@@ -219,7 +219,8 @@ async function analyzeStockForAutoTrade(symbol: string, portfolio: any, riskPara
     existingPosition, 
     portfolio, 
     riskParams,
-    marketData
+    marketData,
+    maxAmount
   );
 
   return {
@@ -360,7 +361,7 @@ function calculateTradeConfidence(ppoAnalysis: any, sentimentScore: number, mark
   return Math.min(100, Math.max(0, Math.round(confidence)));
 }
 
-function makeTradeDecision(ppoAnalysis: any, sentimentScore: number, confidence: number, existingPosition: any, portfolio: any, riskParams: any, marketData: any) {
+function makeTradeDecision(ppoAnalysis: any, sentimentScore: number, confidence: number, existingPosition: any, portfolio: any, riskParams: any, marketData: any, maxAmount?: number) {
   // Default to no trade
   let decision = {
     shouldTrade: false,

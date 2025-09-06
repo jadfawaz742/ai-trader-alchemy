@@ -3,8 +3,12 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
+import { Input } from '@/components/ui/input';
+import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog';
+import { Label } from '@/components/ui/label';
 import { supabase } from '@/integrations/supabase/client';
-import { TrendingUp, TrendingDown, DollarSign, PieChart, BarChart3, RefreshCw } from 'lucide-react';
+import { useToast } from '@/hooks/use-toast';
+import { TrendingUp, TrendingDown, DollarSign, PieChart, BarChart3, RefreshCw, ShoppingCart, Minus } from 'lucide-react';
 
 interface Portfolio {
   id: string;
@@ -43,6 +47,11 @@ export const PortfolioDashboard: React.FC = () => {
   const [positions, setPositions] = useState<Position[]>([]);
   const [recentTrades, setRecentTrades] = useState<Trade[]>([]);
   const [loading, setLoading] = useState(true);
+  const [selectedPosition, setSelectedPosition] = useState<Position | null>(null);
+  const [tradeQuantity, setTradeQuantity] = useState('');
+  const [tradePrice, setTradePrice] = useState('');
+  const [isTrading, setIsTrading] = useState(false);
+  const { toast } = useToast();
 
   const loadPortfolioData = async () => {
     setLoading(true);
@@ -107,6 +116,56 @@ export const PortfolioDashboard: React.FC = () => {
     if (riskScore <= 30) return 'text-green-600';
     if (riskScore <= 60) return 'text-yellow-600';
     return 'text-red-600';
+  };
+
+  const handleQuickTrade = async (position: Position, action: 'BUY' | 'SELL') => {
+    if (!portfolio) return;
+    
+    setSelectedPosition(position);
+    setTradeQuantity(action === 'SELL' ? position.quantity.toString() : '1');
+    setTradePrice(position.current_price?.toString() || '0');
+  };
+
+  const executeTrade = async (action: 'BUY' | 'SELL') => {
+    if (!selectedPosition || !portfolio || !tradeQuantity || !tradePrice) return;
+    
+    setIsTrading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('execute-trade', {
+        body: {
+          portfolioId: portfolio.id,
+          symbol: selectedPosition.symbol,
+          tradeType: action,
+          quantity: parseInt(tradeQuantity),
+          currentPrice: parseFloat(tradePrice)
+        }
+      });
+
+      if (error) throw error;
+
+      if (data?.success) {
+        toast({
+          title: "Trade Executed!",
+          description: `${action} ${tradeQuantity} shares of ${selectedPosition.symbol} at $${tradePrice}`
+        });
+        
+        setSelectedPosition(null);
+        setTradeQuantity('');
+        setTradePrice('');
+        loadPortfolioData(); // Refresh data
+      } else {
+        throw new Error(data?.error || 'Trade execution failed');
+      }
+    } catch (error) {
+      console.error('Error executing trade:', error);
+      toast({
+        title: "Trade Failed",
+        description: error.message || "Failed to execute trade",
+        variant: "destructive"
+      });
+    } finally {
+      setIsTrading(false);
+    }
   };
 
   if (loading) {
@@ -194,18 +253,121 @@ export const PortfolioDashboard: React.FC = () => {
             <div className="space-y-4">
               {positions.map((position) => (
                 <div key={position.id} className="flex items-center justify-between p-4 border rounded-lg">
-                  <div className="space-y-1">
+                  <div className="space-y-1 flex-1">
                     <div className="font-semibold text-lg">{position.symbol}</div>
                     <div className="text-sm text-muted-foreground">
                       {position.quantity} shares @ {formatCurrency(position.average_price)}
                     </div>
                   </div>
-                  <div className="text-right space-y-1">
+                  <div className="text-right space-y-1 flex-1">
                     <div className="font-semibold">{formatCurrency(position.current_value)}</div>
-                    <div className={`text-sm flex items-center gap-1 ${position.unrealized_pnl >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    <div className={`text-sm flex items-center gap-1 justify-end ${position.unrealized_pnl >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                       {position.unrealized_pnl >= 0 ? <TrendingUp className="h-4 w-4" /> : <TrendingDown className="h-4 w-4" />}
                       {formatCurrency(position.unrealized_pnl)}
                     </div>
+                  </div>
+                  <div className="flex gap-2 ml-4">
+                    <Dialog>
+                      <DialogTrigger asChild>
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          onClick={() => handleQuickTrade(position, 'BUY')}
+                        >
+                          <ShoppingCart className="h-4 w-4" />
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>Buy More {selectedPosition?.symbol}</DialogTitle>
+                          <DialogDescription>
+                            Add to your existing position
+                          </DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-4">
+                          <div className="space-y-2">
+                            <Label>Quantity</Label>
+                            <Input
+                              type="number"
+                              value={tradeQuantity}
+                              onChange={(e) => setTradeQuantity(e.target.value)}
+                              placeholder="Number of shares"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Price per Share</Label>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              value={tradePrice}
+                              onChange={(e) => setTradePrice(e.target.value)}
+                              placeholder="0.00"
+                            />
+                          </div>
+                          <div className="flex gap-2">
+                            <Button 
+                              onClick={() => executeTrade('BUY')}
+                              disabled={isTrading || !tradeQuantity || !tradePrice}
+                              className="flex-1"
+                            >
+                              {isTrading ? 'Processing...' : 'Buy Shares'}
+                            </Button>
+                          </div>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
+                    
+                    <Dialog>
+                      <DialogTrigger asChild>
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          onClick={() => handleQuickTrade(position, 'SELL')}
+                        >
+                          <Minus className="h-4 w-4" />
+                        </Button>
+                      </DialogTrigger>
+                      <DialogContent>
+                        <DialogHeader>
+                          <DialogTitle>Sell {selectedPosition?.symbol}</DialogTitle>
+                          <DialogDescription>
+                            Reduce or close your position
+                          </DialogDescription>
+                        </DialogHeader>
+                        <div className="space-y-4">
+                          <div className="space-y-2">
+                            <Label>Quantity (Max: {selectedPosition?.quantity})</Label>
+                            <Input
+                              type="number"
+                              value={tradeQuantity}
+                              onChange={(e) => setTradeQuantity(e.target.value)}
+                              max={selectedPosition?.quantity}
+                              placeholder="Number of shares"
+                            />
+                          </div>
+                          <div className="space-y-2">
+                            <Label>Price per Share</Label>
+                            <Input
+                              type="number"
+                              step="0.01"
+                              value={tradePrice}
+                              onChange={(e) => setTradePrice(e.target.value)}
+                              placeholder="0.00"
+                            />
+                          </div>
+                          <div className="flex gap-2">
+                            <Button 
+                              onClick={() => executeTrade('SELL')}
+                              disabled={isTrading || !tradeQuantity || !tradePrice}
+                              variant="destructive"
+                              className="flex-1"
+                            >
+                              {isTrading ? 'Processing...' : 'Sell Shares'}
+                            </Button>
+                          </div>
+                        </div>
+                      </DialogContent>
+                    </Dialog>
                   </div>
                 </div>
               ))}
