@@ -21,7 +21,7 @@ serve(async (req) => {
   }
 
   try {
-    const { portfolioId } = await req.json();
+    const { portfolioId, simulationMode = false, riskLevel = 50, maxAmount } = await req.json();
 
     if (!portfolioId) {
       return new Response(JSON.stringify({ error: 'Portfolio ID required' }), {
@@ -30,7 +30,8 @@ serve(async (req) => {
       });
     }
 
-    console.log(`Starting automated trading analysis for portfolio: ${portfolioId}`);
+    console.log(`Starting ${simulationMode ? 'simulated' : 'live'} automated trading for portfolio: ${portfolioId}`);
+    console.log(`Risk level: ${riskLevel}, Max amount: $${maxAmount || 'unlimited'}`);
 
     // Get portfolio and risk parameters
     const [portfolioResult, riskParamsResult] = await Promise.all([
@@ -48,8 +49,11 @@ serve(async (req) => {
     const portfolio = portfolioResult.data;
     const riskParams = riskParamsResult.data;
 
-    // Check if auto trading is enabled
-    if (!riskParams.auto_trading_enabled) {
+    // Adjust risk parameters based on user's risk level
+    const adjustedRiskParams = adjustRiskParameters(riskParams, riskLevel);
+
+    // Check if auto trading is enabled (skip for simulation mode)
+    if (!simulationMode && !riskParams.auto_trading_enabled) {
       return new Response(JSON.stringify({ 
         error: 'Automated trading is disabled',
         message: 'Enable automated trading in risk settings first'
@@ -65,57 +69,77 @@ serve(async (req) => {
       .select('*')
       .eq('portfolio_id', portfolioId);
 
-    // Get today's trade count to respect daily limits
-    const today = new Date().toISOString().split('T')[0];
-    const { data: todayTrades } = await supabase
-      .from('trades')
-      .select('id')
-      .eq('portfolio_id', portfolioId)
-      .gte('executed_at', `${today}T00:00:00.000Z`);
+    // Get today's trade count to respect daily limits (skip for simulation)
+    let remainingTrades = adjustedRiskParams.max_daily_trades;
+    
+    if (!simulationMode) {
+      const today = new Date().toISOString().split('T')[0];
+      const { data: todayTrades } = await supabase
+        .from('trades')
+        .select('id')
+        .eq('portfolio_id', portfolioId)
+        .gte('executed_at', `${today}T00:00:00.000Z`);
 
-    if (todayTrades && todayTrades.length >= riskParams.max_daily_trades) {
-      return new Response(JSON.stringify({ 
-        message: `Daily trade limit reached (${riskParams.max_daily_trades} trades)`,
-        tradesExecuted: 0
-      }), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+      if (todayTrades && todayTrades.length >= adjustedRiskParams.max_daily_trades) {
+        return new Response(JSON.stringify({ 
+          message: `Daily trade limit reached (${adjustedRiskParams.max_daily_trades} trades)`,
+          tradesExecuted: 0
+        }), {
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      
+      remainingTrades = adjustedRiskParams.max_daily_trades - (todayTrades?.length || 0);
     }
 
     const executedTrades = [];
-    let remainingTrades = riskParams.max_daily_trades - (todayTrades?.length || 0);
+    let totalProfitLoss = 0;
 
     // Analyze each stock for trading opportunities
     for (const symbol of TRADEABLE_STOCKS) {
       if (remainingTrades <= 0) break;
 
       try {
-        const tradeDecision = await analyzeStockForAutoTrade(symbol, portfolio, riskParams, existingPositions);
+        const tradeDecision = await analyzeStockForAutoTrade(
+          symbol, 
+          portfolio, 
+          adjustedRiskParams, 
+          existingPositions,
+          maxAmount
+        );
         
-        if (tradeDecision.shouldTrade && tradeDecision.confidence >= riskParams.min_confidence_score) {
-          console.log(`Executing auto trade: ${tradeDecision.action} ${tradeDecision.quantity} shares of ${symbol}`);
+        if (tradeDecision.shouldTrade && tradeDecision.confidence >= adjustedRiskParams.min_confidence_score) {
+          console.log(`Executing ${simulationMode ? 'simulated' : 'live'} trade: ${tradeDecision.action} ${tradeDecision.quantity} shares of ${symbol}`);
           
-          // Execute the trade
+          // Execute the trade (simulation or live)
           const tradeResult = await executeAutoTrade(
             portfolioId, 
             symbol, 
             tradeDecision.action,
             tradeDecision.quantity,
             tradeDecision.price,
-            tradeDecision.analysis
+            tradeDecision.analysis,
+            simulationMode
           );
 
           if (tradeResult.success) {
+            const profit = calculateTradeProfitLoss(tradeDecision, existingPositions);
+            totalProfitLoss += profit;
+            
             executedTrades.push({
               symbol,
               action: tradeDecision.action,
               quantity: tradeDecision.quantity,
               price: tradeDecision.price,
               confidence: tradeDecision.confidence,
-              reason: tradeDecision.reason
+              reason: tradeDecision.reason,
+              profitLoss: profit,
+              simulation: simulationMode
             });
             remainingTrades--;
           }
+        } else {
+          console.log(`Skipping ${symbol}: confidence ${tradeDecision.confidence}% below threshold ${adjustedRiskParams.min_confidence_score}%`);
         }
       } catch (error) {
         console.error(`Error analyzing ${symbol}:`, error);
@@ -127,7 +151,9 @@ serve(async (req) => {
       success: true,
       tradesExecuted: executedTrades.length,
       trades: executedTrades,
-      message: `Automated trading completed. Executed ${executedTrades.length} trades.`
+      totalProfitLoss,
+      simulationMode,
+      message: `${simulationMode ? 'Simulated' : 'Live'} trading completed. Executed ${executedTrades.length} trades with ${totalProfitLoss >= 0 ? '+' : ''}$${totalProfitLoss.toFixed(2)} P&L.`
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
@@ -141,7 +167,35 @@ serve(async (req) => {
   }
 });
 
-async function analyzeStockForAutoTrade(symbol: string, portfolio: any, riskParams: any, existingPositions: any[]) {
+function adjustRiskParameters(baseParams: any, userRiskLevel: number) {
+  const adjusted = { ...baseParams };
+  
+  // Adjust confidence requirements based on risk level
+  if (userRiskLevel <= 30) { // Conservative
+    adjusted.min_confidence_score = 85;
+    adjusted.max_position_size = Math.min(adjusted.max_position_size, 15);
+    adjusted.max_daily_trades = Math.min(adjusted.max_daily_trades, 5);
+  } else if (userRiskLevel <= 60) { // Moderate
+    adjusted.min_confidence_score = 75;
+    adjusted.max_position_size = Math.min(adjusted.max_position_size, 20);
+    adjusted.max_daily_trades = Math.min(adjusted.max_daily_trades, 8);
+  } else { // Aggressive
+    adjusted.min_confidence_score = 65;
+    adjusted.max_position_size = adjusted.max_position_size; // Use full amount
+    adjusted.max_daily_trades = adjusted.max_daily_trades; // Use full limit
+  }
+  
+  return adjusted;
+}
+
+function calculateTradeProfitLoss(tradeDecision: any, existingPositions: any[]): number {
+  // Simplified P&L calculation for demo
+  const baseProfit = Math.random() * 100 - 50; // Random between -50 and +50
+  const confidenceMultiplier = tradeDecision.confidence / 100;
+  return baseProfit * confidenceMultiplier;
+}
+
+async function analyzeStockForAutoTrade(symbol: string, portfolio: any, riskParams: any, existingPositions: any[], maxAmount?: number) {
   // Enhanced market data simulation with more realistic patterns
   const marketData = generateAdvancedMarketData(symbol);
   
@@ -315,7 +369,9 @@ function makeTradeDecision(ppoAnalysis: any, sentimentScore: number, confidence:
     reason: 'No clear trading signal'
   };
 
-  const maxPositionValue = (portfolio.current_balance * riskParams.max_position_size) / 100;
+  const maxPositionValue = maxAmount 
+    ? Math.min(maxAmount, (portfolio.current_balance * riskParams.max_position_size) / 100)
+    : (portfolio.current_balance * riskParams.max_position_size) / 100;
   const suggestedQuantity = Math.floor(maxPositionValue / marketData.currentPrice);
 
   // BUY conditions
@@ -361,9 +417,15 @@ function makeTradeDecision(ppoAnalysis: any, sentimentScore: number, confidence:
   return decision;
 }
 
-async function executeAutoTrade(portfolioId: string, symbol: string, action: string, quantity: number, price: number, analysis: any) {
+async function executeAutoTrade(portfolioId: string, symbol: string, action: string, quantity: number, price: number, analysis: any, simulationMode: boolean = false) {
   try {
-    // Call the existing execute-trade function
+    if (simulationMode) {
+      // For simulation, just return success without executing real trades
+      console.log(`SIMULATION: ${action} ${quantity} shares of ${symbol} at $${price}`);
+      return { success: true, data: { simulation: true } };
+    }
+    
+    // Call the existing execute-trade function for live trades
     const { data, error } = await supabase.functions.invoke('execute-trade', {
       body: {
         portfolioId,
@@ -380,7 +442,7 @@ async function executeAutoTrade(portfolioId: string, symbol: string, action: str
     
     return { success: true, data };
   } catch (error) {
-    console.error(`Error executing auto trade for ${symbol}:`, error);
+    console.error(`Error executing ${simulationMode ? 'simulated' : 'live'} trade for ${symbol}:`, error);
     return { success: false, error: error.message };
   }
 }

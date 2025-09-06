@@ -6,7 +6,8 @@ import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { TrendingUp, TrendingDown, DollarSign, PieChart, Activity, Target, Shield } from 'lucide-react';
+import { TrendingUp, TrendingDown, DollarSign, PieChart, Activity, Target, Shield, Bot } from 'lucide-react';
+import AITradingModal from './AITradingModal';
 
 interface Portfolio {
   id: string;
@@ -56,6 +57,7 @@ const TradingDashboard: React.FC = () => {
   const [riskParams, setRiskParams] = useState<RiskParams | null>(null);
   const [loading, setLoading] = useState(false);
   const [autoTrading, setAutoTrading] = useState(false);
+  const [aiTradingModalOpen, setAiTradingModalOpen] = useState(false);
   const [tradeForm, setTradeForm] = useState({
     symbol: '',
     tradeType: 'BUY',
@@ -398,19 +400,20 @@ const TradingDashboard: React.FC = () => {
               
               <div className="flex gap-2">
                 <Button 
+                  onClick={() => setAiTradingModalOpen(true)}
+                  variant="default"
+                  className="flex-1"
+                >
+                  <Bot className="h-4 w-4 mr-2" />
+                  AI Trading Assistant
+                </Button>
+                <Button 
                   onClick={executeAutoTrade} 
                   disabled={autoTrading || !riskParams?.auto_trading_enabled} 
                   variant="secondary"
-                  className="flex-1"
-                >
-                  {autoTrading ? 'AI Trading...' : 'Run AI Auto Trade'}
-                </Button>
-                <Button 
-                  onClick={toggleAutoTrading}
-                  variant={riskParams?.auto_trading_enabled ? "destructive" : "default"}
                   size="sm"
                 >
-                  {riskParams?.auto_trading_enabled ? 'Disable AI' : 'Enable AI'}
+                  {autoTrading ? 'Running...' : 'Quick Trade'}
                 </Button>
               </div>
               
@@ -626,6 +629,13 @@ const TradingDashboard: React.FC = () => {
           </Card>
         </TabsContent>
       </Tabs>
+
+      <AITradingModal
+        isOpen={aiTradingModalOpen}
+        onClose={() => setAiTradingModalOpen(false)}
+        portfolio={portfolio}
+        onTradeComplete={loadDashboardData}
+      />
     </div>
   );
 };
