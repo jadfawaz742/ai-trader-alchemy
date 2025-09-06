@@ -56,7 +56,18 @@ export const PortfolioDashboard: React.FC = () => {
   const loadPortfolioData = async () => {
     setLoading(true);
     try {
-      // Load portfolio
+      // Check authentication first
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        toast({
+          title: "Authentication Required",
+          description: "Please log in to view your portfolio",
+          variant: "destructive"
+        });
+        return;
+      }
+
+      // Load portfolio (user-specific via RLS)
       const { data: portfolioData } = await supabase
         .from('portfolios')
         .select('*')
@@ -66,7 +77,7 @@ export const PortfolioDashboard: React.FC = () => {
       if (portfolioData) {
         setPortfolio(portfolioData);
 
-        // Load positions
+        // Load positions (user-specific via RLS)
         const { data: positionsData } = await supabase
           .from('positions')
           .select('*')
@@ -75,7 +86,7 @@ export const PortfolioDashboard: React.FC = () => {
 
         setPositions(positionsData || []);
 
-        // Load recent trades
+        // Load recent trades (user-specific via RLS)
         const { data: tradesData } = await supabase
           .from('trades')
           .select('*')
@@ -84,11 +95,59 @@ export const PortfolioDashboard: React.FC = () => {
           .limit(10);
 
         setRecentTrades(tradesData || []);
+      } else {
+        // No portfolio found, create a default one
+        await createDefaultPortfolio(user.id);
+        // Retry loading after creation
+        setTimeout(loadPortfolioData, 1000);
       }
     } catch (error) {
       console.error('Error loading portfolio data:', error);
+      toast({
+        title: "Error Loading Portfolio", 
+        description: "Failed to load portfolio data. Please try again.",
+        variant: "destructive"
+      });
     } finally {
       setLoading(false);
+    }
+  };
+
+  const createDefaultPortfolio = async (userId: string) => {
+    try {
+      // Create default portfolio
+      const { data: portfolio, error: portfolioError } = await supabase
+        .from('portfolios')
+        .insert({
+          name: 'My Portfolio',
+          user_id: userId,
+          current_balance: 100000,
+          initial_balance: 100000
+        })
+        .select()
+        .single();
+
+      if (portfolioError) throw portfolioError;
+
+      // Create default risk parameters
+      await supabase
+        .from('risk_parameters')
+        .insert({
+          portfolio_id: portfolio.id,
+          user_id: userId,
+          max_position_size: 10.0,
+          stop_loss_percent: 5.0,
+          take_profit_percent: 15.0,
+          min_confidence_score: 75.0,
+          max_daily_trades: 10
+        });
+
+      toast({
+        title: "Portfolio Created",
+        description: "A default portfolio has been created for you with $100,000 starting balance",
+      });
+    } catch (error) {
+      console.error('Error creating portfolio:', error);
     }
   };
 

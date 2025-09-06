@@ -19,6 +19,25 @@ serve(async (req) => {
   }
 
   try {
+    // Get the authorization header to identify the user
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(JSON.stringify({ error: 'Authorization required' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Get user from JWT token
+    const { data: { user }, error: authError } = await supabase.auth.getUser(authHeader.replace('Bearer ', ''));
+    
+    if (authError || !user) {
+      return new Response(JSON.stringify({ error: 'Invalid authorization' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     const { portfolioId, symbol, tradeType, quantity, currentPrice } = await req.json();
 
     if (!portfolioId || !symbol || !tradeType || !quantity || !currentPrice) {
@@ -30,10 +49,10 @@ serve(async (req) => {
 
     console.log(`Executing ${tradeType} trade: ${quantity} shares of ${symbol} at $${currentPrice}`);
 
-    // Fetch portfolio and risk parameters
+    // Fetch portfolio and risk parameters (user-specific via RLS)
     const [portfolioResult, riskParamsResult] = await Promise.all([
-      supabase.from('portfolios').select('*').eq('id', portfolioId).single(),
-      supabase.from('risk_parameters').select('*').eq('portfolio_id', portfolioId).single()
+      supabase.from('portfolios').select('*').eq('id', portfolioId).eq('user_id', user.id).single(),
+      supabase.from('risk_parameters').select('*').eq('portfolio_id', portfolioId).eq('user_id', user.id).single()
     ]);
 
     if (portfolioResult.error || riskParamsResult.error) {
@@ -68,7 +87,7 @@ serve(async (req) => {
     }
 
     // Execute the trade
-    const tradeResult = await executeTrade(portfolioId, symbol, tradeType, quantity, currentPrice, ppoSignal, riskScore);
+    const tradeResult = await executeTrade(portfolioId, symbol, tradeType, quantity, currentPrice, ppoSignal, riskScore, user.id);
 
     if (!tradeResult.success) {
       return new Response(JSON.stringify({ error: tradeResult.error }), {
@@ -211,11 +230,11 @@ function validateTrade(tradeType: string, quantity: number, price: number, portf
   return { isValid: true };
 }
 
-async function executeTrade(portfolioId: string, symbol: string, tradeType: string, quantity: number, price: number, ppoSignal: any, riskScore: number) {
+async function executeTrade(portfolioId: string, symbol: string, tradeType: string, quantity: number, price: number, ppoSignal: any, riskScore: number, userId: string) {
   const totalAmount = quantity * price;
   
   try {
-    // Insert the trade record
+    // Insert the trade record with user_id
     const { data: trade, error: tradeError } = await supabase
       .from('trades')
       .insert({
@@ -226,7 +245,8 @@ async function executeTrade(portfolioId: string, symbol: string, tradeType: stri
         price,
         total_amount: totalAmount,
         ppo_signal: ppoSignal,
-        risk_score: riskScore
+        risk_score: riskScore,
+        user_id: userId
       })
       .select()
       .single();
@@ -236,10 +256,10 @@ async function executeTrade(portfolioId: string, symbol: string, tradeType: stri
     }
     
     // Update or create position
-    await updatePosition(portfolioId, symbol, tradeType, quantity, price);
+    await updatePosition(portfolioId, symbol, tradeType, quantity, price, userId);
     
     // Update portfolio balance
-    await updatePortfolioBalance(portfolioId, tradeType, totalAmount);
+    await updatePortfolioBalance(portfolioId, tradeType, totalAmount, userId);
     
     return { success: true, trade };
   } catch (error) {
@@ -248,13 +268,14 @@ async function executeTrade(portfolioId: string, symbol: string, tradeType: stri
   }
 }
 
-async function updatePosition(portfolioId: string, symbol: string, tradeType: string, quantity: number, price: number) {
-  // Get existing position
+async function updatePosition(portfolioId: string, symbol: string, tradeType: string, quantity: number, price: number, userId: string) {
+  // Get existing position (user-specific via RLS)
   const { data: existingPosition } = await supabase
     .from('positions')
     .select('*')
     .eq('portfolio_id', portfolioId)
     .eq('symbol', symbol)
+    .eq('user_id', userId)
     .single();
   
   if (existingPosition) {
@@ -277,7 +298,8 @@ async function updatePosition(portfolioId: string, symbol: string, tradeType: st
         .from('positions')
         .delete()
         .eq('portfolio_id', portfolioId)
-        .eq('symbol', symbol);
+        .eq('symbol', symbol)
+        .eq('user_id', userId);
     } else {
       // Update position
       await supabase
@@ -289,10 +311,11 @@ async function updatePosition(portfolioId: string, symbol: string, tradeType: st
           current_price: price
         })
         .eq('portfolio_id', portfolioId)
-        .eq('symbol', symbol);
+        .eq('symbol', symbol)
+        .eq('user_id', userId);
     }
   } else if (tradeType === 'BUY') {
-    // Create new position
+    // Create new position with user_id
     await supabase
       .from('positions')
       .insert({
@@ -301,16 +324,18 @@ async function updatePosition(portfolioId: string, symbol: string, tradeType: st
         quantity,
         average_price: price,
         current_price: price,
-        total_cost: quantity * price
+        total_cost: quantity * price,
+        user_id: userId
       });
   }
 }
 
-async function updatePortfolioBalance(portfolioId: string, tradeType: string, totalAmount: number) {
+async function updatePortfolioBalance(portfolioId: string, tradeType: string, totalAmount: number, userId: string) {
   const { data: portfolio } = await supabase
     .from('portfolios')
     .select('current_balance')
     .eq('id', portfolioId)
+    .eq('user_id', userId)
     .single();
     
   if (portfolio) {
@@ -320,6 +345,7 @@ async function updatePortfolioBalance(portfolioId: string, tradeType: string, to
     await supabase
       .from('portfolios')
       .update({ current_balance: newBalance })
-      .eq('id', portfolioId);
+      .eq('id', portfolioId)
+      .eq('user_id', userId);
   }
 }

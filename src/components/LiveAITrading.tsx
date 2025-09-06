@@ -120,6 +120,13 @@ export const LiveAITrading: React.FC = () => {
 
   const loadPortfolio = async () => {
     try {
+      // Check authentication first
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        console.log('User not authenticated');
+        return;
+      }
+
       const { data } = await supabase
         .from('portfolios')
         .select('*')

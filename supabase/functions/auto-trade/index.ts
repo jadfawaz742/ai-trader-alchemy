@@ -21,6 +21,25 @@ serve(async (req) => {
   }
 
   try {
+    // Get the authorization header to identify the user
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(JSON.stringify({ error: 'Authorization required for automated trading' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Get user from JWT token
+    const { data: { user }, error: authError } = await supabase.auth.getUser(authHeader.replace('Bearer ', ''));
+    
+    if (authError || !user) {
+      return new Response(JSON.stringify({ error: 'Invalid authorization' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     const { portfolioId, simulationMode = false, riskLevel = 50, maxAmount, tradeDuration = 300 } = await req.json();
 
     if (!portfolioId) {
@@ -33,10 +52,10 @@ serve(async (req) => {
     console.log(`Starting ${simulationMode ? 'simulated' : 'live'} automated trading for portfolio: ${portfolioId}`);
     console.log(`Risk level: ${riskLevel}, Max amount: $${maxAmount || 'unlimited'}, Duration: ${tradeDuration}s`);
 
-    // Get portfolio and risk parameters
+    // Get portfolio and risk parameters (user-specific via RLS)
     const [portfolioResult, riskParamsResult] = await Promise.all([
-      supabase.from('portfolios').select('*').eq('id', portfolioId).single(),
-      supabase.from('risk_parameters').select('*').eq('portfolio_id', portfolioId).single()
+      supabase.from('portfolios').select('*').eq('id', portfolioId).eq('user_id', user.id).single(),
+      supabase.from('risk_parameters').select('*').eq('portfolio_id', portfolioId).eq('user_id', user.id).single()
     ]);
 
     if (portfolioResult.error || riskParamsResult.error) {
@@ -63,13 +82,14 @@ serve(async (req) => {
       });
     }
 
-    // Get existing positions to avoid overconcentration
+    // Get existing positions to avoid overconcentration (user-specific via RLS)
     const { data: existingPositions } = await supabase
       .from('positions')
       .select('*')
-      .eq('portfolio_id', portfolioId);
+      .eq('portfolio_id', portfolioId)
+      .eq('user_id', user.id);
 
-    // Get today's trade count to respect daily limits (skip for simulation)
+    // Get today's trade count to respect daily limits (skip for simulation, user-specific)
     let remainingTrades = adjustedRiskParams.max_daily_trades;
     
     if (!simulationMode) {
@@ -78,6 +98,7 @@ serve(async (req) => {
         .from('trades')
         .select('id')
         .eq('portfolio_id', portfolioId)
+        .eq('user_id', user.id)
         .gte('executed_at', `${today}T00:00:00.000Z`);
 
       if (todayTrades && todayTrades.length >= adjustedRiskParams.max_daily_trades) {
@@ -123,7 +144,8 @@ serve(async (req) => {
             tradeDecision.quantity,
             tradeDecision.price,
             tradeDecision.analysis,
-            simulationMode
+            simulationMode,
+            user.id
           );
 
           if (tradeResult.success) {
@@ -456,7 +478,7 @@ function makeTradeDecision(ppoAnalysis: any, sentimentScore: number, confidence:
   return decision;
 }
 
-async function executeAutoTrade(portfolioId: string, symbol: string, action: string, quantity: number, price: number, analysis: any, simulationMode: boolean = false) {
+async function executeAutoTrade(portfolioId: string, symbol: string, action: string, quantity: number, price: number, analysis: any, simulationMode: boolean = false, userId: string) {
   try {
     if (simulationMode) {
       // For simulation, just return success without executing real trades

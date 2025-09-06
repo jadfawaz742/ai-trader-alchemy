@@ -102,6 +102,7 @@ export type Database = {
           total_cost: number
           unrealized_pnl: number | null
           updated_at: string
+          user_id: string | null
         }
         Insert: {
           average_price?: number
@@ -115,6 +116,7 @@ export type Database = {
           total_cost?: number
           unrealized_pnl?: number | null
           updated_at?: string
+          user_id?: string | null
         }
         Update: {
           average_price?: number
@@ -128,6 +130,7 @@ export type Database = {
           total_cost?: number
           unrealized_pnl?: number | null
           updated_at?: string
+          user_id?: string | null
         }
         Relationships: [
           {
@@ -138,6 +141,27 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      profiles: {
+        Row: {
+          created_at: string
+          display_name: string | null
+          id: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          display_name?: string | null
+          id: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          display_name?: string | null
+          id?: string
+          updated_at?: string
+        }
+        Relationships: []
       }
       risk_parameters: {
         Row: {
@@ -156,6 +180,7 @@ export type Database = {
           stop_loss_percent: number
           take_profit_percent: number
           updated_at: string
+          user_id: string | null
         }
         Insert: {
           auto_trading_enabled?: boolean | null
@@ -173,6 +198,7 @@ export type Database = {
           stop_loss_percent?: number
           take_profit_percent?: number
           updated_at?: string
+          user_id?: string | null
         }
         Update: {
           auto_trading_enabled?: boolean | null
@@ -190,6 +216,7 @@ export type Database = {
           stop_loss_percent?: number
           take_profit_percent?: number
           updated_at?: string
+          user_id?: string | null
         }
         Relationships: [
           {
@@ -259,6 +286,7 @@ export type Database = {
           symbol: string
           total_amount: number
           trade_type: string
+          user_id: string | null
         }
         Insert: {
           created_at?: string
@@ -272,6 +300,7 @@ export type Database = {
           symbol: string
           total_amount: number
           trade_type: string
+          user_id?: string | null
         }
         Update: {
           created_at?: string
@@ -285,6 +314,7 @@ export type Database = {
           symbol?: string
           total_amount?: number
           trade_type?: string
+          user_id?: string | null
         }
         Relationships: [
           {
