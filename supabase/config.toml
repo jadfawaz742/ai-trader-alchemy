@@ -2,3 +2,6 @@ project_id = "ncetkhcryoxchkodlzgj"
 
 [functions.analyze-stock]
 verify_jwt = false
+
+[functions.execute-trade]
+verify_jwt = false

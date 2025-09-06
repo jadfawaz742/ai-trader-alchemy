@@ -56,6 +56,142 @@ export type Database = {
         }
         Relationships: []
       }
+      portfolios: {
+        Row: {
+          created_at: string
+          current_balance: number
+          id: string
+          initial_balance: number
+          name: string
+          total_pnl: number
+          updated_at: string
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string
+          current_balance?: number
+          id?: string
+          initial_balance?: number
+          name?: string
+          total_pnl?: number
+          updated_at?: string
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string
+          current_balance?: number
+          id?: string
+          initial_balance?: number
+          name?: string
+          total_pnl?: number
+          updated_at?: string
+          user_id?: string | null
+        }
+        Relationships: []
+      }
+      positions: {
+        Row: {
+          average_price: number
+          created_at: string
+          current_price: number | null
+          current_value: number | null
+          id: string
+          portfolio_id: string
+          quantity: number
+          symbol: string
+          total_cost: number
+          unrealized_pnl: number | null
+          updated_at: string
+        }
+        Insert: {
+          average_price?: number
+          created_at?: string
+          current_price?: number | null
+          current_value?: number | null
+          id?: string
+          portfolio_id: string
+          quantity?: number
+          symbol: string
+          total_cost?: number
+          unrealized_pnl?: number | null
+          updated_at?: string
+        }
+        Update: {
+          average_price?: number
+          created_at?: string
+          current_price?: number | null
+          current_value?: number | null
+          id?: string
+          portfolio_id?: string
+          quantity?: number
+          symbol?: string
+          total_cost?: number
+          unrealized_pnl?: number | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "positions_portfolio_id_fkey"
+            columns: ["portfolio_id"]
+            isOneToOne: false
+            referencedRelation: "portfolios"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      risk_parameters: {
+        Row: {
+          created_at: string
+          id: string
+          max_position_size: number
+          portfolio_id: string
+          ppo_buy_threshold: number
+          ppo_fast_period: number
+          ppo_sell_threshold: number
+          ppo_signal_period: number
+          ppo_slow_period: number
+          stop_loss_percent: number
+          take_profit_percent: number
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          max_position_size?: number
+          portfolio_id: string
+          ppo_buy_threshold?: number
+          ppo_fast_period?: number
+          ppo_sell_threshold?: number
+          ppo_signal_period?: number
+          ppo_slow_period?: number
+          stop_loss_percent?: number
+          take_profit_percent?: number
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          max_position_size?: number
+          portfolio_id?: string
+          ppo_buy_threshold?: number
+          ppo_fast_period?: number
+          ppo_sell_threshold?: number
+          ppo_signal_period?: number
+          ppo_slow_period?: number
+          stop_loss_percent?: number
+          take_profit_percent?: number
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "risk_parameters_portfolio_id_fkey"
+            columns: ["portfolio_id"]
+            isOneToOne: true
+            referencedRelation: "portfolios"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       stock_analysis: {
         Row: {
           analysis_type: string
@@ -97,6 +233,56 @@ export type Database = {
           updated_at?: string
         }
         Relationships: []
+      }
+      trades: {
+        Row: {
+          created_at: string
+          executed_at: string
+          id: string
+          portfolio_id: string
+          ppo_signal: Json | null
+          price: number
+          quantity: number
+          risk_score: number | null
+          symbol: string
+          total_amount: number
+          trade_type: string
+        }
+        Insert: {
+          created_at?: string
+          executed_at?: string
+          id?: string
+          portfolio_id: string
+          ppo_signal?: Json | null
+          price: number
+          quantity: number
+          risk_score?: number | null
+          symbol: string
+          total_amount: number
+          trade_type: string
+        }
+        Update: {
+          created_at?: string
+          executed_at?: string
+          id?: string
+          portfolio_id?: string
+          ppo_signal?: Json | null
+          price?: number
+          quantity?: number
+          risk_score?: number | null
+          symbol?: string
+          total_amount?: number
+          trade_type?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "trades_portfolio_id_fkey"
+            columns: ["portfolio_id"]
+            isOneToOne: false
+            referencedRelation: "portfolios"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
