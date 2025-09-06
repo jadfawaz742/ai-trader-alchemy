@@ -22,6 +22,8 @@ interface LiveTrade {
   profitLoss: number;
   status: 'pending' | 'executed' | 'closed';
   duration: number;
+  momentum?: string;
+  volumeSpike?: boolean;
 }
 
 interface TradingSession {
@@ -70,17 +72,25 @@ export const LiveAITrading: React.FC = () => {
       tradeUpdateRef.current = setInterval(() => {
         setSession(prev => {
           const updatedActiveTrades = prev.activeTrades.map(trade => {
-            // Simulate live price changes
-            const priceChange = (Math.random() - 0.5) * 0.05 * trade.price; // ±5% volatility
-            const newPrice = Math.max(trade.price + priceChange, trade.price * 0.9); // Don't go below 10% loss
+            // Simulate more realistic price movements based on momentum and risk
+            const volatilityFactor = riskLevel[0] / 100 * 0.08; // Higher risk = more volatility
+            const momentumBoost = trade.momentum === 'bullish' ? 0.6 : trade.momentum === 'bearish' ? -0.6 : 0;
+            const volumeBoost = trade.volumeSpike ? 1.2 : 1.0;
+            
+            const baseChange = (Math.random() - 0.5) * volatilityFactor * trade.price * volumeBoost;
+            const momentumChange = momentumBoost * (Math.random() * 0.02 * trade.price);
+            const totalChange = baseChange + momentumChange;
+            
+            const currentPrice = Math.max(trade.price + totalChange, trade.price * 0.85); // Max 15% loss limit
             
             const newPnL = trade.action === 'BUY' 
-              ? (newPrice - trade.price) * trade.quantity
-              : (trade.price - newPrice) * trade.quantity;
+              ? (currentPrice - trade.price) * trade.quantity
+              : (trade.price - currentPrice) * trade.quantity;
             
             return {
               ...trade,
-              profitLoss: Number(newPnL.toFixed(2))
+              profitLoss: Number(newPnL.toFixed(2)),
+              currentPrice: Number(currentPrice.toFixed(2))
             };
           });
           
@@ -151,13 +161,14 @@ export const LiveAITrading: React.FC = () => {
       description: `Live trading session started with $${tradingAmount} at ${riskLevel[0]}% risk level`
     });
 
-    // Start executing trades at intervals
+    // Start executing trades at intervals based on risk level
+    const tradingInterval = Math.max(3000, 15000 - (riskLevel[0] * 100)); // Higher risk = more frequent trades
     intervalRef.current = setInterval(async () => {
       await executeSingleTrade();
-    }, 10000); // Execute a trade every 10 seconds
+    }, tradingInterval);
 
     // Execute first trade immediately
-    setTimeout(executeSingleTrade, 2000);
+    setTimeout(executeSingleTrade, 1000);
   };
 
   const executeSingleTrade = async () => {
@@ -185,7 +196,9 @@ export const LiveAITrading: React.FC = () => {
           confidence: trade.confidence,
           profitLoss: 0, // Start at 0, will update live
           status: 'executed' as const,
-          duration: tradeDuration[0]
+          duration: tradeDuration[0],
+          momentum: trade.momentum || 'neutral',
+          volumeSpike: trade.volumeSpike || false
         }));
 
         setSession(prev => ({
@@ -200,9 +213,22 @@ export const LiveAITrading: React.FC = () => {
             closeTrade(trade.id);
           }, trade.duration * 1000);
         });
+
+        toast({
+          title: "New Trades Executed",
+          description: `AI executed ${newTrades.length} trades based on market opportunities`
+        });
+      } else {
+        // If no trades, show AI is analyzing
+        console.log('AI analyzing market conditions...');
       }
     } catch (error) {
       console.error('Error executing trade:', error);
+      toast({
+        title: "Trading Error",
+        description: "Failed to execute trades. Retrying...",
+        variant: "destructive"
+      });
     }
   };
 
@@ -407,20 +433,35 @@ export const LiveAITrading: React.FC = () => {
             ) : (
               <div className="space-y-3">
                 {session.activeTrades.map((trade) => (
-                  <div key={trade.id} className="p-4 border rounded-lg bg-muted/30">
+                  <div key={trade.id} className="p-4 border rounded-lg bg-muted/30 hover:bg-muted/50 transition-colors">
                     <div className="flex items-center justify-between mb-2">
                       <div className="flex items-center gap-2">
-                        <Badge variant={trade.action === 'BUY' ? 'default' : 'destructive'}>
+                        <Badge variant={trade.action === 'BUY' ? 'default' : 'destructive'} className="animate-pulse">
                           {trade.action}
                         </Badge>
                         <span className="font-semibold text-lg">{trade.symbol}</span>
                         <span className="text-muted-foreground">
                           {trade.quantity} @ {formatCurrency(trade.price)}
                         </span>
+                        {trade.momentum && (
+                          <Badge variant="outline" className={trade.momentum === 'bullish' ? 'text-green-600' : 'text-red-600'}>
+                            {trade.momentum === 'bullish' ? <TrendingUp className="h-3 w-3 mr-1" /> : <TrendingDown className="h-3 w-3 mr-1" />}
+                            {trade.momentum}
+                          </Badge>
+                        )}
+                        {trade.volumeSpike && (
+                          <Badge variant="outline" className="text-blue-600">
+                            <Zap className="h-3 w-3 mr-1" />
+                            High Volume
+                          </Badge>
+                        )}
                       </div>
                       <div className="text-right">
-                        <div className={`text-xl font-bold ${trade.profitLoss >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                        <div className={`text-xl font-bold transition-colors ${trade.profitLoss >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                           {trade.profitLoss >= 0 ? '+' : ''}{formatCurrency(trade.profitLoss)}
+                        </div>
+                        <div className="text-sm text-muted-foreground">
+                          Current: {formatCurrency((trade as any).currentPrice || trade.price)}
                         </div>
                       </div>
                     </div>
@@ -434,6 +475,10 @@ export const LiveAITrading: React.FC = () => {
                           <Clock className="h-3 w-3" />
                           Duration: {formatDuration(trade.duration)}
                         </div>
+                        <div className="flex items-center gap-1">
+                          <DollarSign className="h-3 w-3" />
+                          Value: {formatCurrency(trade.quantity * trade.price)}
+                        </div>
                       </div>
                       <div className="text-muted-foreground">
                         {new Date(trade.timestamp).toLocaleTimeString()}
@@ -441,6 +486,10 @@ export const LiveAITrading: React.FC = () => {
                     </div>
                     <div className="mt-2">
                       <Progress value={trade.confidence} className="h-1" />
+                    </div>
+                    <div className="mt-2 text-xs text-muted-foreground">
+                      P&L: {((trade.profitLoss / (trade.quantity * trade.price)) * 100).toFixed(2)}% • 
+                      AI Reason: {trade.action === 'BUY' ? 'Bullish momentum detected' : 'Bearish signal identified'}
                     </div>
                   </div>
                 ))}

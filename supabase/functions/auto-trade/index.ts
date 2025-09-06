@@ -178,14 +178,14 @@ function adjustRiskParameters(baseParams: any, userRiskLevel: number, simulation
   const riskMultiplier = userRiskLevel / 50; // 50 = neutral, 100 = 2x aggressive, 0 = very conservative
   
   if (simulationMode) {
-    // Simulation mode: Always allow trades but adjust aggressiveness
-    adjusted.min_confidence_score = Math.max(20, 90 - userRiskLevel); // 20-90% range
-    adjusted.max_position_size = Math.min(50, 10 + (userRiskLevel * 0.4)); // 10-50% range
-    adjusted.max_daily_trades = Math.min(25, 5 + Math.floor(userRiskLevel * 0.2)); // 5-25 trades
+    // Simulation mode: Be very aggressive to show activity
+    adjusted.min_confidence_score = Math.max(15, 60 - userRiskLevel * 0.45); // 15-60% range (very low threshold)
+    adjusted.max_position_size = Math.min(60, 15 + (userRiskLevel * 0.45)); // 15-60% range
+    adjusted.max_daily_trades = Math.min(50, 10 + Math.floor(userRiskLevel * 0.4)); // 10-50 trades
     
-    // Adjust PPO thresholds based on risk
-    adjusted.ppo_buy_threshold = Math.max(0.05, 0.5 - (userRiskLevel * 0.008)); // More aggressive at higher risk
-    adjusted.ppo_sell_threshold = Math.min(-0.05, -0.5 + (userRiskLevel * 0.008));
+    // Very aggressive PPO thresholds for simulation
+    adjusted.ppo_buy_threshold = Math.max(0.01, 0.2 - (userRiskLevel * 0.002)); 
+    adjusted.ppo_sell_threshold = Math.min(-0.01, -0.2 + (userRiskLevel * 0.002));
     
     console.log(`Simulation mode: Risk ${userRiskLevel}% - Confidence: ${adjusted.min_confidence_score}%, Position: ${adjusted.max_position_size}%`);
   } else {
@@ -354,29 +354,33 @@ function calculateMarketSentiment(marketData: any, ppoAnalysis: any) {
 }
 
 function calculateTradeConfidence(ppoAnalysis: any, sentimentScore: number, marketData: any) {
-  let confidence = 55; // Start with slightly higher base confidence
+  // Start with higher base confidence for more trading activity
+  let confidence = 65; 
   
-  // PPO alignment bonus - be more generous
-  if (ppoAnalysis.momentum === 'bullish' && ppoAnalysis.ppoLine > 0.1) {
-    confidence += 30; // Increased from 25
-  } else if (ppoAnalysis.momentum === 'bearish' && ppoAnalysis.ppoLine < -0.1) {
-    confidence += 30; // Increased from 25
+  // PPO alignment bonus - be very generous in simulation
+  if (ppoAnalysis.momentum === 'bullish' && ppoAnalysis.ppoLine > 0.05) {
+    confidence += 25;
+  } else if (ppoAnalysis.momentum === 'bearish' && ppoAnalysis.ppoLine < -0.05) {
+    confidence += 25;
   }
   
-  // Trend strength bonus - more generous
-  confidence += Math.min(20, ppoAnalysis.trendStrength * 15); // Increased multiplier
+  // Even small trends get confidence boost
+  confidence += Math.min(15, ppoAnalysis.trendStrength * 20);
   
-  // Sentiment alignment - more generous
-  if (sentimentScore > 65) confidence += 15; // Lowered threshold and increased bonus
-  else if (sentimentScore < 35) confidence += 15; // Strong bearish is also confident
+  // Any directional sentiment gets bonus
+  if (sentimentScore > 55) confidence += 10;
+  else if (sentimentScore < 45) confidence += 10;
   
-  // Momentum score bonus - increased
-  confidence += (ppoAnalysis.momentumScore - 50) * 0.3;
+  // Momentum score bonus
+  confidence += Math.abs(ppoAnalysis.momentumScore - 50) * 0.2;
   
-  // Add some randomness to make it more dynamic
-  confidence += (Math.random() - 0.5) * 10;
+  // Add volatility as opportunity (more volatile = more trading chances)
+  confidence += Math.min(10, marketData.volatility * 2);
   
-  return Math.min(100, Math.max(0, Math.round(confidence)));
+  // Add randomness for more dynamic activity
+  confidence += (Math.random() - 0.3) * 15; // Slight positive bias
+  
+  return Math.min(100, Math.max(20, Math.round(confidence)));
 }
 
 function makeTradeDecision(ppoAnalysis: any, sentimentScore: number, confidence: number, existingPosition: any, portfolio: any, riskParams: any, marketData: any, maxAmount?: number) {
@@ -393,11 +397,12 @@ function makeTradeDecision(ppoAnalysis: any, sentimentScore: number, confidence:
     : (portfolio.current_balance * riskParams.max_position_size) / 100;
   const suggestedQuantity = Math.floor(maxPositionValue / marketData.currentPrice);
 
-  // BUY conditions
+  // More aggressive BUY conditions - look for any positive momentum
   if (!existingPosition && 
-      ppoAnalysis.ppoLine > riskParams.ppo_buy_threshold &&
-      ppoAnalysis.momentum === 'bullish' &&
-      sentimentScore > 60 &&
+      (ppoAnalysis.ppoLine > riskParams.ppo_buy_threshold ||
+       ppoAnalysis.momentum === 'bullish' ||
+       sentimentScore > 50 ||
+       marketData.priceChangePercent > 0.5) &&
       confidence >= riskParams.min_confidence_score &&
       portfolio.current_balance > maxPositionValue) {
     
@@ -405,30 +410,45 @@ function makeTradeDecision(ppoAnalysis: any, sentimentScore: number, confidence:
       shouldTrade: true,
       action: 'BUY',
       quantity: suggestedQuantity,
-      reason: `Strong bullish signals: PPO ${ppoAnalysis.ppoLine}, Sentiment ${sentimentScore}, Confidence ${confidence}%`
+      reason: `Market opportunity: PPO ${ppoAnalysis.ppoLine.toFixed(4)}, Momentum ${ppoAnalysis.momentum}, Sentiment ${sentimentScore}, Price change ${marketData.priceChangePercent.toFixed(2)}%`
     };
   }
   
-  // SELL conditions
-  else if (existingPosition && 
+  // More aggressive SELL conditions - also create selling opportunities
+  else if (!existingPosition &&
            (ppoAnalysis.ppoLine < riskParams.ppo_sell_threshold ||
             ppoAnalysis.momentum === 'bearish' ||
-            sentimentScore < 40) &&
+            sentimentScore < 50 ||
+            marketData.priceChangePercent < -0.5) &&
+           confidence >= riskParams.min_confidence_score &&
+           portfolio.current_balance > maxPositionValue) {
+    
+    decision = {
+      shouldTrade: true,
+      action: 'SELL',
+      quantity: suggestedQuantity,
+      reason: `Short opportunity: PPO ${ppoAnalysis.ppoLine.toFixed(4)}, Momentum ${ppoAnalysis.momentum}, Sentiment ${sentimentScore}, Price change ${marketData.priceChangePercent.toFixed(2)}%`
+    };
+  }
+  
+  // Existing position management
+  else if (existingPosition && 
            confidence >= riskParams.min_confidence_score) {
     
     // Calculate potential profit
     const currentValue = existingPosition.quantity * marketData.currentPrice;
     const profitPercent = ((currentValue - existingPosition.total_cost) / existingPosition.total_cost) * 100;
     
-    // Sell if we hit profit target or stop loss
+    // Sell existing positions based on profit targets or stop loss
     if (profitPercent >= riskParams.take_profit_percent || 
-        profitPercent <= -riskParams.stop_loss_percent) {
+        profitPercent <= -riskParams.stop_loss_percent ||
+        (ppoAnalysis.momentum === 'bearish' && profitPercent < -2)) {
       
       decision = {
         shouldTrade: true,
         action: 'SELL',
         quantity: existingPosition.quantity,
-        reason: `${profitPercent > 0 ? 'Profit target' : 'Stop loss'} triggered: ${profitPercent.toFixed(2)}% P&L`
+        reason: `Position management: ${profitPercent > 0 ? 'Profit target' : 'Risk management'} - ${profitPercent.toFixed(2)}% P&L`
       };
     }
   }
