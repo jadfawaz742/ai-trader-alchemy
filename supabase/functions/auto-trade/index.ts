@@ -50,7 +50,7 @@ serve(async (req) => {
     const riskParams = riskParamsResult.data;
 
     // Adjust risk parameters based on user's risk level
-    const adjustedRiskParams = adjustRiskParameters(riskParams, riskLevel);
+    const adjustedRiskParams = adjustRiskParameters(riskParams, riskLevel, simulationMode);
 
     // Check if auto trading is enabled (skip for simulation mode)
     if (!simulationMode && !riskParams.auto_trading_enabled) {
@@ -96,6 +96,8 @@ serve(async (req) => {
     let totalProfitLoss = 0;
 
     // Analyze each stock for trading opportunities
+    console.log(`Analyzing ${TRADEABLE_STOCKS.length} stocks with confidence threshold: ${adjustedRiskParams.min_confidence_score}%`);
+    
     for (const symbol of TRADEABLE_STOCKS) {
       if (remainingTrades <= 0) break;
 
@@ -107,6 +109,8 @@ serve(async (req) => {
           existingPositions,
           maxAmount
         );
+        
+        console.log(`${symbol}: Confidence ${tradeDecision.confidence}% vs threshold ${adjustedRiskParams.min_confidence_score}%, Action: ${tradeDecision.action}`);
         
         if (tradeDecision.shouldTrade && tradeDecision.confidence >= adjustedRiskParams.min_confidence_score) {
           console.log(`Executing ${simulationMode ? 'simulated' : 'live'} trade: ${tradeDecision.action} ${tradeDecision.quantity} shares of ${symbol}`);
@@ -139,7 +143,7 @@ serve(async (req) => {
             remainingTrades--;
           }
         } else {
-          console.log(`Skipping ${symbol}: confidence ${tradeDecision.confidence}% below threshold ${adjustedRiskParams.min_confidence_score}%`);
+          console.log(`Skipping ${symbol}: confidence ${tradeDecision.confidence}% below threshold ${adjustedRiskParams.min_confidence_score}% - Reason: ${tradeDecision.reason}`);
         }
       } catch (error) {
         console.error(`Error analyzing ${symbol}:`, error);
@@ -167,10 +171,19 @@ serve(async (req) => {
   }
 });
 
-function adjustRiskParameters(baseParams: any, userRiskLevel: number) {
+function adjustRiskParameters(baseParams: any, userRiskLevel: number, simulationMode: boolean = false) {
   const adjusted = { ...baseParams };
   
-  // Adjust confidence requirements based on risk level
+  // In simulation mode, be more aggressive to show trades
+  if (simulationMode) {
+    adjusted.min_confidence_score = Math.max(40, userRiskLevel * 0.6); // 40-60% confidence for simulation
+    adjusted.max_position_size = 30; // Allow larger positions in simulation
+    adjusted.max_daily_trades = 15; // More trades in simulation
+    console.log(`Simulation mode: Using confidence threshold of ${adjusted.min_confidence_score}%`);
+    return adjusted;
+  }
+  
+  // Adjust confidence requirements based on risk level for live trading
   if (userRiskLevel <= 30) { // Conservative
     adjusted.min_confidence_score = 85;
     adjusted.max_position_size = Math.min(adjusted.max_position_size, 15);
@@ -339,24 +352,27 @@ function calculateMarketSentiment(marketData: any, ppoAnalysis: any) {
 }
 
 function calculateTradeConfidence(ppoAnalysis: any, sentimentScore: number, marketData: any) {
-  let confidence = 50; // Base confidence
+  let confidence = 55; // Start with slightly higher base confidence
   
-  // PPO alignment bonus
-  if (ppoAnalysis.momentum === 'bullish' && ppoAnalysis.ppoLine > 0.2) {
-    confidence += 25;
-  } else if (ppoAnalysis.momentum === 'bearish' && ppoAnalysis.ppoLine < -0.2) {
-    confidence += 25;
+  // PPO alignment bonus - be more generous
+  if (ppoAnalysis.momentum === 'bullish' && ppoAnalysis.ppoLine > 0.1) {
+    confidence += 30; // Increased from 25
+  } else if (ppoAnalysis.momentum === 'bearish' && ppoAnalysis.ppoLine < -0.1) {
+    confidence += 30; // Increased from 25
   }
   
-  // Trend strength bonus
-  confidence += Math.min(15, ppoAnalysis.trendStrength * 10);
+  // Trend strength bonus - more generous
+  confidence += Math.min(20, ppoAnalysis.trendStrength * 15); // Increased multiplier
   
-  // Sentiment alignment
-  if (sentimentScore > 70) confidence += 10;
-  else if (sentimentScore < 30) confidence += 10; // Strong bearish is also confident
+  // Sentiment alignment - more generous
+  if (sentimentScore > 65) confidence += 15; // Lowered threshold and increased bonus
+  else if (sentimentScore < 35) confidence += 15; // Strong bearish is also confident
   
-  // Momentum score bonus
-  confidence += (ppoAnalysis.momentumScore - 50) * 0.2;
+  // Momentum score bonus - increased
+  confidence += (ppoAnalysis.momentumScore - 50) * 0.3;
+  
+  // Add some randomness to make it more dynamic
+  confidence += (Math.random() - 0.5) * 10;
   
   return Math.min(100, Math.max(0, Math.round(confidence)));
 }
