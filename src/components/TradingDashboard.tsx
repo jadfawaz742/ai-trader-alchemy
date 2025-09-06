@@ -9,6 +9,7 @@ import { TradingInterface } from './TradingInterface';
 import StockAnalyzer from './StockAnalyzer';
 import { LiveTradingView } from './LiveTradingView';
 import { AITradingTab } from './AITradingTab';
+import { LiveAITrading } from './LiveAITrading';
 
 const TradingDashboard: React.FC = () => {
   return (
@@ -22,12 +23,13 @@ const TradingDashboard: React.FC = () => {
       </div>
 
       <Tabs defaultValue="portfolio" className="space-y-4">
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-6">
           <TabsTrigger value="portfolio">Portfolio</TabsTrigger>
           <TabsTrigger value="trading">Manual Trading</TabsTrigger>
           <TabsTrigger value="analyzer">Stock Analysis</TabsTrigger>
           <TabsTrigger value="ai-trading">AI Trading</TabsTrigger>
-          <TabsTrigger value="live-view">Live View</TabsTrigger>
+          <TabsTrigger value="live-view">Market View</TabsTrigger>
+          <TabsTrigger value="live-ai">Live AI Trading</TabsTrigger>
         </TabsList>
 
         <TabsContent value="portfolio">
@@ -48,6 +50,10 @@ const TradingDashboard: React.FC = () => {
         
         <TabsContent value="live-view">
           <LiveTradingView />
+        </TabsContent>
+        
+        <TabsContent value="live-ai">
+          <LiveAITrading />
         </TabsContent>
       </Tabs>
     </div>

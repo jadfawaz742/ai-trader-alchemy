@@ -21,7 +21,7 @@ serve(async (req) => {
   }
 
   try {
-    const { portfolioId, simulationMode = false, riskLevel = 50, maxAmount } = await req.json();
+    const { portfolioId, simulationMode = false, riskLevel = 50, maxAmount, tradeDuration = 300 } = await req.json();
 
     if (!portfolioId) {
       return new Response(JSON.stringify({ error: 'Portfolio ID required' }), {
@@ -31,7 +31,7 @@ serve(async (req) => {
     }
 
     console.log(`Starting ${simulationMode ? 'simulated' : 'live'} automated trading for portfolio: ${portfolioId}`);
-    console.log(`Risk level: ${riskLevel}, Max amount: $${maxAmount || 'unlimited'}`);
+    console.log(`Risk level: ${riskLevel}, Max amount: $${maxAmount || 'unlimited'}, Duration: ${tradeDuration}s`);
 
     // Get portfolio and risk parameters
     const [portfolioResult, riskParamsResult] = await Promise.all([
@@ -174,28 +174,30 @@ serve(async (req) => {
 function adjustRiskParameters(baseParams: any, userRiskLevel: number, simulationMode: boolean = false) {
   const adjusted = { ...baseParams };
   
-  // In simulation mode, be more aggressive to show trades
-  if (simulationMode) {
-    adjusted.min_confidence_score = Math.max(40, userRiskLevel * 0.6); // 40-60% confidence for simulation
-    adjusted.max_position_size = 30; // Allow larger positions in simulation
-    adjusted.max_daily_trades = 15; // More trades in simulation
-    console.log(`Simulation mode: Using confidence threshold of ${adjusted.min_confidence_score}%`);
-    return adjusted;
-  }
+  // Make risk adjustment completely dynamic based on user input (0-100)
+  const riskMultiplier = userRiskLevel / 50; // 50 = neutral, 100 = 2x aggressive, 0 = very conservative
   
-  // Adjust confidence requirements based on risk level for live trading
-  if (userRiskLevel <= 30) { // Conservative
-    adjusted.min_confidence_score = 85;
-    adjusted.max_position_size = Math.min(adjusted.max_position_size, 15);
-    adjusted.max_daily_trades = Math.min(adjusted.max_daily_trades, 5);
-  } else if (userRiskLevel <= 60) { // Moderate
-    adjusted.min_confidence_score = 75;
-    adjusted.max_position_size = Math.min(adjusted.max_position_size, 20);
-    adjusted.max_daily_trades = Math.min(adjusted.max_daily_trades, 8);
-  } else { // Aggressive
-    adjusted.min_confidence_score = 65;
-    adjusted.max_position_size = adjusted.max_position_size; // Use full amount
-    adjusted.max_daily_trades = adjusted.max_daily_trades; // Use full limit
+  if (simulationMode) {
+    // Simulation mode: Always allow trades but adjust aggressiveness
+    adjusted.min_confidence_score = Math.max(20, 90 - userRiskLevel); // 20-90% range
+    adjusted.max_position_size = Math.min(50, 10 + (userRiskLevel * 0.4)); // 10-50% range
+    adjusted.max_daily_trades = Math.min(25, 5 + Math.floor(userRiskLevel * 0.2)); // 5-25 trades
+    
+    // Adjust PPO thresholds based on risk
+    adjusted.ppo_buy_threshold = Math.max(0.05, 0.5 - (userRiskLevel * 0.008)); // More aggressive at higher risk
+    adjusted.ppo_sell_threshold = Math.min(-0.05, -0.5 + (userRiskLevel * 0.008));
+    
+    console.log(`Simulation mode: Risk ${userRiskLevel}% - Confidence: ${adjusted.min_confidence_score}%, Position: ${adjusted.max_position_size}%`);
+  } else {
+    // Live trading: Still be careful but respect user risk preference
+    adjusted.min_confidence_score = Math.max(40, 95 - userRiskLevel); // 40-95% range
+    adjusted.max_position_size = Math.min(35, 5 + (userRiskLevel * 0.3)); // 5-35% range
+    adjusted.max_daily_trades = Math.min(15, 3 + Math.floor(userRiskLevel * 0.12)); // 3-15 trades
+    
+    adjusted.ppo_buy_threshold = Math.max(0.1, 0.8 - (userRiskLevel * 0.007));
+    adjusted.ppo_sell_threshold = Math.min(-0.1, -0.8 + (userRiskLevel * 0.007));
+    
+    console.log(`Live mode: Risk ${userRiskLevel}% - Confidence: ${adjusted.min_confidence_score}%, Position: ${adjusted.max_position_size}%`);
   }
   
   return adjusted;
