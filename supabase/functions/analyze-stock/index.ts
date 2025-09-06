@@ -26,6 +26,25 @@ serve(async (req) => {
   }
 
   try {
+    // Get the authorization header to identify the user
+    const authHeader = req.headers.get('Authorization');
+    if (!authHeader) {
+      return new Response(JSON.stringify({ error: 'Authorization required' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Get user from JWT token
+    const { data: { user }, error: authError } = await supabase.auth.getUser(authHeader.replace('Bearer ', ''));
+    
+    if (authError || !user) {
+      return new Response(JSON.stringify({ error: 'Invalid authorization' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     const { symbol, analysisType = 'technical' } = await req.json();
 
     if (!symbol) {
@@ -53,7 +72,7 @@ serve(async (req) => {
     // Parse recommendation and confidence from LLM response
     const { recommendation, confidence, sentiment } = parseAnalysisResult(llmAnalysis);
 
-    // Store analysis in database
+    // Store analysis in database with user_id for security
     const { data: analysisData, error: dbError } = await supabase
       .from('stock_analysis')
       .insert({
@@ -65,6 +84,7 @@ serve(async (req) => {
         sentiment_score: sentiment,
         recommendation: recommendation,
         confidence_score: confidence,
+        user_id: user.id, // Associate analysis with authenticated user
       })
       .select()
       .single();

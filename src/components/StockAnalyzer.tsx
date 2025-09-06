@@ -36,6 +36,17 @@ export default function StockAnalyzer() {
       return;
     }
 
+    // Check if user is authenticated
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) {
+      toast({
+        title: "Authentication Required",
+        description: "Please log in to analyze stocks",
+        variant: "destructive",
+      });
+      return;
+    }
+
     setLoading(true);
     try {
       const { data, error } = await supabase.functions.invoke('analyze-stock', {
@@ -59,11 +70,21 @@ export default function StockAnalyzer() {
       }
     } catch (error: any) {
       console.error('Analysis error:', error);
-      toast({
-        title: "Analysis Failed",
-        description: error.message || 'Failed to analyze stock',
-        variant: "destructive",
-      });
+      
+      // Handle authentication errors specifically
+      if (error.message?.includes('Authorization') || error.message?.includes('Invalid authorization')) {
+        toast({
+          title: "Authentication Required",
+          description: "Please log in to analyze stocks",
+          variant: "destructive",
+        });
+      } else {
+        toast({
+          title: "Analysis Failed",
+          description: error.message || 'Failed to analyze stock',
+          variant: "destructive",
+        });
+      }
     } finally {
       setLoading(false);
     }
@@ -71,6 +92,14 @@ export default function StockAnalyzer() {
 
   const loadRecentAnalyses = async () => {
     try {
+      // Check if user is authenticated
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        // User not authenticated, clear analyses
+        setRecentAnalyses([]);
+        return;
+      }
+
       const { data, error } = await supabase
         .from('stock_analysis')
         .select('*')
@@ -81,6 +110,7 @@ export default function StockAnalyzer() {
       setRecentAnalyses(data || []);
     } catch (error) {
       console.error('Error loading recent analyses:', error);
+      setRecentAnalyses([]);
     }
   };
 
