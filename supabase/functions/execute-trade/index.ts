@@ -28,88 +28,61 @@ serve(async (req) => {
       });
     }
 
-    console.log(`Processing ${tradeType} order: ${quantity} shares of ${symbol} at $${currentPrice}`);
+    console.log(`Executing ${tradeType} trade: ${quantity} shares of ${symbol} at $${currentPrice}`);
 
-    // Get portfolio and risk parameters
-    const { data: portfolio } = await supabase
-      .from('portfolios')
-      .select('*')
-      .eq('id', portfolioId)
-      .single();
+    // Fetch portfolio and risk parameters
+    const [portfolioResult, riskParamsResult] = await Promise.all([
+      supabase.from('portfolios').select('*').eq('id', portfolioId).single(),
+      supabase.from('risk_parameters').select('*').eq('portfolio_id', portfolioId).single()
+    ]);
 
-    const { data: riskParams } = await supabase
-      .from('risk_parameters')
-      .select('*')
-      .eq('portfolio_id', portfolioId)
-      .single();
-
-    if (!portfolio || !riskParams) {
+    if (portfolioResult.error || riskParamsResult.error) {
       return new Response(JSON.stringify({ error: 'Portfolio or risk parameters not found' }), {
         status: 404,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    // Calculate PPO signals
+    const portfolio = portfolioResult.data;
+    const riskParams = riskParamsResult.data;
+
+    // Calculate PPO signal
     const ppoSignal = await calculatePPOSignal(symbol, riskParams);
     
     // Calculate risk score
-    const riskScore = calculateRiskScore(tradeType, quantity, currentPrice, portfolio, riskParams, ppoSignal);
+    const riskScore = calculateRiskScore(tradeType, ppoSignal, riskParams);
 
-    // Validate trade against risk parameters
+    // Validate trade based on risk parameters
     const validationResult = validateTrade(tradeType, quantity, currentPrice, portfolio, riskParams, ppoSignal);
-    if (!validationResult.valid) {
-      return new Response(JSON.stringify({ error: validationResult.reason }), {
+    
+    if (!validationResult.isValid) {
+      return new Response(JSON.stringify({ 
+        error: 'Trade rejected by risk management',
+        reason: validationResult.reason,
+        ppoSignal,
+        riskScore 
+      }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
     // Execute the trade
-    const totalAmount = quantity * currentPrice;
-    const newBalance = tradeType === 'BUY' 
-      ? portfolio.current_balance - totalAmount 
-      : portfolio.current_balance + totalAmount;
+    const tradeResult = await executeTrade(portfolioId, symbol, tradeType, quantity, currentPrice, ppoSignal, riskScore);
 
-    // Record the trade
-    const { data: trade, error: tradeError } = await supabase
-      .from('trades')
-      .insert({
-        portfolio_id: portfolioId,
-        symbol: symbol.toUpperCase(),
-        trade_type: tradeType,
-        quantity,
-        price: currentPrice,
-        total_amount: totalAmount,
-        ppo_signal: ppoSignal,
-        risk_score: riskScore,
-      })
-      .select()
-      .single();
-
-    if (tradeError) {
-      console.error('Error recording trade:', tradeError);
-      return new Response(JSON.stringify({ error: 'Failed to record trade' }), {
+    if (!tradeResult.success) {
+      return new Response(JSON.stringify({ error: tradeResult.error }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    // Update portfolio balance
-    await supabase
-      .from('portfolios')
-      .update({ current_balance: newBalance })
-      .eq('id', portfolioId);
-
-    // Update or create position
-    await updatePosition(portfolioId, symbol, tradeType, quantity, currentPrice);
-
     return new Response(JSON.stringify({ 
       success: true, 
-      trade,
+      trade: tradeResult.trade,
       ppoSignal,
       riskScore,
-      newBalance 
+      message: `Successfully executed ${tradeType} order for ${quantity} shares of ${symbol}`
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
@@ -124,34 +97,33 @@ serve(async (req) => {
 });
 
 async function calculatePPOSignal(symbol: string, riskParams: any) {
-  // Generate mock price history for PPO calculation
-  // In production, this would fetch real historical data
-  const prices = generateMockPriceHistory(20); // 20 periods
+  // Simulate PPO calculation with mock historical data
+  // In a real implementation, you would fetch actual historical price data
   
-  const fastEMA = calculateEMA(prices, riskParams.ppo_fast_period);
-  const slowEMA = calculateEMA(prices, riskParams.ppo_slow_period);
+  const prices = generateMockPriceHistory(symbol, 50); // Last 50 days
   
-  // Calculate PPO
-  const ppo = ((fastEMA - slowEMA) / slowEMA) * 100;
+  const ema12 = calculateEMA(prices, riskParams.ppo_fast_period);
+  const ema26 = calculateEMA(prices, riskParams.ppo_slow_period);
   
-  // Calculate signal line (EMA of PPO)
-  const ppoHistory = [ppo, ppo * 0.95, ppo * 1.05]; // Mock PPO history
-  const signalLine = calculateEMA(ppoHistory, riskParams.ppo_signal_period);
+  // PPO = ((EMA12 - EMA26) / EMA26) * 100
+  const ppoLine = ((ema12 - ema26) / ema26) * 100;
   
-  const histogram = ppo - signalLine;
+  // Mock signal line calculation
+  const signalLine = ppoLine * 0.8; // Simplified signal line
+  
+  const histogram = ppoLine - signalLine;
   
   return {
-    ppo: Number(ppo.toFixed(4)),
+    ppoLine: Number(ppoLine.toFixed(4)),
     signalLine: Number(signalLine.toFixed(4)),
     histogram: Number(histogram.toFixed(4)),
-    signal: histogram > riskParams.ppo_buy_threshold ? 'BUY' : 
-            histogram < riskParams.ppo_sell_threshold ? 'SELL' : 'HOLD',
+    trend: ppoLine > signalLine ? 'bullish' : 'bearish',
     strength: Math.abs(histogram)
   };
 }
 
 function calculateEMA(prices: number[], period: number): number {
-  if (prices.length === 0) return 0;
+  if (prices.length < period) return prices[prices.length - 1];
   
   const multiplier = 2 / (period + 1);
   let ema = prices[0];
@@ -163,128 +135,191 @@ function calculateEMA(prices: number[], period: number): number {
   return ema;
 }
 
-function generateMockPriceHistory(periods: number): number[] {
-  const basePrice = 100 + Math.random() * 100;
-  const prices = [basePrice];
+function generateMockPriceHistory(symbol: string, days: number): number[] {
+  const basePrice = 100 + (symbol.charCodeAt(0) % 50);
+  const prices: number[] = [];
   
-  for (let i = 1; i < periods; i++) {
-    const change = (Math.random() - 0.5) * 0.05; // ±2.5% daily change
-    prices.push(prices[i - 1] * (1 + change));
+  for (let i = 0; i < days; i++) {
+    const randomChange = (Math.random() - 0.5) * 0.1; // ±5% max change
+    const price = i === 0 ? basePrice : prices[i - 1] * (1 + randomChange);
+    prices.push(Math.max(price, 10)); // Minimum price of $10
   }
   
   return prices;
 }
 
-function calculateRiskScore(tradeType: string, quantity: number, price: number, portfolio: any, riskParams: any, ppoSignal: any): number {
-  const positionValue = quantity * price;
-  const positionPercent = (positionValue / portfolio.current_balance) * 100;
+function calculateRiskScore(tradeType: string, ppoSignal: any, riskParams: any): number {
+  let riskScore = 50; // Base risk score
   
-  let riskScore = 0;
-  
-  // Position size risk
-  if (positionPercent > riskParams.max_position_size) {
-    riskScore += 30;
-  } else if (positionPercent > riskParams.max_position_size * 0.8) {
-    riskScore += 20;
-  } else if (positionPercent > riskParams.max_position_size * 0.6) {
-    riskScore += 10;
+  // Adjust based on PPO signal alignment
+  if (tradeType === 'BUY') {
+    if (ppoSignal.ppoLine > riskParams.ppo_buy_threshold) {
+      riskScore -= 20; // Lower risk when PPO supports the trade
+    } else {
+      riskScore += 30; // Higher risk when PPO opposes the trade
+    }
+  } else if (tradeType === 'SELL') {
+    if (ppoSignal.ppoLine < riskParams.ppo_sell_threshold) {
+      riskScore -= 20; // Lower risk when PPO supports the trade
+    } else {
+      riskScore += 30; // Higher risk when PPO opposes the trade
+    }
   }
   
-  // PPO signal risk
-  if (tradeType === 'BUY' && ppoSignal.signal === 'SELL') {
-    riskScore += 25;
-  } else if (tradeType === 'SELL' && ppoSignal.signal === 'BUY') {
-    riskScore += 25;
-  } else if (ppoSignal.signal === 'HOLD') {
-    riskScore += 10;
-  }
+  // Adjust based on PPO strength
+  riskScore -= ppoSignal.strength * 10;
   
-  // PPO strength risk
-  if (ppoSignal.strength < 0.5) {
-    riskScore += 15;
-  }
-  
-  return Math.min(riskScore, 100);
+  // Ensure risk score is between 0 and 100
+  return Math.max(0, Math.min(100, Number(riskScore.toFixed(2))));
 }
 
 function validateTrade(tradeType: string, quantity: number, price: number, portfolio: any, riskParams: any, ppoSignal: any) {
-  const totalAmount = quantity * price;
-  const positionValue = quantity * price;
-  const positionPercent = (positionValue / portfolio.current_balance) * 100;
+  const totalValue = quantity * price;
   
   // Check if enough balance for buy orders
-  if (tradeType === 'BUY' && totalAmount > portfolio.current_balance) {
-    return { valid: false, reason: 'Insufficient balance for this trade' };
-  }
-  
-  // Check position size limits
-  if (positionPercent > riskParams.max_position_size) {
-    return { 
-      valid: false, 
-      reason: `Position size (${positionPercent.toFixed(1)}%) exceeds maximum allowed (${riskParams.max_position_size}%)` 
+  if (tradeType === 'BUY' && totalValue > portfolio.current_balance) {
+    return {
+      isValid: false,
+      reason: `Insufficient balance. Required: $${totalValue.toFixed(2)}, Available: $${portfolio.current_balance}`
     };
   }
   
-  // Check PPO signal alignment (warning, not blocking)
-  if (tradeType === 'BUY' && ppoSignal.signal === 'SELL') {
-    console.warn('Buy order placed against PPO sell signal');
-  } else if (tradeType === 'SELL' && ppoSignal.signal === 'BUY') {
-    console.warn('Sell order placed against PPO buy signal');
+  // Check position size limits
+  const positionValue = (totalValue / portfolio.current_balance) * 100;
+  if (tradeType === 'BUY' && positionValue > riskParams.max_position_size) {
+    return {
+      isValid: false,
+      reason: `Position size (${positionValue.toFixed(2)}%) exceeds maximum allowed (${riskParams.max_position_size}%)`
+    };
   }
   
-  return { valid: true };
+  // Check PPO signal alignment
+  if (tradeType === 'BUY' && ppoSignal.ppoLine < riskParams.ppo_buy_threshold) {
+    return {
+      isValid: false,
+      reason: `PPO signal (${ppoSignal.ppoLine}) below buy threshold (${riskParams.ppo_buy_threshold}). Market conditions not favorable for buying.`
+    };
+  }
+  
+  if (tradeType === 'SELL' && ppoSignal.ppoLine > riskParams.ppo_sell_threshold) {
+    return {
+      isValid: false,
+      reason: `PPO signal (${ppoSignal.ppoLine}) above sell threshold (${riskParams.ppo_sell_threshold}). Market conditions not favorable for selling.`
+    };
+  }
+  
+  return { isValid: true };
+}
+
+async function executeTrade(portfolioId: string, symbol: string, tradeType: string, quantity: number, price: number, ppoSignal: any, riskScore: number) {
+  const totalAmount = quantity * price;
+  
+  try {
+    // Insert the trade record
+    const { data: trade, error: tradeError } = await supabase
+      .from('trades')
+      .insert({
+        portfolio_id: portfolioId,
+        symbol,
+        trade_type: tradeType,
+        quantity,
+        price,
+        total_amount: totalAmount,
+        ppo_signal: ppoSignal,
+        risk_score: riskScore
+      })
+      .select()
+      .single();
+    
+    if (tradeError) {
+      throw new Error(`Failed to record trade: ${tradeError.message}`);
+    }
+    
+    // Update or create position
+    await updatePosition(portfolioId, symbol, tradeType, quantity, price);
+    
+    // Update portfolio balance
+    await updatePortfolioBalance(portfolioId, tradeType, totalAmount);
+    
+    return { success: true, trade };
+  } catch (error) {
+    console.error('Error executing trade:', error);
+    return { success: false, error: error.message };
+  }
 }
 
 async function updatePosition(portfolioId: string, symbol: string, tradeType: string, quantity: number, price: number) {
+  // Get existing position
   const { data: existingPosition } = await supabase
     .from('positions')
     .select('*')
     .eq('portfolio_id', portfolioId)
-    .eq('symbol', symbol.toUpperCase())
+    .eq('symbol', symbol)
     .single();
-
+  
   if (existingPosition) {
-    // Update existing position
-    let newQuantity, newAveragePrice, newTotalCost;
+    let newQuantity = existingPosition.quantity;
+    let newTotalCost = existingPosition.total_cost;
     
     if (tradeType === 'BUY') {
-      newQuantity = existingPosition.quantity + quantity;
-      newTotalCost = existingPosition.total_cost + (quantity * price);
-      newAveragePrice = newTotalCost / newQuantity;
+      newQuantity += quantity;
+      newTotalCost += (quantity * price);
     } else {
-      newQuantity = existingPosition.quantity - quantity;
-      newTotalCost = existingPosition.total_cost - (quantity * existingPosition.average_price);
-      newAveragePrice = newQuantity > 0 ? newTotalCost / newQuantity : 0;
+      newQuantity -= quantity;
+      newTotalCost -= (quantity * existingPosition.average_price);
     }
-
-    const currentValue = newQuantity * price;
-    const unrealizedPnl = currentValue - newTotalCost;
-
-    await supabase
-      .from('positions')
-      .update({
-        quantity: newQuantity,
-        average_price: newAveragePrice,
-        current_price: price,
-        total_cost: newTotalCost,
-        current_value: currentValue,
-        unrealized_pnl: unrealizedPnl,
-      })
-      .eq('id', existingPosition.id);
+    
+    const newAveragePrice = newQuantity > 0 ? newTotalCost / newQuantity : 0;
+    
+    if (newQuantity <= 0) {
+      // Close position
+      await supabase
+        .from('positions')
+        .delete()
+        .eq('portfolio_id', portfolioId)
+        .eq('symbol', symbol);
+    } else {
+      // Update position
+      await supabase
+        .from('positions')
+        .update({
+          quantity: newQuantity,
+          average_price: newAveragePrice,
+          total_cost: newTotalCost,
+          current_price: price
+        })
+        .eq('portfolio_id', portfolioId)
+        .eq('symbol', symbol);
+    }
   } else if (tradeType === 'BUY') {
-    // Create new position for buy orders
-    const totalCost = quantity * price;
+    // Create new position
     await supabase
       .from('positions')
       .insert({
         portfolio_id: portfolioId,
-        symbol: symbol.toUpperCase(),
+        symbol,
         quantity,
         average_price: price,
         current_price: price,
-        total_cost: totalCost,
-        current_value: totalCost,
-        unrealized_pnl: 0,
+        total_cost: quantity * price
       });
+  }
+}
+
+async function updatePortfolioBalance(portfolioId: string, tradeType: string, totalAmount: number) {
+  const { data: portfolio } = await supabase
+    .from('portfolios')
+    .select('current_balance')
+    .eq('id', portfolioId)
+    .single();
+    
+  if (portfolio) {
+    const balanceChange = tradeType === 'BUY' ? -totalAmount : totalAmount;
+    const newBalance = portfolio.current_balance + balanceChange;
+    
+    await supabase
+      .from('portfolios')
+      .update({ current_balance: newBalance })
+      .eq('id', portfolioId);
   }
 }
