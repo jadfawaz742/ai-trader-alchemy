@@ -1,18 +1,79 @@
 import StockAnalyzer from "@/components/StockAnalyzer";
 import TradingDashboard from "@/components/TradingDashboard";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Button } from "@/components/ui/button";
+import { Link } from "react-router-dom";
+import { useAuth } from "@/hooks/useAuth";
+import { Loader2, LogOut } from "lucide-react";
+import { toast } from "@/hooks/use-toast";
 
 const Index = () => {
-  return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
-      <div className="container mx-auto px-4 py-8">
-        <div className="text-center mb-8">
+  const { user, loading, signOut, isAuthenticated } = useAuth();
+
+  const handleSignOut = async () => {
+    const { error } = await signOut();
+    if (error) {
+      toast({
+        title: "Error",
+        description: "Failed to sign out. Please try again.",
+        variant: "destructive",
+      });
+    } else {
+      toast({
+        title: "Signed out",
+        description: "You have been successfully signed out.",
+      });
+    }
+  };
+
+  if (loading) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
+        <Loader2 className="h-8 w-8 animate-spin text-white" />
+      </div>
+    );
+  }
+
+  if (!isAuthenticated) {
+    return (
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
+        <div className="text-center">
           <h1 className="text-4xl md:text-6xl font-bold text-white mb-4">
             AI Trading Bot
           </h1>
-          <p className="text-xl text-gray-300 max-w-2xl mx-auto">
+          <p className="text-xl text-gray-300 max-w-2xl mx-auto mb-8">
             AI-powered stock analysis with PPO risk management and automated trading simulation
           </p>
+          <Link to="/auth">
+            <Button size="lg" className="text-lg px-8 py-3">
+              Sign In to Get Started
+            </Button>
+          </Link>
+        </div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
+      <div className="container mx-auto px-4 py-8">
+        <div className="flex justify-between items-center mb-8">
+          <div className="text-center flex-1">
+            <h1 className="text-4xl md:text-6xl font-bold text-white mb-4">
+              AI Trading Bot
+            </h1>
+            <p className="text-xl text-gray-300 max-w-2xl mx-auto">
+              AI-powered stock analysis with PPO risk management and automated trading simulation
+            </p>
+          </div>
+          <Button
+            variant="outline"
+            onClick={handleSignOut}
+            className="ml-4"
+          >
+            <LogOut className="h-4 w-4 mr-2" />
+            Sign Out
+          </Button>
         </div>
         
         <Tabs defaultValue="analysis" className="w-full">
