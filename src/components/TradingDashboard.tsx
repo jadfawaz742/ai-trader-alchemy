@@ -44,6 +44,9 @@ interface RiskParams {
   ppo_sell_threshold: number;
   stop_loss_percent: number;
   take_profit_percent: number;
+  auto_trading_enabled: boolean;
+  min_confidence_score: number;
+  max_daily_trades: number;
 }
 
 const TradingDashboard: React.FC = () => {
@@ -52,6 +55,7 @@ const TradingDashboard: React.FC = () => {
   const [recentTrades, setRecentTrades] = useState<Trade[]>([]);
   const [riskParams, setRiskParams] = useState<RiskParams | null>(null);
   const [loading, setLoading] = useState(false);
+  const [autoTrading, setAutoTrading] = useState(false);
   const [tradeForm, setTradeForm] = useState({
     symbol: '',
     tradeType: 'BUY',
@@ -108,6 +112,68 @@ const TradingDashboard: React.FC = () => {
       toast({
         title: "Error",
         description: "Failed to load dashboard data",
+        variant: "destructive",
+      });
+    }
+  };
+
+  const executeAutoTrade = async () => {
+    if (!portfolio) return;
+
+    setAutoTrading(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('auto-trade', {
+        body: { portfolioId: portfolio.id }
+      });
+
+      if (error) throw error;
+
+      if (data.success) {
+        toast({
+          title: "Automated Trading Complete",
+          description: `${data.message} - Executed ${data.tradesExecuted} trades`,
+        });
+        await loadDashboardData();
+      } else {
+        toast({
+          title: "Auto Trading Info",
+          description: data.message || "No trades executed at this time",
+        });
+      }
+    } catch (error) {
+      console.error('Error in automated trading:', error);
+      toast({
+        title: "Auto Trading Error",
+        description: "Failed to execute automated trading",
+        variant: "destructive",
+      });
+    } finally {
+      setAutoTrading(false);
+    }
+  };
+
+  const toggleAutoTrading = async () => {
+    if (!portfolio || !riskParams) return;
+
+    try {
+      const { error } = await supabase
+        .from('risk_parameters')
+        .update({ auto_trading_enabled: !riskParams.auto_trading_enabled })
+        .eq('portfolio_id', portfolio.id);
+
+      if (error) throw error;
+
+      toast({
+        title: `Auto Trading ${!riskParams.auto_trading_enabled ? 'Enabled' : 'Disabled'}`,
+        description: `Automated trading has been ${!riskParams.auto_trading_enabled ? 'turned on' : 'turned off'}`,
+      });
+      
+      await loadDashboardData();
+    } catch (error) {
+      console.error('Error toggling auto trading:', error);
+      toast({
+        title: "Error",
+        description: "Failed to update auto trading settings",
         variant: "destructive",
       });
     }
@@ -330,17 +396,43 @@ const TradingDashboard: React.FC = () => {
                 {loading ? 'Executing...' : `Execute ${tradeForm.tradeType} Order`}
               </Button>
               
+              <div className="flex gap-2">
+                <Button 
+                  onClick={executeAutoTrade} 
+                  disabled={autoTrading || !riskParams?.auto_trading_enabled} 
+                  variant="secondary"
+                  className="flex-1"
+                >
+                  {autoTrading ? 'AI Trading...' : 'Run AI Auto Trade'}
+                </Button>
+                <Button 
+                  onClick={toggleAutoTrading}
+                  variant={riskParams?.auto_trading_enabled ? "destructive" : "default"}
+                  size="sm"
+                >
+                  {riskParams?.auto_trading_enabled ? 'Disable AI' : 'Enable AI'}
+                </Button>
+              </div>
+              
               {riskParams && (
                 <div className="p-4 bg-muted rounded-lg">
                   <h4 className="font-medium flex items-center mb-2">
                     <Shield className="h-4 w-4 mr-2" />
-                    Risk Management Rules
+                    Enhanced Risk Management & AI Trading
                   </h4>
-                  <div className="grid grid-cols-2 gap-2 text-sm">
+                  <div className="grid grid-cols-2 gap-2 text-sm mb-3">
                     <div>Max Position Size: {riskParams.max_position_size}%</div>
                     <div>PPO Buy Threshold: {riskParams.ppo_buy_threshold}</div>
                     <div>PPO Sell Threshold: {riskParams.ppo_sell_threshold}</div>
-                    <div>Stop Loss: {riskParams.stop_loss_percent}%</div>
+                    <div>Take Profit: {riskParams.take_profit_percent}%</div>
+                  </div>
+                  <div className="flex items-center justify-between p-2 bg-background rounded border">
+                    <span className="text-sm font-medium">
+                      AI Auto Trading: {riskParams.auto_trading_enabled ? 'ON' : 'OFF'}
+                    </span>
+                    <Badge variant={riskParams.auto_trading_enabled ? "default" : "secondary"}>
+                      {riskParams.auto_trading_enabled ? 'Active' : 'Inactive'}
+                    </Badge>
                   </div>
                 </div>
               )}
@@ -453,7 +545,7 @@ const TradingDashboard: React.FC = () => {
                         </div>
                         <div className="flex justify-between">
                           <span>Take Profit:</span>
-                          <span>{riskParams.take_profit_percent}%</span>
+                          <span className="text-green-600 font-medium">{riskParams.take_profit_percent}%</span>
                         </div>
                       </div>
                     </div>
@@ -463,24 +555,66 @@ const TradingDashboard: React.FC = () => {
                       <div className="space-y-2 text-sm">
                         <div className="flex justify-between">
                           <span>Buy Threshold:</span>
-                          <span>{riskParams.ppo_buy_threshold}</span>
+                          <span className="text-green-600">{riskParams.ppo_buy_threshold}</span>
                         </div>
                         <div className="flex justify-between">
                           <span>Sell Threshold:</span>
-                          <span>{riskParams.ppo_sell_threshold}</span>
+                          <span className="text-red-600">{riskParams.ppo_sell_threshold}</span>
                         </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div className="p-4 border rounded-lg">
+                    <h4 className="font-medium mb-2 flex items-center">
+                      <Activity className="h-4 w-4 mr-2" />
+                      AI Automated Trading
+                    </h4>
+                    <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                      <div className="flex justify-between">
+                        <span>Status:</span>
+                        <Badge variant={riskParams.auto_trading_enabled ? "default" : "secondary"}>
+                          {riskParams.auto_trading_enabled ? 'ENABLED' : 'DISABLED'}
+                        </Badge>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Min Confidence:</span>
+                        <span className="font-medium">{riskParams.min_confidence_score}%</span>
+                      </div>
+                      <div className="flex justify-between">
+                        <span>Daily Trade Limit:</span>
+                        <span className="font-medium">{riskParams.max_daily_trades}</span>
                       </div>
                     </div>
                   </div>
                   
                   <div className="p-4 bg-muted rounded-lg">
-                    <h4 className="font-medium mb-2">PPO Explanation</h4>
-                    <p className="text-sm text-muted-foreground">
-                      The Percentage Price Oscillator (PPO) is a momentum indicator that shows the relationship 
-                      between two moving averages. Our AI uses PPO signals to validate trades and manage risk. 
-                      Positive PPO values suggest upward momentum (good for buying), while negative values 
-                      suggest downward momentum (good for selling).
+                    <h4 className="font-medium mb-2">Enhanced PPO AI Trading System</h4>
+                    <p className="text-sm text-muted-foreground mb-2">
+                      Our advanced AI system uses the Percentage Price Oscillator (PPO) with enhanced confidence scoring
+                      and market sentiment analysis. The AI now targets <strong>{riskParams.take_profit_percent}% profits</strong> with 
+                      improved thresholds for higher success rates.
                     </p>
+                    <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
+                      <div>
+                        <strong>Key Improvements:</strong>
+                        <ul className="list-disc list-inside mt-1 space-y-1">
+                          <li>Lowered PPO thresholds for more trading opportunities</li>
+                          <li>Advanced confidence scoring (75%+ required)</li>
+                          <li>Multi-factor market sentiment analysis</li>
+                          <li>Enhanced risk management with 25% position sizing</li>
+                        </ul>
+                      </div>
+                      <div>
+                        <strong>Automated Trading Features:</strong>
+                        <ul className="list-disc list-inside mt-1 space-y-1">
+                          <li>Real-time market analysis of 7 major stocks</li>
+                          <li>Automatic profit-taking at {riskParams.take_profit_percent}% gains</li>
+                          <li>Smart stop-loss at {riskParams.stop_loss_percent}% losses</li>
+                          <li>Daily trade limits to prevent overtrading</li>
+                        </ul>
+                      </div>
+                    </div>
                   </div>
                 </div>
               ) : (

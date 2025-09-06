@@ -141,9 +141,12 @@ export type Database = {
       }
       risk_parameters: {
         Row: {
+          auto_trading_enabled: boolean | null
           created_at: string
           id: string
+          max_daily_trades: number | null
           max_position_size: number
+          min_confidence_score: number | null
           portfolio_id: string
           ppo_buy_threshold: number
           ppo_fast_period: number
@@ -155,9 +158,12 @@ export type Database = {
           updated_at: string
         }
         Insert: {
+          auto_trading_enabled?: boolean | null
           created_at?: string
           id?: string
+          max_daily_trades?: number | null
           max_position_size?: number
+          min_confidence_score?: number | null
           portfolio_id: string
           ppo_buy_threshold?: number
           ppo_fast_period?: number
@@ -169,9 +175,12 @@ export type Database = {
           updated_at?: string
         }
         Update: {
+          auto_trading_enabled?: boolean | null
           created_at?: string
           id?: string
+          max_daily_trades?: number | null
           max_position_size?: number
+          min_confidence_score?: number | null
           portfolio_id?: string
           ppo_buy_threshold?: number
           ppo_fast_period?: number
