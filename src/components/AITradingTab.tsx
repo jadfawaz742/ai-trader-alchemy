@@ -25,6 +25,8 @@ export const AITradingTab: React.FC = () => {
   const [tradingAmount, setTradingAmount] = useState('1000');
   const [riskLevel, setRiskLevel] = useState([50]);
   const [simulationMode, setSimulationMode] = useState(true);
+  const [stopLoss, setStopLoss] = useState([5]);
+  const [takeProfit, setTakeProfit] = useState([15]);
   const [isTrading, setIsTrading] = useState(false);
   const [tradeStatus, setTradeStatus] = useState<TradeStatus>({
     isActive: false,
@@ -83,7 +85,9 @@ export const AITradingTab: React.FC = () => {
           portfolioId: portfolio.id,
           simulationMode,
           riskLevel: riskLevel[0],
-          maxAmount: parseFloat(tradingAmount)
+          maxAmount: parseFloat(tradingAmount),
+          stopLossPercent: stopLoss[0],
+          takeProfitPercent: takeProfit[0]
         }
       });
 
@@ -189,6 +193,39 @@ export const AITradingTab: React.FC = () => {
               <div className="text-left">Conservative (1-30%)</div>
               <div className="text-center">Moderate (31-70%)</div>
               <div className="text-right">Aggressive (71-100%)</div>
+            </div>
+          </div>
+
+          {/* Stop Loss and Take Profit */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-3">
+              <Label>Stop Loss: <span className="font-semibold text-red-600">-{stopLoss[0]}%</span></Label>
+              <Slider
+                value={stopLoss}
+                onValueChange={setStopLoss}
+                max={20}
+                min={1}
+                step={1}
+                className="w-full"
+              />
+              <div className="text-xs text-muted-foreground">
+                Automatically cut losses at -{stopLoss[0]}%
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <Label>Take Profit: <span className="font-semibold text-green-600">+{takeProfit[0]}%</span></Label>
+              <Slider
+                value={takeProfit}
+                onValueChange={setTakeProfit}
+                max={50}
+                min={5}
+                step={1}
+                className="w-full"
+              />
+              <div className="text-xs text-muted-foreground">
+                Automatically take profits at +{takeProfit[0]}%
+              </div>
             </div>
           </div>
 

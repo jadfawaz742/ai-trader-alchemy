@@ -37,6 +37,8 @@ const AITradingModal: React.FC<AITradingModalProps> = ({
   const [tradingAmount, setTradingAmount] = useState('1000');
   const [riskLevel, setRiskLevel] = useState([50]);
   const [simulationMode, setSimulationMode] = useState(true);
+  const [stopLoss, setStopLoss] = useState([5]);
+  const [takeProfit, setTakeProfit] = useState([15]);
   const [isTrading, setIsTrading] = useState(false);
   const [tradeStatus, setTradeStatus] = useState<TradeStatus>({
     isActive: false,
@@ -109,7 +111,9 @@ const AITradingModal: React.FC<AITradingModalProps> = ({
           portfolioId: portfolio.id,
           simulationMode,
           riskLevel: riskLevel[0],
-          maxAmount: parseFloat(tradingAmount)
+          maxAmount: parseFloat(tradingAmount),
+          stopLossPercent: stopLoss[0],
+          takeProfitPercent: takeProfit[0]
         }
       });
 
@@ -295,6 +299,51 @@ const AITradingModal: React.FC<AITradingModalProps> = ({
                     {riskLevel[0] > 60 && "Aggressive: Higher risk, more trades, lower confidence threshold"}
                   </span>
                 </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Stop Loss and Take Profit */}
+          <div className="grid grid-cols-2 gap-4">
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label>Stop Loss (%)</Label>
+                <Badge variant="outline" className="text-red-600">
+                  -{stopLoss[0]}%
+                </Badge>
+              </div>
+              <Slider
+                value={stopLoss}
+                onValueChange={setStopLoss}
+                max={20}
+                min={1}
+                step={1}
+                disabled={isTrading}
+                className="w-full"
+              />
+              <div className="text-xs text-muted-foreground text-center">
+                Cut losses at -{stopLoss[0]}%
+              </div>
+            </div>
+
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <Label>Take Profit (%)</Label>
+                <Badge variant="outline" className="text-green-600">
+                  +{takeProfit[0]}%
+                </Badge>
+              </div>
+              <Slider
+                value={takeProfit}
+                onValueChange={setTakeProfit}
+                max={50}
+                min={5}
+                step={1}
+                disabled={isTrading}
+                className="w-full"
+              />
+              <div className="text-xs text-muted-foreground text-center">
+                Take profits at +{takeProfit[0]}%
               </div>
             </div>
           </div>
