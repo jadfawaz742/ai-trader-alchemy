@@ -403,21 +403,21 @@ export const TradingInterface: React.FC = () => {
                 </div>
                 <div>
                   <div className="text-muted-foreground">PPO Value</div>
-                  <div className="font-mono">{ppoSignal.ppo.toFixed(4)}</div>
+                  <div className="font-mono">{typeof ppoSignal.ppo === 'number' ? ppoSignal.ppo.toFixed(4) : 'N/A'}</div>
                 </div>
                 <div>
                   <div className="text-muted-foreground">Strength</div>
-                  <div className="font-mono">{ppoSignal.strength.toFixed(2)}</div>
+                  <div className="font-mono">{typeof ppoSignal.strength === 'number' ? ppoSignal.strength.toFixed(2) : 'N/A'}</div>
                 </div>
                 <div>
                   <div className="text-muted-foreground">Confidence</div>
                   <Badge variant="outline">
-                    {ppoSignal.confidence}%
+                    {typeof ppoSignal.confidence === 'number' ? ppoSignal.confidence : 0}%
                   </Badge>
                 </div>
               </div>
               
-              {ppoSignal.histogram && (
+              {typeof ppoSignal.histogram === 'number' && (
                 <div className="text-sm">
                   <div className="text-muted-foreground mb-1">Histogram</div>
                   <div className="font-mono">{ppoSignal.histogram.toFixed(4)}</div>
@@ -433,9 +433,9 @@ export const TradingInterface: React.FC = () => {
             <h4 className="font-semibold">Risk Assessment</h4>
             <div className="flex items-center justify-between">
               <span>Risk Score:</span>
-              <Badge variant="outline" className={getRiskColor(riskAssessment.score)}>
-                {riskAssessment.score.toFixed(0)}%
-              </Badge>
+               <Badge variant="outline" className={getRiskColor(riskAssessment.score)}>
+                 {typeof riskAssessment.score === 'number' ? riskAssessment.score.toFixed(0) : '0'}%
+               </Badge>
             </div>
             {riskAssessment.warnings.length > 0 && (
               <Alert>
