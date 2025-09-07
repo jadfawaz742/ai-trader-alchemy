@@ -78,14 +78,19 @@ serve(async (req) => {
     for (const symbol of TRADEABLE_STOCKS) {
       try {
         // Get stock analysis (with news integration)
-        const { data: analysisData } = await supabase
+        console.log(`Fetching existing analysis for ${symbol}...`);
+        const { data: analysisData, error: analysisError } = await supabase
           .from('stock_analysis')
           .select('*')
           .eq('symbol', symbol)
           .eq('user_id', userId)
           .order('created_at', { ascending: false })
           .limit(1)
-          .single();
+          .maybeSingle();
+
+        if (analysisError) {
+          console.log(`No existing analysis found for ${symbol}:`, analysisError);
+        }
 
         let analysis = analysisData;
         
@@ -94,13 +99,21 @@ serve(async (req) => {
           console.log(`Getting fresh news-integrated analysis for ${symbol}...`);
           
           const marketData = await fetchMarketData(symbol);
-          if (!marketData) continue;
+          if (!marketData) {
+            console.error(`Failed to fetch market data for ${symbol}`);
+            continue;
+          }
+          console.log(`Market data for ${symbol}:`, marketData);
 
           const newsData = await fetchNewsData(symbol, marketData.companyName);
+          console.log(`News data for ${symbol}:`, newsData);
+          
           const llmAnalysis = await generateTradingAnalysis(symbol, marketData, newsData);
           const { recommendation, confidence, sentiment } = parseAnalysisResult(llmAnalysis);
           
-          const { data: newAnalysis } = await supabase
+          console.log(`Analysis result for ${symbol}: ${recommendation} (${confidence}% confidence)`);
+          
+          const { data: newAnalysis, error: insertError } = await supabase
             .from('stock_analysis')
             .insert({
               symbol: symbol.toUpperCase(),
@@ -115,6 +128,11 @@ serve(async (req) => {
             })
             .select()
             .single();
+            
+          if (insertError) {
+            console.error(`Failed to save analysis for ${symbol}:`, insertError);
+            continue;
+          }
             
           analysis = newAnalysis;
         }
