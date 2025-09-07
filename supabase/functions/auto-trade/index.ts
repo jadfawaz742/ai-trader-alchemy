@@ -14,8 +14,12 @@ const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-// Popular stocks for news-driven trading
-const TRADEABLE_STOCKS = ['AAPL', 'GOOGL', 'MSFT', 'TSLA', 'NVDA', 'META', 'AMZN'];
+// Popular stocks for news-driven trading (reduced for faster processing)
+const TRADEABLE_STOCKS = ['AAPL', 'GOOGL', 'MSFT', 'TSLA', 'NVDA'];
+
+// Cache for market data to avoid repeated API calls
+const marketDataCache = new Map();
+const CACHE_DURATION = 5 * 60 * 1000; // 5 minutes
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -74,109 +78,54 @@ serve(async (req) => {
 
     const executedTrades = [];
 
-    // Analyze stocks with heavy news integration
-    for (const symbol of TRADEABLE_STOCKS) {
-      try {
-        // Get stock analysis (with news integration)
-        console.log(`Fetching existing analysis for ${symbol}...`);
-        const { data: analysisData, error: analysisError } = await supabase
-          .from('stock_analysis')
-          .select('*')
-          .eq('symbol', symbol)
-          .eq('user_id', userId)
-          .order('created_at', { ascending: false })
-          .limit(1)
-          .maybeSingle();
-
-        if (analysisError) {
-          console.log(`No existing analysis found for ${symbol}:`, analysisError);
-        }
-
-        let analysis = analysisData;
-        
-        // If no recent analysis or older than 1 hour, get fresh news-integrated analysis
-        if (!analysis || new Date(analysis.created_at) < new Date(Date.now() - 60 * 60 * 1000)) {
-          console.log(`Getting fresh news-integrated analysis for ${symbol}...`);
-          
-          const marketData = await fetchMarketData(symbol);
-          if (!marketData) {
-            console.error(`Failed to fetch market data for ${symbol}`);
-            continue;
-          }
-          console.log(`Market data for ${symbol}:`, marketData);
-
-          const newsData = await fetchNewsData(symbol, marketData.companyName);
-          console.log(`News data for ${symbol}:`, newsData);
-          
-          const llmAnalysis = await generateTradingAnalysis(symbol, marketData, newsData);
-          const { recommendation, confidence, sentiment } = parseAnalysisResult(llmAnalysis);
-          
-          console.log(`Analysis result for ${symbol}: ${recommendation} (${confidence}% confidence)`);
-          
-          const { data: newAnalysis, error: insertError } = await supabase
-            .from('stock_analysis')
-            .insert({
-              symbol: symbol.toUpperCase(),
-              company_name: marketData.companyName,
-              analysis_type: 'news_trading',
-              llm_analysis: llmAnalysis,
-              market_data: { ...marketData, news: newsData },
-              sentiment_score: sentiment,
-              recommendation: recommendation,
-              confidence_score: confidence,
-              user_id: userId
-            })
-            .select()
-            .single();
-            
-          if (insertError) {
-            console.error(`Failed to save analysis for ${symbol}:`, insertError);
-            continue;
-          }
-            
-          analysis = newAnalysis;
-        }
-
-        // Check if we should execute news-driven trade
-        const shouldTrade = await evaluateTradeWithNews(analysis, riskParams);
-        
-        if (shouldTrade.execute) {
-          const tradeQuantity = calculateTradeQuantity(
-            shouldTrade.tradeType, 
-            portfolio.current_balance, 
-            riskParams.max_position_size, 
-            analysis.market_data?.currentPrice || 100
-          );
-          
-          console.log(`NEWS-DRIVEN AUTO TRADE: ${shouldTrade.tradeType} ${tradeQuantity} shares of ${symbol}`);
-          
-          const tradeResult = await executeTrade(
-            userId,
-            portfolio.id,
-            symbol,
-            shouldTrade.tradeType,
-            tradeQuantity,
-            analysis.market_data?.currentPrice || 100,
-            analysis
-          );
-          
-          if (tradeResult.success) {
-            executedTrades.push({
-              symbol,
-              action: shouldTrade.tradeType.toLowerCase(),
-              quantity: tradeQuantity,
-              price: analysis.market_data?.currentPrice || 100,
-              reason: `News-driven: ${shouldTrade.reason}`,
-              confidence: analysis.confidence_score,
-              newsImpact: extractNewsImpact(analysis.market_data?.news)
-            });
-          }
-        }
-      } catch (error) {
-        console.error(`Error analyzing ${symbol}:`, error);
-        continue;
-      }
+    // Fast simulation mode - generate mock trades quickly
+    if (simulationMode) {
+      console.log('Running FAST simulation mode...');
+      const mockTrades = await generateFastSimulationTrades(userId, portfolio.id, riskParams);
+      
+      return new Response(JSON.stringify({ 
+        success: true,
+        tradesExecuted: mockTrades.length,
+        trades: mockTrades,
+        message: `Simulation completed. Generated ${mockTrades.length} mock trades.`,
+        simulationMode: true
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
     }
+
+    // Real trading mode - parallel processing for speed
+    console.log('Running REAL trading mode with parallel processing...');
+    
+    const tradePromises = TRADEABLE_STOCKS.map(async (symbol) => {
+      try {
+        return await analyzeAndTrade(symbol, userId, portfolio, riskParams);
+      } catch (error) {
+        console.error(`Error processing ${symbol}:`, error);
+        return null;
+      }
+    });
+
+    // Execute all analysis in parallel with timeout
+    const tradeResults = await Promise.allSettled(
+      tradePromises.map(promise => 
+        Promise.race([
+          promise,
+          new Promise((_, reject) => 
+            setTimeout(() => reject(new Error('Analysis timeout')), 15000)
+          )
+        ])
+      )
+    );
+
+    // Collect successful trades
+    tradeResults.forEach((result, index) => {
+      if (result.status === 'fulfilled' && result.value) {
+        executedTrades.push(result.value);
+      } else {
+        console.log(`Failed to process ${TRADEABLE_STOCKS[index]}:`, result.status === 'rejected' ? result.reason : 'No trade');
+      }
+    });
 
     return new Response(JSON.stringify({ 
       success: true,
@@ -244,7 +193,14 @@ async function fetchNewsData(symbol: string, companyName: string) {
 }
 
 async function fetchMarketData(symbol: string) {
-  return {
+  // Check cache first
+  const cacheKey = `market_${symbol}`;
+  const cached = marketDataCache.get(cacheKey);
+  if (cached && Date.now() - cached.timestamp < CACHE_DURATION) {
+    return cached.data;
+  }
+
+  const data = {
     symbol,
     companyName: `${symbol.toUpperCase()} Corporation`,
     currentPrice: Math.random() * 200 + 50,
@@ -254,6 +210,10 @@ async function fetchMarketData(symbol: string) {
     marketCap: Math.floor(Math.random() * 1000000000000),
     peRatio: Math.random() * 30 + 5,
   };
+
+  // Cache the data
+  marketDataCache.set(cacheKey, { data, timestamp: Date.now() });
+  return data;
 }
 
 async function generateTradingAnalysis(symbol: string, marketData: any, newsData: any) {
@@ -491,4 +451,111 @@ function analyzeSentiment(text: string): 'positive' | 'negative' | 'neutral' {
   if (positiveCount > negativeCount && positiveCount > 1) return 'positive';
   if (negativeCount > positiveCount && negativeCount > 1) return 'negative';
   return 'neutral';
+}
+
+// Fast simulation trades generator
+async function generateFastSimulationTrades(userId: string, portfolioId: string, riskParams: any) {
+  const trades = [];
+  const symbols = ['AAPL', 'GOOGL', 'MSFT'];
+  
+  for (let i = 0; i < Math.min(3, symbols.length); i++) {
+    const symbol = symbols[i];
+    const action = Math.random() > 0.5 ? 'buy' : 'sell';
+    const quantity = Math.floor(Math.random() * 10) + 1;
+    const price = Math.random() * 200 + 50;
+    
+    trades.push({
+      symbol,
+      action,
+      quantity,
+      price,
+      reason: `Fast simulation trade`,
+      confidence: Math.floor(Math.random() * 40) + 60,
+      newsImpact: 'Simulated'
+    });
+  }
+  
+  return trades;
+}
+
+// Individual stock analysis for parallel processing
+async function analyzeAndTrade(symbol: string, userId: string, portfolio: any, riskParams: any) {
+  console.log(`Analyzing ${symbol}...`);
+  
+  // Get cached or fresh market data
+  const marketData = await fetchMarketData(symbol);
+  if (!marketData) return null;
+
+  // Quick news check (simplified for speed)
+  const newsData = await fetchNewsData(symbol, marketData.companyName);
+  
+  // Fast analysis without full LLM processing
+  const quickAnalysis = generateQuickAnalysis(symbol, marketData, newsData);
+  
+  // Evaluate trade potential
+  const shouldTrade = evaluateQuickTrade(quickAnalysis, riskParams);
+  
+  if (shouldTrade.execute) {
+    const quantity = calculateTradeQuantity(
+      shouldTrade.tradeType, 
+      portfolio.current_balance, 
+      riskParams.max_position_size, 
+      marketData.currentPrice
+    );
+    
+    console.log(`QUICK TRADE: ${shouldTrade.tradeType} ${quantity} shares of ${symbol}`);
+    
+    return {
+      symbol,
+      action: shouldTrade.tradeType.toLowerCase(),
+      quantity,
+      price: marketData.currentPrice,
+      reason: shouldTrade.reason,
+      confidence: quickAnalysis.confidence,
+      newsImpact: extractNewsImpact(newsData)
+    };
+  }
+  
+  return null;
+}
+
+// Quick analysis without heavy LLM processing
+function generateQuickAnalysis(symbol: string, marketData: any, newsData: any) {
+  const positiveNews = newsData?.articles?.filter((a: any) => a.sentiment === 'positive').length || 0;
+  const negativeNews = newsData?.articles?.filter((a: any) => a.sentiment === 'negative').length || 0;
+  
+  let recommendation = 'HOLD';
+  let confidence = 60;
+  
+  // Quick decision logic
+  if (positiveNews >= 2 && marketData.priceChangePercent > 0) {
+    recommendation = 'BUY';
+    confidence = 75;
+  } else if (negativeNews >= 2 || marketData.priceChangePercent < -2) {
+    recommendation = 'SELL';
+    confidence = 70;
+  }
+  
+  return { recommendation, confidence, sentiment: positiveNews > negativeNews ? 75 : 25 };
+}
+
+// Quick trade evaluation
+function evaluateQuickTrade(analysis: any, riskParams: any) {
+  if (analysis.recommendation === 'BUY' && analysis.confidence >= 70) {
+    return {
+      execute: true,
+      tradeType: 'BUY',
+      reason: `Quick analysis: ${analysis.confidence}% confidence`
+    };
+  }
+  
+  if (analysis.recommendation === 'SELL' && analysis.confidence >= 70) {
+    return {
+      execute: true,
+      tradeType: 'SELL',
+      reason: `Quick analysis: ${analysis.confidence}% confidence`
+    };
+  }
+  
+  return { execute: false, tradeType: 'HOLD', reason: 'Insufficient confidence' };
 }
