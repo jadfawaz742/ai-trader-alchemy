@@ -10,6 +10,7 @@ import { Alert, AlertDescription } from '@/components/ui/alert';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { TrendingUp, TrendingDown, AlertTriangle, DollarSign, Zap } from 'lucide-react';
+import { StockChart } from '@/components/StockChart';
 
 interface Portfolio {
   id: string;
@@ -229,17 +230,27 @@ export const TradingInterface: React.FC = () => {
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Zap className="h-5 w-5" />
-          AI Trading Interface
-        </CardTitle>
-        <CardDescription>
-          Execute trades with PPO analysis and risk management
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
+    <div className="space-y-6">
+      {/* Stock Chart */}
+      {symbol && (
+        <StockChart 
+          symbol={symbol}
+          currentPrice={price ? parseFloat(price) : undefined}
+          tradeType={tradeType}
+        />
+      )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Zap className="h-5 w-5" />
+            AI Trading Interface
+          </CardTitle>
+          <CardDescription>
+            Execute trades with PPO analysis and risk management
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-6">
         {/* Portfolio Balance */}
         {portfolio && (
           <div className="flex items-center justify-between p-4 bg-muted rounded-lg">
@@ -391,7 +402,8 @@ export const TradingInterface: React.FC = () => {
         >
           {loading ? 'Processing...' : `Execute ${tradeType} Order`}
         </Button>
-      </CardContent>
-    </Card>
+        </CardContent>
+      </Card>
+    </div>
   );
 };

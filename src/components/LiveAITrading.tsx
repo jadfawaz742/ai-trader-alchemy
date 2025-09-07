@@ -10,6 +10,7 @@ import { Progress } from '@/components/ui/progress';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { Bot, Play, Square, TrendingUp, TrendingDown, DollarSign, Clock, Target, Zap, Activity } from 'lucide-react';
+import { StockChart } from '@/components/StockChart';
 
 interface LiveTrade {
   id: string;
@@ -329,6 +330,21 @@ export const LiveAITrading: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      {/* Live Stock Charts for Active Trades */}
+      {session.activeTrades.length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {session.activeTrades.slice(0, 4).map((trade) => (
+            <StockChart
+              key={trade.id}
+              symbol={trade.symbol}
+              currentPrice={trade.price}
+              tradeType={trade.action}
+              className="h-fit"
+            />
+          ))}
+        </div>
+      )}
+
       {/* Trading Controls */}
       <Card>
         <CardHeader>
