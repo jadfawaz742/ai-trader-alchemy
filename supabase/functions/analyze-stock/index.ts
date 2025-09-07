@@ -12,8 +12,9 @@ const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-// OpenAI API key
+// API keys
 const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
+const newsApiKey = Deno.env.get('NEWS_API_KEY');
 
 // Add logging to debug API key issues
 console.log('OpenAI API Key exists:', !!openAIApiKey);
@@ -66,8 +67,11 @@ serve(async (req) => {
       });
     }
 
-    // Generate LLM analysis
-    const llmAnalysis = await generateLLMAnalysis(symbol, marketData, analysisType);
+    // Fetch news data if available
+    const newsData = await fetchNewsData(symbol, marketData.companyName);
+
+    // Generate LLM analysis with news context
+    const llmAnalysis = await generateLLMAnalysis(symbol, marketData, analysisType, newsData);
     
     // Parse recommendation and confidence from LLM response
     const { recommendation, confidence, sentiment } = parseAnalysisResult(llmAnalysis);
@@ -80,7 +84,7 @@ serve(async (req) => {
         company_name: marketData.companyName,
         analysis_type: analysisType,
         llm_analysis: llmAnalysis,
-        market_data: marketData,
+        market_data: { ...marketData, news: newsData },
         sentiment_score: sentiment,
         recommendation: recommendation,
         confidence_score: confidence,
@@ -161,17 +165,28 @@ async function fetchStockData(symbol: string) {
   }
 }
 
-async function generateLLMAnalysis(symbol: string, marketData: any, analysisType: string) {
+async function generateLLMAnalysis(symbol: string, marketData: any, analysisType: string, newsData: any = null) {
   try {
     // Check if OpenAI API key is available
     if (!openAIApiKey) {
       console.log('OpenAI API key not found, using mock analysis');
-      return generateMockAnalysis(symbol, marketData, analysisType);
+      return generateMockAnalysis(symbol, marketData, analysisType, newsData);
     }
 
     console.log('Calling OpenAI API for analysis...');
+    
+    // Prepare news context
+    const newsContext = newsData?.articles?.length > 0 
+      ? `\n\nRECENT NEWS HEADLINES:\n${newsData.articles.map((article: any) => `- ${article.title} (${article.sentiment} sentiment)`).join('\n')}\n\nNews Summary: ${newsData.articles.length} recent articles found. Sentiment distribution: ${
+          newsData.articles.reduce((acc: any, article: any) => {
+            acc[article.sentiment] = (acc[article.sentiment] || 0) + 1;
+            return acc;
+          }, {})
+        }`
+      : '\n\nNo recent news available for this stock.';
+
     const prompt = `
-As an expert financial analyst, analyze the stock ${symbol} based on the following market data:
+As an expert financial analyst, analyze the stock ${symbol} based on the following market data and news:
 
 Current Price: $${marketData.currentPrice?.toFixed(2)}
 Price Change: $${marketData.priceChange?.toFixed(2)} (${marketData.priceChangePercent?.toFixed(2)}%)
@@ -180,17 +195,19 @@ Market Cap: $${marketData.marketCap?.toLocaleString()}
 P/E Ratio: ${marketData.peRatio?.toFixed(2)}
 52-Week High: $${marketData.fiftyTwoWeekHigh?.toFixed(2)}
 52-Week Low: $${marketData.fiftyTwoWeekLow?.toFixed(2)}
-Beta: ${marketData.beta?.toFixed(2)}
+Beta: ${marketData.beta?.toFixed(2)}${newsContext}
 
 Analysis Type: ${analysisType}
 
 Please provide a comprehensive ${analysisType} analysis including:
-1. Current market sentiment (bullish/bearish/neutral)
+1. Current market sentiment (bullish/bearish/neutral) considering news sentiment
 2. Key technical or fundamental indicators
-3. Risk factors and opportunities
-4. Clear recommendation (BUY/SELL/HOLD)
-5. Confidence level (0-100%)
-6. Price targets and timeframe
+3. Impact of recent news on stock performance
+4. Risk factors and opportunities considering news sentiment
+5. Clear recommendation (BUY/SELL/HOLD)
+6. Confidence level (0-100%)
+7. Price targets and timeframe
+8. How news sentiment might affect short-term and long-term performance
 
 Format your response to include specific sections and be actionable for trading decisions.
 `;
@@ -218,7 +235,7 @@ Format your response to include specific sections and be actionable for trading 
     if (!response.ok) {
       console.error(`OpenAI API error: ${response.status}`);
       console.log('Falling back to mock analysis due to API error');
-      return generateMockAnalysis(symbol, marketData, analysisType);
+      return generateMockAnalysis(symbol, marketData, analysisType, newsData);
     }
 
     const data = await response.json();
@@ -226,21 +243,77 @@ Format your response to include specific sections and be actionable for trading 
   } catch (error) {
     console.error('Error generating LLM analysis:', error);
     console.log('Falling back to mock analysis due to error');
-    return generateMockAnalysis(symbol, marketData, analysisType);
+    return generateMockAnalysis(symbol, marketData, analysisType, newsData);
   }
 }
 
-function generateMockAnalysis(symbol: string, marketData: any, analysisType: string) {
+async function fetchNewsData(symbol: string, companyName: string) {
+  if (!newsApiKey) {
+    console.log('News API key not available');
+    return { articles: [], totalResults: 0 };
+  }
+
+  try {
+    console.log(`Fetching news for ${symbol} (${companyName})`);
+    
+    const newsResponse = await fetch(
+      `https://newsapi.org/v2/everything?q=${encodeURIComponent(companyName || symbol)}&sortBy=publishedAt&pageSize=5&apiKey=${newsApiKey}`
+    );
+
+    if (!newsResponse.ok) {
+      console.error(`News API error: ${newsResponse.status}`);
+      return { articles: [], totalResults: 0 };
+    }
+
+    const rawNewsData = await newsResponse.json();
+    
+    const articles = rawNewsData.articles
+      ?.filter((article: any) => 
+        article.title && 
+        article.description && 
+        article.publishedAt &&
+        (article.title.toLowerCase().includes(symbol.toLowerCase()) ||
+         article.title.toLowerCase().includes(companyName?.toLowerCase()) ||
+         article.description.toLowerCase().includes(symbol.toLowerCase()) ||
+         article.description.toLowerCase().includes(companyName?.toLowerCase()))
+      )
+      .slice(0, 5)
+      .map((article: any) => ({
+        title: article.title,
+        description: article.description,
+        url: article.url,
+        source: article.source.name,
+        publishedAt: article.publishedAt,
+        sentiment: analyzeSentiment(article.title + ' ' + article.description)
+      })) || [];
+
+    return { articles, totalResults: articles.length };
+  } catch (error) {
+    console.error('Error fetching news:', error);
+    return { articles: [], totalResults: 0 };
+  }
+}
+
+function generateMockAnalysis(symbol: string, marketData: any, analysisType: string, newsData: any = null) {
   const isPositive = marketData.priceChange > 0;
   const sentiment = isPositive ? 'bullish' : marketData.priceChange < -2 ? 'bearish' : 'neutral';
   const recommendation = isPositive && marketData.priceChangePercent > 3 ? 'BUY' : 
                         marketData.priceChangePercent < -5 ? 'SELL' : 'HOLD';
   
+  const newsContext = newsData?.articles?.length > 0 
+    ? `\n\nNEWS SENTIMENT ANALYSIS:\nFound ${newsData.articles.length} recent articles. Overall sentiment: ${
+        newsData.articles.reduce((acc: any, article: any) => {
+          acc[article.sentiment] = (acc[article.sentiment] || 0) + 1;
+          return acc;
+        }, {})
+      }\nRecent headlines: ${newsData.articles.slice(0, 2).map((a: any) => a.title).join('; ')}`
+    : '\n\nNEWS: No recent news available for comprehensive analysis.';
+  
   return `
 TECHNICAL ANALYSIS FOR ${symbol}
 
 MARKET SENTIMENT: ${sentiment.toUpperCase()}
-The current price action shows ${sentiment} momentum based on today's ${marketData.priceChangePercent > 0 ? 'gains' : 'losses'} of ${Math.abs(marketData.priceChangePercent).toFixed(2)}%.
+The current price action shows ${sentiment} momentum based on today's ${marketData.priceChangePercent > 0 ? 'gains' : 'losses'} of ${Math.abs(marketData.priceChangePercent).toFixed(2)}%.${newsContext}
 
 KEY INDICATORS:
 • Current Price: $${marketData.currentPrice.toFixed(2)}
@@ -252,6 +325,11 @@ TECHNICAL OUTLOOK:
 The stock is currently trading ${((marketData.currentPrice - marketData.fiftyTwoWeekLow) / (marketData.fiftyTwoWeekHigh - marketData.fiftyTwoWeekLow) * 100).toFixed(1)}% within its 52-week range. 
 ${isPositive ? 'Positive momentum suggests potential for continued upward movement.' : 'Recent weakness may present buying opportunities for long-term investors.'}
 
+NEWS IMPACT:
+${newsData?.articles?.length > 0 
+  ? `Recent news sentiment appears ${newsData.articles.filter((a: any) => a.sentiment === 'positive').length > newsData.articles.filter((a: any) => a.sentiment === 'negative').length ? 'positive' : 'mixed'}, which may ${newsData.articles.filter((a: any) => a.sentiment === 'positive').length > 0 ? 'support' : 'pressure'} the stock price in the near term.`
+  : 'Limited news coverage suggests market attention is moderate. Price movements likely driven by technical factors.'}
+
 RECOMMENDATION: ${recommendation}
 Confidence Level: ${Math.floor(Math.random() * 30) + 65}%
 
@@ -261,10 +339,24 @@ Timeframe: 30-60 days
 RISK FACTORS:
 • Market volatility and sector rotation
 • Economic indicators and earnings reports
+• ${newsData?.articles?.length > 0 ? 'News sentiment shifts could impact short-term performance' : 'Limited news coverage may lead to increased volatility'}
 • ${marketData.beta > 1.2 ? 'High beta indicates sensitivity to market movements' : 'Moderate correlation with overall market trends'}
 
-NOTE: This is a demonstration analysis. In production, this would be generated by GPT-4 with real-time market analysis.
+NOTE: This is a demonstration analysis. In production, this would be generated by GPT-4 with real-time market and news analysis.
 `;
+}
+
+function analyzeSentiment(text: string): 'positive' | 'negative' | 'neutral' {
+  const positiveWords = ['gain', 'rise', 'bull', 'profit', 'growth', 'increase', 'up', 'surge', 'rally', 'boost', 'strong', 'beat', 'exceed', 'outperform'];
+  const negativeWords = ['loss', 'fall', 'bear', 'decline', 'decrease', 'down', 'drop', 'crash', 'plunge', 'weak', 'miss', 'underperform', 'cut', 'lower'];
+  
+  const lowerText = text.toLowerCase();
+  const positiveCount = positiveWords.filter(word => lowerText.includes(word)).length;
+  const negativeCount = negativeWords.filter(word => lowerText.includes(word)).length;
+  
+  if (positiveCount > negativeCount) return 'positive';
+  if (negativeCount > positiveCount) return 'negative';
+  return 'neutral';
 }
 
 function parseAnalysisResult(analysisText: string) {

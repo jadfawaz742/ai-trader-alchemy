@@ -1,11 +1,13 @@
 import StockAnalyzer from "@/components/StockAnalyzer";
 import TradingDashboard from "@/components/TradingDashboard";
+import NewsWidget from "@/components/NewsWidget";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
-import { Loader2, LogOut } from "lucide-react";
+import { Loader2, LogOut, User, Settings } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
+import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 
 const Index = () => {
   const { user, loading, signOut, isAuthenticated } = useAuth();
@@ -66,14 +68,33 @@ const Index = () => {
               AI-powered stock analysis with PPO risk management and automated trading simulation
             </p>
           </div>
-          <Button
-            variant="outline"
-            onClick={handleSignOut}
-            className="ml-4"
-          >
-            <LogOut className="h-4 w-4 mr-2" />
-            Sign Out
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button variant="outline" className="ml-4">
+                <User className="h-4 w-4 mr-2" />
+                Account
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-48">
+              <DropdownMenuItem asChild>
+                <Link to="/profile" className="flex items-center">
+                  <User className="h-4 w-4 mr-2" />
+                  Profile
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuItem asChild>
+                <Link to="/settings" className="flex items-center">
+                  <Settings className="h-4 w-4 mr-2" />
+                  Settings
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem onClick={handleSignOut}>
+                <LogOut className="h-4 w-4 mr-2" />
+                Sign Out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
         
         <Tabs defaultValue="analysis" className="w-full">
@@ -86,9 +107,16 @@ const Index = () => {
             </TabsTrigger>
           </TabsList>
           
-          <TabsContent value="analysis">
-            <StockAnalyzer />
-          </TabsContent>
+        <TabsContent value="analysis">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2">
+              <StockAnalyzer />
+            </div>
+            <div>
+              <NewsWidget />
+            </div>
+          </div>
+        </TabsContent>
           
           <TabsContent value="trading">
             <TradingDashboard />

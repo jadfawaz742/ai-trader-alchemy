@@ -1,10 +1,13 @@
 project_id = "ncetkhcryoxchkodlzgj"
 
 [functions.analyze-stock]
-verify_jwt = false
+verify_jwt = true
 
 [functions.execute-trade]
-verify_jwt = false
+verify_jwt = true
 
 [functions.auto-trade]
-verify_jwt = false
+verify_jwt = true
+
+[functions.fetch-news]
+verify_jwt = true
