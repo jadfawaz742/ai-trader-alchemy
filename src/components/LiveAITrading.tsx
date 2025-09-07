@@ -24,6 +24,7 @@ interface LiveTrade {
   duration: number;
   momentum?: string;
   volumeSpike?: boolean;
+  simulation?: boolean;
 }
 
 interface TradingSession {
@@ -218,6 +219,37 @@ export const LiveAITrading: React.FC = () => {
         newTrades.forEach((trade: LiveTrade) => {
           setTimeout(() => {
             closeTrade(trade.id);
+  // Generate mock trade when auto-trading is disabled
+  const generateMockTrade = () => {
+    const symbols = ['AAPL', 'GOOGL', 'MSFT', 'TSLA', 'NVDA', 'META', 'AMZN'];
+    const actions: ("BUY" | "SELL")[] = ['BUY', 'SELL'];
+    const mockTrade: LiveTrade = {
+      id: Math.random().toString(36).substr(2, 9),
+      symbol: symbols[Math.floor(Math.random() * symbols.length)],
+      action: actions[Math.floor(Math.random() * actions.length)],
+      quantity: Math.floor(Math.random() * 10) + 1,
+      price: Math.random() * 200 + 50,
+      timestamp: new Date().toISOString(),
+      confidence: Math.floor(Math.random() * 40) + 60,
+      profitLoss: 0,
+      status: 'executed',
+      duration: tradeDuration[0],
+      momentum: 'neutral',
+      volumeSpike: false,
+      simulation: true
+    };
+
+    setSession(prev => ({
+      ...prev,
+      activeTrades: [...prev.activeTrades, mockTrade],
+      totalTrades: prev.totalTrades + 1
+    }));
+
+    // Schedule trade closure
+    setTimeout(() => {
+      closeTrade(mockTrade.id);
+    }, mockTrade.duration * 1000);
+  };
           }, trade.duration * 1000);
         });
 

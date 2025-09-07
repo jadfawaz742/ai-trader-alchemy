@@ -61,7 +61,10 @@ serve(async (req) => {
     const portfolio = portfolioResult.data;
     const riskParams = riskParamsResult.data;
 
-    if (!riskParams.auto_trading_enabled) {
+    // Allow simulation mode even when auto trading is disabled
+    const { simulationMode = false } = await req.json();
+    
+    if (!simulationMode && !riskParams.auto_trading_enabled) {
       return new Response(JSON.stringify({ 
         error: 'Auto trading disabled',
         message: 'Enable auto trading in settings first'
