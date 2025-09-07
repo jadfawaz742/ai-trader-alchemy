@@ -7,12 +7,14 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Initialize Supabase client
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const newsApiKey = Deno.env.get('NEWS_API_KEY');
+const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
+
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-// Popular stocks to analyze for automated trading
+// Popular stocks for news-driven trading
 const TRADEABLE_STOCKS = ['AAPL', 'GOOGL', 'MSFT', 'TSLA', 'NVDA', 'META', 'AMZN'];
 
 serve(async (req) => {
@@ -21,16 +23,14 @@ serve(async (req) => {
   }
 
   try {
-    // Get the authorization header to identify the user
     const authHeader = req.headers.get('Authorization');
     if (!authHeader) {
-      return new Response(JSON.stringify({ error: 'Authorization required for automated trading' }), {
+      return new Response(JSON.stringify({ error: 'Authorization required' }), {
         status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    // Get user from JWT token
     const { data: { user }, error: authError } = await supabase.auth.getUser(authHeader.replace('Bearer ', ''));
     
     if (authError || !user) {
@@ -40,22 +40,15 @@ serve(async (req) => {
       });
     }
 
-    const { portfolioId, simulationMode = false, riskLevel = 50, maxAmount, tradeDuration = 300 } = await req.json();
+    const userId = user.id;
+    const { portfolioId } = await req.json();
 
-    if (!portfolioId) {
-      return new Response(JSON.stringify({ error: 'Portfolio ID required' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
+    console.log(`Starting NEWS-DRIVEN automated trading for user: ${userId}`);
 
-    console.log(`Starting ${simulationMode ? 'simulated' : 'live'} automated trading for portfolio: ${portfolioId}`);
-    console.log(`Risk level: ${riskLevel}, Max amount: $${maxAmount || 'unlimited'}, Duration: ${tradeDuration}s`);
-
-    // Get portfolio and risk parameters (user-specific via RLS)
+    // Get user's portfolio and risk parameters
     const [portfolioResult, riskParamsResult] = await Promise.all([
-      supabase.from('portfolios').select('*').eq('id', portfolioId).eq('user_id', user.id).single(),
-      supabase.from('risk_parameters').select('*').eq('portfolio_id', portfolioId).eq('user_id', user.id).single()
+      supabase.from('portfolios').select('*').eq('user_id', userId).single(),
+      supabase.from('risk_parameters').select('*').eq('user_id', userId).single()
     ]);
 
     if (portfolioResult.error || riskParamsResult.error) {
@@ -68,104 +61,97 @@ serve(async (req) => {
     const portfolio = portfolioResult.data;
     const riskParams = riskParamsResult.data;
 
-    // Adjust risk parameters based on user's risk level
-    const adjustedRiskParams = adjustRiskParameters(riskParams, riskLevel, simulationMode);
-
-    // Check if auto trading is enabled (skip for simulation mode)
-    if (!simulationMode && !riskParams.auto_trading_enabled) {
+    if (!riskParams.auto_trading_enabled) {
       return new Response(JSON.stringify({ 
-        error: 'Automated trading is disabled',
-        message: 'Enable automated trading in risk settings first'
+        error: 'Auto trading disabled',
+        message: 'Enable auto trading in settings first'
       }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    // Get existing positions to avoid overconcentration (user-specific via RLS)
-    const { data: existingPositions } = await supabase
-      .from('positions')
-      .select('*')
-      .eq('portfolio_id', portfolioId)
-      .eq('user_id', user.id);
-
-    // Get today's trade count to respect daily limits (skip for simulation, user-specific)
-    let remainingTrades = adjustedRiskParams.max_daily_trades;
-    
-    if (!simulationMode) {
-      const today = new Date().toISOString().split('T')[0];
-      const { data: todayTrades } = await supabase
-        .from('trades')
-        .select('id')
-        .eq('portfolio_id', portfolioId)
-        .eq('user_id', user.id)
-        .gte('executed_at', `${today}T00:00:00.000Z`);
-
-      if (todayTrades && todayTrades.length >= adjustedRiskParams.max_daily_trades) {
-        return new Response(JSON.stringify({ 
-          message: `Daily trade limit reached (${adjustedRiskParams.max_daily_trades} trades)`,
-          tradesExecuted: 0
-        }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
-      
-      remainingTrades = adjustedRiskParams.max_daily_trades - (todayTrades?.length || 0);
-    }
-
     const executedTrades = [];
-    let totalProfitLoss = 0;
 
-    // Analyze each stock for trading opportunities
-    console.log(`Analyzing ${TRADEABLE_STOCKS.length} stocks with confidence threshold: ${adjustedRiskParams.min_confidence_score}%`);
-    
+    // Analyze stocks with heavy news integration
     for (const symbol of TRADEABLE_STOCKS) {
-      if (remainingTrades <= 0) break;
-
       try {
-        const tradeDecision = await analyzeStockForAutoTrade(
-          symbol, 
-          portfolio, 
-          adjustedRiskParams, 
-          existingPositions,
-          maxAmount
-        );
-        
-        console.log(`${symbol}: Confidence ${tradeDecision.confidence}% vs threshold ${adjustedRiskParams.min_confidence_score}%, Action: ${tradeDecision.action}`);
-        
-        if (tradeDecision.shouldTrade && tradeDecision.confidence >= adjustedRiskParams.min_confidence_score) {
-          console.log(`Executing ${simulationMode ? 'simulated' : 'live'} trade: ${tradeDecision.action} ${tradeDecision.quantity} shares of ${symbol}`);
-          
-          // Execute the trade (simulation or live)
-          const tradeResult = await executeAutoTrade(
-            portfolioId, 
-            symbol, 
-            tradeDecision.action,
-            tradeDecision.quantity,
-            tradeDecision.price,
-            tradeDecision.analysis,
-            simulationMode,
-            user.id
-          );
+        // Get stock analysis (with news integration)
+        const { data: analysisData } = await supabase
+          .from('stock_analysis')
+          .select('*')
+          .eq('symbol', symbol)
+          .eq('user_id', userId)
+          .order('created_at', { ascending: false })
+          .limit(1)
+          .single();
 
-          if (tradeResult.success) {
-            const profit = calculateTradeProfitLoss(tradeDecision, existingPositions);
-            totalProfitLoss += profit;
+        let analysis = analysisData;
+        
+        // If no recent analysis or older than 1 hour, get fresh news-integrated analysis
+        if (!analysis || new Date(analysis.created_at) < new Date(Date.now() - 60 * 60 * 1000)) {
+          console.log(`Getting fresh news-integrated analysis for ${symbol}...`);
+          
+          const marketData = await fetchMarketData(symbol);
+          if (!marketData) continue;
+
+          const newsData = await fetchNewsData(symbol, marketData.companyName);
+          const llmAnalysis = await generateTradingAnalysis(symbol, marketData, newsData);
+          const { recommendation, confidence, sentiment } = parseAnalysisResult(llmAnalysis);
+          
+          const { data: newAnalysis } = await supabase
+            .from('stock_analysis')
+            .insert({
+              symbol: symbol.toUpperCase(),
+              company_name: marketData.companyName,
+              analysis_type: 'news_trading',
+              llm_analysis: llmAnalysis,
+              market_data: { ...marketData, news: newsData },
+              sentiment_score: sentiment,
+              recommendation: recommendation,
+              confidence_score: confidence,
+              user_id: userId
+            })
+            .select()
+            .single();
             
+          analysis = newAnalysis;
+        }
+
+        // Check if we should execute news-driven trade
+        const shouldTrade = await evaluateTradeWithNews(analysis, riskParams);
+        
+        if (shouldTrade.execute) {
+          const tradeQuantity = calculateTradeQuantity(
+            shouldTrade.tradeType, 
+            portfolio.current_balance, 
+            riskParams.max_position_size, 
+            analysis.market_data?.currentPrice || 100
+          );
+          
+          console.log(`NEWS-DRIVEN AUTO TRADE: ${shouldTrade.tradeType} ${tradeQuantity} shares of ${symbol}`);
+          
+          const tradeResult = await executeTrade(
+            userId,
+            portfolio.id,
+            symbol,
+            shouldTrade.tradeType,
+            tradeQuantity,
+            analysis.market_data?.currentPrice || 100,
+            analysis
+          );
+          
+          if (tradeResult.success) {
             executedTrades.push({
               symbol,
-              action: tradeDecision.action,
-              quantity: tradeDecision.quantity,
-              price: tradeDecision.price,
-              confidence: tradeDecision.confidence,
-              reason: tradeDecision.reason,
-              profitLoss: profit,
-              simulation: simulationMode
+              action: shouldTrade.tradeType.toLowerCase(),
+              quantity: tradeQuantity,
+              price: analysis.market_data?.currentPrice || 100,
+              reason: `News-driven: ${shouldTrade.reason}`,
+              confidence: analysis.confidence_score,
+              newsImpact: extractNewsImpact(analysis.market_data?.news)
             });
-            remainingTrades--;
           }
-        } else {
-          console.log(`Skipping ${symbol}: confidence ${tradeDecision.confidence}% below threshold ${adjustedRiskParams.min_confidence_score}% - Reason: ${tradeDecision.reason}`);
         }
       } catch (error) {
         console.error(`Error analyzing ${symbol}:`, error);
@@ -177,15 +163,13 @@ serve(async (req) => {
       success: true,
       tradesExecuted: executedTrades.length,
       trades: executedTrades,
-      totalProfitLoss,
-      simulationMode,
-      message: `${simulationMode ? 'Simulated' : 'Live'} trading completed. Executed ${executedTrades.length} trades with ${totalProfitLoss >= 0 ? '+' : ''}$${totalProfitLoss.toFixed(2)} P&L.`
+      message: `News-driven trading completed. Executed ${executedTrades.length} trades based on news sentiment.`
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
 
   } catch (error) {
-    console.error('Error in auto-trade function:', error);
+    console.error('Error in news-driven auto-trade:', error);
     return new Response(JSON.stringify({ error: error.message }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -193,317 +177,299 @@ serve(async (req) => {
   }
 });
 
-function adjustRiskParameters(baseParams: any, userRiskLevel: number, simulationMode: boolean = false) {
-  const adjusted = { ...baseParams };
-  
-  // Make risk adjustment completely dynamic based on user input (0-100)
-  const riskMultiplier = userRiskLevel / 50; // 50 = neutral, 100 = 2x aggressive, 0 = very conservative
-  
-  if (simulationMode) {
-    // Simulation mode: Be very aggressive to show activity
-    adjusted.min_confidence_score = Math.max(15, 60 - userRiskLevel * 0.45); // 15-60% range (very low threshold)
-    adjusted.max_position_size = Math.min(60, 15 + (userRiskLevel * 0.45)); // 15-60% range
-    adjusted.max_daily_trades = Math.min(50, 10 + Math.floor(userRiskLevel * 0.4)); // 10-50 trades
-    
-    // Very aggressive PPO thresholds for simulation
-    adjusted.ppo_buy_threshold = Math.max(0.01, 0.2 - (userRiskLevel * 0.002)); 
-    adjusted.ppo_sell_threshold = Math.min(-0.01, -0.2 + (userRiskLevel * 0.002));
-    
-    console.log(`Simulation mode: Risk ${userRiskLevel}% - Confidence: ${adjusted.min_confidence_score}%, Position: ${adjusted.max_position_size}%`);
-  } else {
-    // Live trading: Still be careful but respect user risk preference
-    adjusted.min_confidence_score = Math.max(40, 95 - userRiskLevel); // 40-95% range
-    adjusted.max_position_size = Math.min(35, 5 + (userRiskLevel * 0.3)); // 5-35% range
-    adjusted.max_daily_trades = Math.min(15, 3 + Math.floor(userRiskLevel * 0.12)); // 3-15 trades
-    
-    adjusted.ppo_buy_threshold = Math.max(0.1, 0.8 - (userRiskLevel * 0.007));
-    adjusted.ppo_sell_threshold = Math.min(-0.1, -0.8 + (userRiskLevel * 0.007));
-    
-    console.log(`Live mode: Risk ${userRiskLevel}% - Confidence: ${adjusted.min_confidence_score}%, Position: ${adjusted.max_position_size}%`);
+async function fetchNewsData(symbol: string, companyName: string) {
+  if (!newsApiKey) {
+    console.log('News API key not available for auto-trading');
+    return { articles: [], totalResults: 0 };
   }
-  
-  return adjusted;
-}
 
-function calculateTradeProfitLoss(tradeDecision: any, existingPositions: any[]): number {
-  // Simplified P&L calculation for demo
-  const baseProfit = Math.random() * 100 - 50; // Random between -50 and +50
-  const confidenceMultiplier = tradeDecision.confidence / 100;
-  return baseProfit * confidenceMultiplier;
-}
+  try {
+    console.log(`Fetching news for ${symbol} (${companyName}) for auto-trading`);
+    
+    const newsResponse = await fetch(
+      `https://newsapi.org/v2/everything?q=${encodeURIComponent(companyName || symbol)}&sortBy=publishedAt&pageSize=10&apiKey=${newsApiKey}`
+    );
 
-async function analyzeStockForAutoTrade(symbol: string, portfolio: any, riskParams: any, existingPositions: any[], maxAmount?: number) {
-  // Enhanced market data simulation with more realistic patterns
-  const marketData = generateAdvancedMarketData(symbol);
-  
-  // Calculate advanced PPO with better confidence scoring
-  const ppoAnalysis = calculateAdvancedPPO(marketData, riskParams);
-  
-  // Calculate market sentiment score
-  const sentimentScore = calculateMarketSentiment(marketData, ppoAnalysis);
-  
-  // Calculate overall confidence score (0-100)
-  const confidence = calculateTradeConfidence(ppoAnalysis, sentimentScore, marketData);
-  
-  // Check existing position
-  const existingPosition = existingPositions.find(p => p.symbol === symbol);
-  
-  // Determine if we should buy, sell, or hold
-  const tradeDecision = makeTradeDecision(
-    ppoAnalysis, 
-    sentimentScore, 
-    confidence, 
-    existingPosition, 
-    portfolio, 
-    riskParams,
-    marketData,
-    maxAmount
-  );
-
-  return {
-    shouldTrade: tradeDecision.shouldTrade,
-    action: tradeDecision.action,
-    quantity: tradeDecision.quantity,
-    price: marketData.currentPrice,
-    confidence,
-    reason: tradeDecision.reason,
-    analysis: {
-      ppo: ppoAnalysis,
-      sentiment: sentimentScore,
-      marketData: marketData
+    if (!newsResponse.ok) {
+      console.error(`News API error: ${newsResponse.status}`);
+      return { articles: [], totalResults: 0 };
     }
-  };
+
+    const rawNewsData = await newsResponse.json();
+    
+    const articles = rawNewsData.articles
+      ?.filter((article: any) => 
+        article.title && 
+        article.description && 
+        article.publishedAt &&
+        (article.title.toLowerCase().includes(symbol.toLowerCase()) ||
+         article.title.toLowerCase().includes(companyName?.toLowerCase()) ||
+         article.description.toLowerCase().includes(symbol.toLowerCase()) ||
+         article.description.toLowerCase().includes(companyName?.toLowerCase()))
+      )
+      .slice(0, 10)
+      .map((article: any) => ({
+        title: article.title,
+        description: article.description,
+        url: article.url,
+        source: article.source.name,
+        publishedAt: article.publishedAt,
+        sentiment: analyzeSentiment(article.title + ' ' + article.description)
+      })) || [];
+
+    return { articles, totalResults: articles.length };
+  } catch (error) {
+    console.error('Error fetching news for auto-trading:', error);
+    return { articles: [], totalResults: 0 };
+  }
 }
 
-function generateAdvancedMarketData(symbol: string) {
-  const basePrice = 100 + (symbol.charCodeAt(0) % 100);
-  const volatility = 0.02 + (Math.random() * 0.03); // 2-5% volatility
-  
-  // Generate 30 days of price history for better analysis
-  const prices = [];
-  let currentPrice = basePrice;
-  
-  for (let i = 0; i < 30; i++) {
-    const trend = Math.sin(i * 0.2) * 0.01; // Add trending component
-    const randomChange = (Math.random() - 0.5) * volatility;
-    currentPrice = currentPrice * (1 + trend + randomChange);
-    prices.push(Math.max(currentPrice, 10));
-  }
-
-  const latestPrice = prices[prices.length - 1];
-  const previousPrice = prices[prices.length - 2];
-  const priceChange = latestPrice - previousPrice;
-  const priceChangePercent = (priceChange / previousPrice) * 100;
-
+async function fetchMarketData(symbol: string) {
   return {
     symbol,
-    currentPrice: Number(latestPrice.toFixed(2)),
-    priceChange: Number(priceChange.toFixed(2)),
-    priceChangePercent: Number(priceChangePercent.toFixed(2)),
-    prices,
-    volume: Math.floor(1000000 + Math.random() * 5000000),
-    volatility: Number((volatility * 100).toFixed(2))
+    companyName: `${symbol.toUpperCase()} Corporation`,
+    currentPrice: Math.random() * 200 + 50,
+    priceChange: (Math.random() - 0.5) * 10,
+    priceChangePercent: (Math.random() - 0.5) * 10,
+    volume: Math.floor(Math.random() * 10000000),
+    marketCap: Math.floor(Math.random() * 1000000000000),
+    peRatio: Math.random() * 30 + 5,
   };
 }
 
-function calculateAdvancedPPO(marketData: any, riskParams: any) {
-  const prices = marketData.prices;
-  
-  // Calculate EMAs with more precision
-  const ema12 = calculateAdvancedEMA(prices, riskParams.ppo_fast_period);
-  const ema26 = calculateAdvancedEMA(prices, riskParams.ppo_slow_period);
-  
-  // PPO calculation
-  const ppoLine = ((ema12 - ema26) / ema26) * 100;
-  
-  // Signal line (EMA of PPO)
-  const ppoHistory = [ppoLine]; // In real implementation, maintain PPO history
-  const signalLine = calculateAdvancedEMA(ppoHistory, riskParams.ppo_signal_period);
-  
-  const histogram = ppoLine - signalLine;
-  
-  // Determine trend strength
-  const trendStrength = Math.abs(histogram);
-  const momentum = ppoLine > signalLine ? 'bullish' : 'bearish';
-  
-  // Calculate momentum score (0-100)
-  const momentumScore = Math.min(100, Math.max(0, 50 + (histogram * 10)));
-
-  return {
-    ppoLine: Number(ppoLine.toFixed(4)),
-    signalLine: Number(signalLine.toFixed(4)),
-    histogram: Number(histogram.toFixed(4)),
-    momentum,
-    trendStrength: Number(trendStrength.toFixed(2)),
-    momentumScore: Number(momentumScore.toFixed(2))
-  };
-}
-
-function calculateAdvancedEMA(prices: number[], period: number): number {
-  if (prices.length < period) return prices[prices.length - 1];
-  
-  const multiplier = 2 / (period + 1);
-  let ema = prices.slice(0, period).reduce((sum, price) => sum + price, 0) / period;
-  
-  for (let i = period; i < prices.length; i++) {
-    ema = (prices[i] * multiplier) + (ema * (1 - multiplier));
-  }
-  
-  return ema;
-}
-
-function calculateMarketSentiment(marketData: any, ppoAnalysis: any) {
-  let sentimentScore = 50; // Neutral base
-  
-  // Price momentum factor
-  if (marketData.priceChangePercent > 2) sentimentScore += 20;
-  else if (marketData.priceChangePercent > 0) sentimentScore += 10;
-  else if (marketData.priceChangePercent < -2) sentimentScore -= 20;
-  else if (marketData.priceChangePercent < 0) sentimentScore -= 10;
-  
-  // PPO momentum factor
-  if (ppoAnalysis.momentum === 'bullish' && ppoAnalysis.trendStrength > 0.5) {
-    sentimentScore += 15;
-  } else if (ppoAnalysis.momentum === 'bearish' && ppoAnalysis.trendStrength > 0.5) {
-    sentimentScore -= 15;
-  }
-  
-  // Volatility factor (high volatility reduces confidence)
-  if (marketData.volatility > 4) sentimentScore -= 10;
-  else if (marketData.volatility < 2) sentimentScore += 5;
-  
-  return Math.min(100, Math.max(0, sentimentScore));
-}
-
-function calculateTradeConfidence(ppoAnalysis: any, sentimentScore: number, marketData: any) {
-  // Start with higher base confidence for more trading activity
-  let confidence = 65; 
-  
-  // PPO alignment bonus - be very generous in simulation
-  if (ppoAnalysis.momentum === 'bullish' && ppoAnalysis.ppoLine > 0.05) {
-    confidence += 25;
-  } else if (ppoAnalysis.momentum === 'bearish' && ppoAnalysis.ppoLine < -0.05) {
-    confidence += 25;
-  }
-  
-  // Even small trends get confidence boost
-  confidence += Math.min(15, ppoAnalysis.trendStrength * 20);
-  
-  // Any directional sentiment gets bonus
-  if (sentimentScore > 55) confidence += 10;
-  else if (sentimentScore < 45) confidence += 10;
-  
-  // Momentum score bonus
-  confidence += Math.abs(ppoAnalysis.momentumScore - 50) * 0.2;
-  
-  // Add volatility as opportunity (more volatile = more trading chances)
-  confidence += Math.min(10, marketData.volatility * 2);
-  
-  // Add randomness for more dynamic activity
-  confidence += (Math.random() - 0.3) * 15; // Slight positive bias
-  
-  return Math.min(100, Math.max(20, Math.round(confidence)));
-}
-
-function makeTradeDecision(ppoAnalysis: any, sentimentScore: number, confidence: number, existingPosition: any, portfolio: any, riskParams: any, marketData: any, maxAmount?: number) {
-  // Default to no trade
-  let decision = {
-    shouldTrade: false,
-    action: 'HOLD',
-    quantity: 0,
-    reason: 'No clear trading signal'
-  };
-
-  const maxPositionValue = maxAmount 
-    ? Math.min(maxAmount, (portfolio.current_balance * riskParams.max_position_size) / 100)
-    : (portfolio.current_balance * riskParams.max_position_size) / 100;
-  const suggestedQuantity = Math.floor(maxPositionValue / marketData.currentPrice);
-
-  // More aggressive BUY conditions - look for any positive momentum
-  if (!existingPosition && 
-      (ppoAnalysis.ppoLine > riskParams.ppo_buy_threshold ||
-       ppoAnalysis.momentum === 'bullish' ||
-       sentimentScore > 50 ||
-       marketData.priceChangePercent > 0.5) &&
-      confidence >= riskParams.min_confidence_score &&
-      portfolio.current_balance > maxPositionValue) {
-    
-    decision = {
-      shouldTrade: true,
-      action: 'BUY',
-      quantity: suggestedQuantity,
-      reason: `Market opportunity: PPO ${ppoAnalysis.ppoLine.toFixed(4)}, Momentum ${ppoAnalysis.momentum}, Sentiment ${sentimentScore}, Price change ${marketData.priceChangePercent.toFixed(2)}%`
-    };
-  }
-  
-  // More aggressive SELL conditions - also create selling opportunities
-  else if (!existingPosition &&
-           (ppoAnalysis.ppoLine < riskParams.ppo_sell_threshold ||
-            ppoAnalysis.momentum === 'bearish' ||
-            sentimentScore < 50 ||
-            marketData.priceChangePercent < -0.5) &&
-           confidence >= riskParams.min_confidence_score &&
-           portfolio.current_balance > maxPositionValue) {
-    
-    decision = {
-      shouldTrade: true,
-      action: 'SELL',
-      quantity: suggestedQuantity,
-      reason: `Short opportunity: PPO ${ppoAnalysis.ppoLine.toFixed(4)}, Momentum ${ppoAnalysis.momentum}, Sentiment ${sentimentScore}, Price change ${marketData.priceChangePercent.toFixed(2)}%`
-    };
-  }
-  
-  // Existing position management
-  else if (existingPosition && 
-           confidence >= riskParams.min_confidence_score) {
-    
-    // Calculate potential profit
-    const currentValue = existingPosition.quantity * marketData.currentPrice;
-    const profitPercent = ((currentValue - existingPosition.total_cost) / existingPosition.total_cost) * 100;
-    
-    // Sell existing positions based on profit targets or stop loss
-    if (profitPercent >= riskParams.take_profit_percent || 
-        profitPercent <= -riskParams.stop_loss_percent ||
-        (ppoAnalysis.momentum === 'bearish' && profitPercent < -2)) {
-      
-      decision = {
-        shouldTrade: true,
-        action: 'SELL',
-        quantity: existingPosition.quantity,
-        reason: `Position management: ${profitPercent > 0 ? 'Profit target' : 'Risk management'} - ${profitPercent.toFixed(2)}% P&L`
-      };
-    }
+async function generateTradingAnalysis(symbol: string, marketData: any, newsData: any) {
+  if (!openAIApiKey) {
+    return generateMockTradingAnalysis(symbol, marketData, newsData);
   }
 
-  return decision;
-}
-
-async function executeAutoTrade(portfolioId: string, symbol: string, action: string, quantity: number, price: number, analysis: any, simulationMode: boolean = false, userId: string) {
   try {
-    if (simulationMode) {
-      // For simulation, just return success without executing real trades
-      console.log(`SIMULATION: ${action} ${quantity} shares of ${symbol} at $${price}`);
-      return { success: true, data: { simulation: true } };
+    const newsContext = newsData?.articles?.length > 0 
+      ? `\n\nCRITICAL NEWS FOR TRADING:\n${newsData.articles.map((article: any) => `- ${article.title} (${article.sentiment} sentiment)`).join('\n')}\n\nNews Sentiment Summary: ${
+          newsData.articles.reduce((acc: any, article: any) => {
+            acc[article.sentiment] = (acc[article.sentiment] || 0) + 1;
+            return acc;
+          }, {})
+        }`
+      : '\n\nNo recent news available - technical analysis only.';
+
+    const prompt = `
+URGENT TRADING ANALYSIS FOR ${symbol} - NEWS-DRIVEN DECISION REQUIRED
+
+Market Data:
+- Current Price: $${marketData.currentPrice?.toFixed(2)}
+- Price Change: ${marketData.priceChangePercent?.toFixed(2)}%
+- Volume: ${marketData.volume?.toLocaleString()}${newsContext}
+
+CRITICAL INSTRUCTIONS FOR AUTO-TRADING:
+1. News sentiment is THE PRIMARY factor (80% weight) - override technical signals if news is strong
+2. If 3+ positive news articles: STRONG BUY recommendation 
+3. If 2+ negative news articles: STRONG SELL recommendation
+4. Recent news (last 24hrs) has 2x impact vs older news
+5. Consider news momentum - is sentiment building or fading?
+
+REQUIRED IMMEDIATE TRADING DECISION:
+- RECOMMENDATION: BUY/SELL/HOLD (must be definitive)
+- CONFIDENCE: 0-100% (higher if news and price align)
+- NEWS IMPACT: How will headlines affect price in next 1-7 days?
+- ENTRY/EXIT: Specific timing based on news cycles
+- RISK LEVEL: How news sentiment affects position risk
+
+Focus on ACTIONABLE trading signals based on news momentum.
+`;
+
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${openAIApiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [
+          { 
+            role: 'system', 
+            content: 'You are an expert algorithmic trader who makes split-second decisions based on news sentiment and market data. Be decisive and specific.' 
+          },
+          { role: 'user', content: prompt }
+        ],
+        max_tokens: 800,
+        temperature: 0.1,
+      }),
+    });
+
+    if (!response.ok) {
+      return generateMockTradingAnalysis(symbol, marketData, newsData);
     }
-    
-    // Call the existing execute-trade function for live trades
+
+    const data = await response.json();
+    return data.choices[0].message.content;
+  } catch (error) {
+    console.error('Error generating trading analysis:', error);
+    return generateMockTradingAnalysis(symbol, marketData, newsData);
+  }
+}
+
+function generateMockTradingAnalysis(symbol: string, marketData: any, newsData: any) {
+  const positiveNews = newsData?.articles?.filter((a: any) => a.sentiment === 'positive').length || 0;
+  const negativeNews = newsData?.articles?.filter((a: any) => a.sentiment === 'negative').length || 0;
+  
+  let recommendation = 'HOLD';
+  let confidence = 60;
+  
+  if (positiveNews >= 3 || (positiveNews > negativeNews && marketData.priceChangePercent > 1)) {
+    recommendation = 'BUY';
+    confidence = 85;
+  } else if (negativeNews >= 2 || (negativeNews > positiveNews && marketData.priceChangePercent < -1)) {
+    recommendation = 'SELL'; 
+    confidence = 80;
+  }
+
+  return `
+NEWS-DRIVEN TRADING ANALYSIS FOR ${symbol}
+
+IMMEDIATE TRADING DECISION: ${recommendation}
+CONFIDENCE LEVEL: ${confidence}%
+
+NEWS IMPACT ASSESSMENT:
+- Positive articles: ${positiveNews}
+- Negative articles: ${negativeNews}  
+- Overall news sentiment: ${positiveNews > negativeNews ? 'BULLISH' : negativeNews > positiveNews ? 'BEARISH' : 'NEUTRAL'}
+
+TRADING RATIONALE:
+${recommendation === 'BUY' ? 
+  `Strong positive news momentum supports upward price movement. News sentiment overrides any technical weakness.` :
+  recommendation === 'SELL' ?
+  `Negative news sentiment indicates downward pressure. Exit positions to avoid losses.` :
+  `Mixed news sentiment - waiting for clearer directional catalyst.`}
+
+NEWS-BASED PRICE TARGET: $${(marketData.currentPrice * (recommendation === 'BUY' ? 1.05 : recommendation === 'SELL' ? 0.95 : 1.00)).toFixed(2)}
+TIMEFRAME: 3-7 days (news-driven movement typically peaks within a week)
+
+RISK FACTORS:
+- News sentiment can shift rapidly
+- Market overreaction possible
+- Monitor for follow-up news that could reverse trend
+
+This is a NEWS-PRIORITIZED analysis for automated trading decisions.
+`;
+}
+
+async function evaluateTradeWithNews(analysis: any, riskParams: any) {
+  const newsData = analysis.market_data?.news;
+  
+  // News-driven decision logic
+  const positiveNews = newsData?.articles?.filter((a: any) => a.sentiment === 'positive').length || 0;
+  const negativeNews = newsData?.articles?.filter((a: any) => a.sentiment === 'negative').length || 0;
+  
+  // Strong news signals override normal thresholds
+  if (positiveNews >= 3) {
+    return {
+      execute: true,
+      tradeType: 'BUY',
+      reason: `Strong positive news sentiment (${positiveNews} positive articles) - news-driven buy signal`
+    };
+  }
+  
+  if (negativeNews >= 2) {
+    return {
+      execute: true,
+      tradeType: 'SELL', 
+      reason: `Negative news sentiment (${negativeNews} negative articles) - news-driven sell signal`
+    };
+  }
+  
+  // Mixed news - fall back to traditional analysis
+  if (analysis.recommendation === 'BUY' && analysis.confidence_score >= riskParams.min_confidence_score) {
+    return {
+      execute: true,
+      tradeType: 'BUY',
+      reason: `Technical + moderate news support: ${analysis.confidence_score}% confidence`
+    };
+  }
+  
+  if (analysis.recommendation === 'SELL' && analysis.confidence_score >= riskParams.min_confidence_score) {
+    return {
+      execute: true,
+      tradeType: 'SELL',
+      reason: `Technical + moderate news support: ${analysis.confidence_score}% confidence`
+    };
+  }
+  
+  return {
+    execute: false,
+    tradeType: 'HOLD',
+    reason: `Insufficient news catalyst or confidence (${analysis.confidence_score}% vs ${riskParams.min_confidence_score}% required)`
+  };
+}
+
+function extractNewsImpact(newsData: any) {
+  if (!newsData?.articles?.length) return 'No news impact';
+  
+  const positive = newsData.articles.filter((a: any) => a.sentiment === 'positive').length;
+  const negative = newsData.articles.filter((a: any) => a.sentiment === 'negative').length;
+  
+  if (positive > negative) return `Positive (${positive} pos, ${negative} neg)`;
+  if (negative > positive) return `Negative (${positive} pos, ${negative} neg)`;
+  return `Mixed (${positive} pos, ${negative} neg)`;
+}
+
+function calculateTradeQuantity(tradeType: string, balance: number, maxPositionPercent: number, price: number) {
+  const maxPositionValue = (balance * maxPositionPercent) / 100;
+  return Math.floor(maxPositionValue / price);
+}
+
+async function executeTrade(userId: string, portfolioId: string, symbol: string, tradeType: string, quantity: number, price: number, analysis: any) {
+  try {
     const { data, error } = await supabase.functions.invoke('execute-trade', {
       body: {
         portfolioId,
         symbol,
-        tradeType: action,
+        tradeType,
         quantity,
-        currentPrice: price,
-        autoTrade: true,
-        analysis
+        price,
+        analysis: analysis.llm_analysis
       }
     });
 
     if (error) throw error;
-    
     return { success: true, data };
   } catch (error) {
-    console.error(`Error executing ${simulationMode ? 'simulated' : 'live'} trade for ${symbol}:`, error);
+    console.error('Trade execution error:', error);
     return { success: false, error: error.message };
   }
+}
+
+function parseAnalysisResult(analysisText: string) {
+  const recommendationMatch = analysisText.match(/(?:recommendation|recommend)[:\s]*([A-Z]+)/i);
+  const confidenceMatch = analysisText.match(/confidence[:\s]*(\d+)%?/i);
+  
+  const bullishWords = ['bullish', 'buy', 'positive', 'strong', 'growth', 'upward'];
+  const bearishWords = ['bearish', 'sell', 'negative', 'weak', 'decline', 'downward'];
+  
+  const text = analysisText.toLowerCase();
+  const bullishCount = bullishWords.filter(word => text.includes(word)).length;
+  const bearishCount = bearishWords.filter(word => text.includes(word)).length;
+  
+  let sentiment = 50;
+  if (bullishCount > bearishCount) sentiment = Math.min(100, 50 + (bullishCount * 10));
+  if (bearishCount > bullishCount) sentiment = Math.max(0, 50 - (bearishCount * 10));
+
+  return {
+    recommendation: recommendationMatch ? recommendationMatch[1].toUpperCase() : 'HOLD',
+    confidence: confidenceMatch ? parseInt(confidenceMatch[1]) : 50,
+    sentiment: sentiment,
+  };
+}
+
+function analyzeSentiment(text: string): 'positive' | 'negative' | 'neutral' {
+  const positiveWords = ['gain', 'rise', 'bull', 'profit', 'growth', 'increase', 'up', 'surge', 'rally', 'boost', 'strong', 'beat', 'exceed', 'outperform', 'upgrade', 'buy', 'bullish'];
+  const negativeWords = ['loss', 'fall', 'bear', 'decline', 'decrease', 'down', 'drop', 'crash', 'plunge', 'weak', 'miss', 'underperform', 'cut', 'lower', 'downgrade', 'sell', 'bearish'];
+  
+  const lowerText = text.toLowerCase();
+  const positiveCount = positiveWords.filter(word => lowerText.includes(word)).length;
+  const negativeCount = negativeWords.filter(word => lowerText.includes(word)).length;
+  
+  if (positiveCount > negativeCount && positiveCount > 1) return 'positive';
+  if (negativeCount > positiveCount && negativeCount > 1) return 'negative';
+  return 'neutral';
 }

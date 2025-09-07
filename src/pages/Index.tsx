@@ -107,16 +107,9 @@ const Index = () => {
             </TabsTrigger>
           </TabsList>
           
-        <TabsContent value="analysis">
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-            <div className="lg:col-span-2">
-              <StockAnalyzer />
-            </div>
-            <div>
-              <NewsWidget />
-            </div>
-          </div>
-        </TabsContent>
+          <TabsContent value="analysis">
+            <StockAnalyzer />
+          </TabsContent>
           
           <TabsContent value="trading">
             <TradingDashboard />

@@ -186,8 +186,9 @@ async function generateLLMAnalysis(symbol: string, marketData: any, analysisType
       : '\n\nNo recent news available for this stock.';
 
     const prompt = `
-As an expert financial analyst, analyze the stock ${symbol} based on the following market data and news:
+As an expert financial analyst with access to real-time market news, analyze the stock ${symbol} with HEAVY EMPHASIS on news sentiment integration:
 
+MARKET DATA:
 Current Price: $${marketData.currentPrice?.toFixed(2)}
 Price Change: $${marketData.priceChange?.toFixed(2)} (${marketData.priceChangePercent?.toFixed(2)}%)
 Volume: ${marketData.volume?.toLocaleString()}
@@ -197,19 +198,29 @@ P/E Ratio: ${marketData.peRatio?.toFixed(2)}
 52-Week Low: $${marketData.fiftyTwoWeekLow?.toFixed(2)}
 Beta: ${marketData.beta?.toFixed(2)}${newsContext}
 
-Analysis Type: ${analysisType}
+CRITICAL INSTRUCTIONS:
+1. NEWS SENTIMENT must be the PRIMARY factor in your recommendation (70% weight)
+2. Market data should be SECONDARY (30% weight)
+3. If news sentiment is overwhelmingly positive/negative, let it override technical indicators
+4. Consider news recency - more recent news has higher impact
+5. Analyze how news sentiment will affect BOTH short-term (1-7 days) and medium-term (1-3 months) price movements
 
-Please provide a comprehensive ${analysisType} analysis including:
-1. Current market sentiment (bullish/bearish/neutral) considering news sentiment
-2. Key technical or fundamental indicators
-3. Impact of recent news on stock performance
-4. Risk factors and opportunities considering news sentiment
-5. Clear recommendation (BUY/SELL/HOLD)
-6. Confidence level (0-100%)
-7. Price targets and timeframe
-8. How news sentiment might affect short-term and long-term performance
+Required Analysis (prioritize news impact in each section):
+1. **NEWS IMPACT ASSESSMENT** (most important): How will current news sentiment drive price action?
+2. **SENTIMENT-DRIVEN RECOMMENDATION**: BUY/SELL/HOLD based primarily on news sentiment
+3. **NEWS-ADJUSTED PRICE TARGETS**: Factor in news momentum for realistic targets
+4. **TRADING TIMELINE**: When to enter/exit based on news cycles
+5. **CONFIDENCE SCORE** (0-100%): Higher confidence when news and technicals align
+6. **RISK FACTORS**: How negative news could impact the position
+7. **CATALYST WATCH**: Upcoming news events that could move the stock
 
-Format your response to include specific sections and be actionable for trading decisions.
+NEWS WEIGHTING RULES:
+- Positive news sentiment (>3 positive articles) = Strong BUY bias
+- Mixed news sentiment = Consider technical factors more
+- Negative news sentiment (>2 negative articles) = Strong SELL bias
+- No recent news = Rely more on technical analysis but mention this limitation
+
+Format: Start with "NEWS-DRIVEN ANALYSIS" and make news impact clear in every section.
 `;
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {

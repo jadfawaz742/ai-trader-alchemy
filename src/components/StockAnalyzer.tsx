@@ -1,11 +1,12 @@
-import React, { useState } from 'react';
+import { useState } from "react";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Loader2, TrendingUp, TrendingDown, Minus } from "lucide-react";
 import { supabase } from "@/integrations/supabase/client";
-import { useToast } from "@/components/ui/use-toast";
+import { toast } from "@/hooks/use-toast";
+import { Loader2, Search, TrendingUp, TrendingDown, AlertCircle, Newspaper } from "lucide-react";
+import NewsWidget from "./NewsWidget";
 
 interface Analysis {
   id: string;
@@ -15,33 +16,22 @@ interface Analysis {
   recommendation: string;
   confidence_score: number;
   sentiment_score: number;
+  analysis_type: string;
   created_at: string;
   market_data: any;
 }
 
-export default function StockAnalyzer() {
-  const [symbol, setSymbol] = useState('');
-  const [loading, setLoading] = useState(false);
+const StockAnalyzer = () => {
+  const [symbol, setSymbol] = useState("");
   const [analysis, setAnalysis] = useState<Analysis | null>(null);
-  const [recentAnalyses, setRecentAnalyses] = useState<Analysis[]>([]);
-  const { toast } = useToast();
+  const [loading, setLoading] = useState(false);
+  const [currentStock, setCurrentStock] = useState<{symbol: string, company: string} | null>(null);
 
   const analyzeStock = async () => {
     if (!symbol.trim()) {
       toast({
         title: "Error",
         description: "Please enter a stock symbol",
-        variant: "destructive",
-      });
-      return;
-    }
-
-    // Check if user is authenticated
-    const { data: { user } } = await supabase.auth.getUser();
-    if (!user) {
-      toast({
-        title: "Authentication Required",
-        description: "Please log in to analyze stocks",
         variant: "destructive",
       });
       return;
@@ -58,229 +48,189 @@ export default function StockAnalyzer() {
 
       if (error) throw error;
 
-      if (data.success) {
+      console.log("Analysis response:", data);
+      
+      if (data.success && data.analysis) {
         setAnalysis(data.analysis);
-        loadRecentAnalyses();
+        setCurrentStock({
+          symbol: symbol.toUpperCase(),
+          company: data.analysis.company_name || `${symbol.toUpperCase()} Corporation`
+        });
         toast({
           title: "Analysis Complete",
-          description: `Successfully analyzed ${symbol.toUpperCase()}`,
+          description: `Successfully analyzed ${symbol.toUpperCase()} with news sentiment integration`,
         });
       } else {
-        throw new Error(data.error || 'Analysis failed');
+        throw new Error(data.error || "Analysis failed");
       }
     } catch (error: any) {
       console.error('Analysis error:', error);
-      
-      // Handle authentication errors specifically
-      if (error.message?.includes('Authorization') || error.message?.includes('Invalid authorization')) {
-        toast({
-          title: "Authentication Required",
-          description: "Please log in to analyze stocks",
-          variant: "destructive",
-        });
-      } else {
-        toast({
-          title: "Analysis Failed",
-          description: error.message || 'Failed to analyze stock',
-          variant: "destructive",
-        });
-      }
+      toast({
+        title: "Analysis Failed",
+        description: error.message || 'Failed to analyze stock',
+        variant: "destructive",
+      });
     } finally {
       setLoading(false);
     }
   };
 
-  const loadRecentAnalyses = async () => {
-    try {
-      // Check if user is authenticated
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        // User not authenticated, clear analyses
-        setRecentAnalyses([]);
-        return;
-      }
-
-      const { data, error } = await supabase
-        .from('stock_analysis')
-        .select('*')
-        .order('created_at', { ascending: false })
-        .limit(5);
-
-      if (error) throw error;
-      setRecentAnalyses(data || []);
-    } catch (error) {
-      console.error('Error loading recent analyses:', error);
-      setRecentAnalyses([]);
-    }
-  };
-
-  React.useEffect(() => {
-    loadRecentAnalyses();
-  }, []);
-
-  const getSentimentIcon = (sentiment: number) => {
-    if (sentiment > 0) return <TrendingUp className="h-4 w-4 text-success" />;
-    if (sentiment < 0) return <TrendingDown className="h-4 w-4 text-destructive" />;
-    return <Minus className="h-4 w-4 text-muted-foreground" />;
-  };
-
-  const getSentimentLabel = (sentiment: number) => {
-    if (sentiment > 0) return 'Bullish';
-    if (sentiment < 0) return 'Bearish';
-    return 'Neutral';
-  };
-
-  const getRecommendationVariant = (recommendation: string) => {
-    switch (recommendation?.toLowerCase()) {
-      case 'buy': return 'default';
-      case 'sell': return 'destructive';
-      case 'hold': return 'secondary';
-      default: return 'outline';
-    }
-  };
-
   return (
-    <div className="min-h-screen bg-gradient-to-br from-background via-background/95 to-primary/5 p-6">
-      <div className="max-w-6xl mx-auto space-y-8">
-        
-        {/* Header */}
-        <div className="text-center space-y-4">
-          <h1 className="text-4xl font-bold bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
-            AI Stock Market Analyzer
-          </h1>
-          <p className="text-lg text-muted-foreground max-w-2xl mx-auto">
-            Stage 1: Advanced LLM-powered stock analysis with real-time market data processing
-          </p>
-        </div>
+    <div className="w-full space-y-6">
+      <Card className="border-slate-800 bg-slate-900/50 backdrop-blur-sm">
+        <CardHeader>
+          <CardTitle className="text-white flex items-center gap-2">
+            <Search className="h-5 w-5 text-blue-400" />
+            AI Stock Analysis with News Integration
+          </CardTitle>
+          <CardDescription className="text-gray-400">
+            Enter a stock symbol for AI-powered analysis that includes real-time news sentiment
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex gap-2">
+            <Input
+              value={symbol}
+              onChange={(e) => setSymbol(e.target.value.toUpperCase())}
+              placeholder="Enter stock symbol (e.g., AAPL, TSLA, NVDA)"
+              className="flex-1 bg-slate-800 border-slate-700 text-white"
+              onKeyPress={(e) => e.key === 'Enter' && analyzeStock()}
+            />
+            <Button 
+              onClick={analyzeStock} 
+              disabled={loading || !symbol.trim()}
+              className="min-w-[120px]"
+            >
+              {loading ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Analyzing
+                </>
+              ) : (
+                <>
+                  <Search className="mr-2 h-4 w-4" />
+                  Analyze
+                </>
+              )}
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
 
-        {/* Analysis Input */}
-        <Card className="w-full max-w-md mx-auto">
-          <CardHeader>
-            <CardTitle>Analyze Stock</CardTitle>
-            <CardDescription>
-              Enter a stock symbol to get AI-powered market analysis
-            </CardDescription>
-          </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="flex space-x-2">
-              <Input
-                placeholder="Enter symbol (e.g., AAPL)"
-                value={symbol}
-                onChange={(e) => setSymbol(e.target.value.toUpperCase())}
-                onKeyPress={(e) => e.key === 'Enter' && analyzeStock()}
-                className="flex-1"
-              />
-              <Button 
-                onClick={analyzeStock} 
-                disabled={loading}
-                className="min-w-[100px]"
-              >
-                {loading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  'Analyze'
-                )}
-              </Button>
-            </div>
-          </CardContent>
-        </Card>
-
-        {/* Analysis Result */}
-        {analysis && (
-          <Card className="w-full">
-            <CardHeader>
-              <div className="flex items-center justify-between">
-                <div>
-                  <CardTitle className="flex items-center gap-2">
-                    {analysis.symbol} 
-                    {getSentimentIcon(analysis.sentiment_score)}
-                    <Badge variant={getRecommendationVariant(analysis.recommendation)}>
+      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div className="lg:col-span-2">
+          {analysis && (
+            <Card className="border-slate-800 bg-slate-900/50 backdrop-blur-sm">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-white flex items-center gap-2">
+                    <TrendingUp className="h-5 w-5 text-green-400" />
+                    AI Analysis Results for {analysis.symbol}
+                  </CardTitle>
+                  <div className="flex gap-2">
+                    <Badge 
+                      variant={analysis.recommendation === 'BUY' ? 'default' : 
+                              analysis.recommendation === 'SELL' ? 'destructive' : 'secondary'}
+                      className="text-sm"
+                    >
                       {analysis.recommendation}
                     </Badge>
-                  </CardTitle>
-                  <CardDescription>
-                    {analysis.company_name} • Confidence: {analysis.confidence_score}% • 
-                    Sentiment: {getSentimentLabel(analysis.sentiment_score)}
-                  </CardDescription>
+                    <Badge variant="outline" className="text-sm">
+                      {analysis.confidence_score}% Confidence
+                    </Badge>
+                  </div>
                 </div>
-                <Badge variant="outline">
-                  {new Date(analysis.created_at).toLocaleString()}
-                </Badge>
-              </div>
-            </CardHeader>
-            <CardContent className="space-y-6">
-              {/* Market Data */}
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="bg-card/50 p-3 rounded-lg">
-                  <p className="text-sm text-muted-foreground">Current Price</p>
-                  <p className="text-2xl font-bold">${analysis.market_data?.currentPrice?.toFixed(2)}</p>
-                </div>
-                <div className="bg-card/50 p-3 rounded-lg">
-                  <p className="text-sm text-muted-foreground">Change</p>
-                  <p className={`text-2xl font-bold ${analysis.market_data?.priceChange >= 0 ? 'text-success' : 'text-destructive'}`}>
-                    {analysis.market_data?.priceChange >= 0 ? '+' : ''}
-                    ${analysis.market_data?.priceChange?.toFixed(2)}
-                  </p>
-                </div>
-                <div className="bg-card/50 p-3 rounded-lg">
-                  <p className="text-sm text-muted-foreground">Volume</p>
-                  <p className="text-2xl font-bold">{analysis.market_data?.volume?.toLocaleString()}</p>
-                </div>
-                <div className="bg-card/50 p-3 rounded-lg">
-                  <p className="text-sm text-muted-foreground">P/E Ratio</p>
-                  <p className="text-2xl font-bold">{analysis.market_data?.peRatio?.toFixed(2)}</p>
-                </div>
-              </div>
-
-              {/* LLM Analysis */}
-              <div>
-                <h3 className="text-lg font-semibold mb-3">AI Analysis</h3>
-                <div className="bg-muted/50 p-4 rounded-lg">
-                  <pre className="whitespace-pre-wrap text-sm font-mono leading-relaxed">
-                    {analysis.llm_analysis}
-                  </pre>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Recent Analyses */}
-        {recentAnalyses.length > 0 && (
-          <Card>
-            <CardHeader>
-              <CardTitle>Recent Analyses</CardTitle>
-              <CardDescription>Latest AI stock analyses from Stage 1</CardDescription>
-            </CardHeader>
-            <CardContent>
-              <div className="space-y-3">
-                {recentAnalyses.map((item) => (
-                  <div 
-                    key={item.id}
-                    className="flex items-center justify-between p-3 bg-card/30 rounded-lg cursor-pointer hover:bg-card/50 transition-colors"
-                    onClick={() => setAnalysis(item)}
-                  >
-                    <div className="flex items-center gap-3">
-                      <div className="font-medium">{item.symbol}</div>
-                      {getSentimentIcon(item.sentiment_score)}
-                      <Badge variant={getRecommendationVariant(item.recommendation)} className="text-xs">
-                        {item.recommendation}
-                      </Badge>
-                      <span className="text-sm text-muted-foreground">
-                        {item.confidence_score}% confidence
-                      </span>
+                <CardDescription className="text-gray-400">
+                  Comprehensive analysis including news sentiment and market data
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="space-y-4">
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    <div className="space-y-2">
+                      <h4 className="text-sm font-medium text-white">Market Metrics</h4>
+                      <div className="space-y-1 text-sm text-gray-300">
+                        <div className="flex justify-between">
+                          <span>Company:</span>
+                          <span className="text-white">{analysis.company_name}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Analysis Type:</span>
+                          <span className="text-white capitalize">{analysis.analysis_type}</span>
+                        </div>
+                        <div className="flex justify-between">
+                          <span>Sentiment Score:</span>
+                          <span className={`font-medium ${
+                            analysis.sentiment_score > 60 ? 'text-green-400' : 
+                            analysis.sentiment_score < 40 ? 'text-red-400' : 'text-yellow-400'
+                          }`}>
+                            {analysis.sentiment_score}/100
+                          </span>
+                        </div>
+                      </div>
                     </div>
-                    <div className="text-xs text-muted-foreground">
-                      {new Date(item.created_at).toLocaleDateString()}
+                    
+                    <div className="space-y-2">
+                      <h4 className="text-sm font-medium text-white">News Integration</h4>
+                      <div className="space-y-1 text-sm text-gray-300">
+                        <div className="flex items-center gap-2">
+                          <Newspaper className="h-4 w-4 text-blue-400" />
+                          <span>Real-time news analyzed</span>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <AlertCircle className="h-4 w-4 text-yellow-400" />
+                          <span>Sentiment impact: {
+                            analysis.sentiment_score > 60 ? 'Positive' : 
+                            analysis.sentiment_score < 40 ? 'Negative' : 'Neutral'
+                          }</span>
+                        </div>
+                        <div className="text-xs text-gray-400">
+                          Analysis updated: {new Date(analysis.created_at).toLocaleString()}
+                        </div>
+                      </div>
                     </div>
                   </div>
-                ))}
-              </div>
-            </CardContent>
-          </Card>
-        )}
 
+                  <div className="space-y-2">
+                    <h4 className="text-sm font-medium text-white">AI Analysis Report</h4>
+                    <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700">
+                      <pre className="text-sm text-gray-300 whitespace-pre-wrap font-mono">
+                        {analysis.llm_analysis}
+                      </pre>
+                    </div>
+                  </div>
+
+                  <div className="flex items-center gap-2 text-xs text-gray-400">
+                    <AlertCircle className="h-3 w-3" />
+                    <span>This analysis integrates real-time news sentiment with market data for comprehensive insights</span>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
+          {!analysis && !loading && (
+            <Card className="border-slate-800 bg-slate-900/50 backdrop-blur-sm">
+              <CardContent className="p-12 text-center">
+                <TrendingUp className="h-16 w-16 text-gray-600 mx-auto mb-4" />
+                <h3 className="text-xl font-semibold text-white mb-2">Ready for Analysis</h3>
+                <p className="text-gray-400">
+                  Enter a stock symbol above to get AI-powered analysis with real-time news integration
+                </p>
+              </CardContent>
+            </Card>
+          )}
+        </div>
+
+        <div>
+          <NewsWidget 
+            symbol={currentStock?.symbol} 
+            company={currentStock?.company}
+          />
+        </div>
       </div>
     </div>
   );
-}
+};
+
+export default StockAnalyzer;
