@@ -41,7 +41,8 @@ serve(async (req) => {
     }
 
     const userId = user.id;
-    const { portfolioId } = await req.json();
+    const requestBody = await req.json();
+    const { portfolioId, simulationMode = false } = requestBody;
 
     console.log(`Starting NEWS-DRIVEN automated trading for user: ${userId}`);
 
@@ -60,9 +61,6 @@ serve(async (req) => {
 
     const portfolio = portfolioResult.data;
     const riskParams = riskParamsResult.data;
-
-    // Allow simulation mode even when auto trading is disabled
-    const { simulationMode = false } = await req.json();
     
     if (!simulationMode && !riskParams.auto_trading_enabled) {
       return new Response(JSON.stringify({ 
