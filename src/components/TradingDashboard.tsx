@@ -8,8 +8,7 @@ import { PortfolioDashboard } from './PortfolioDashboard';
 import { TradingInterface } from './TradingInterface';
 import StockAnalyzer from './StockAnalyzer';
 import { LiveTradingView } from './LiveTradingView';
-import { AITradingTab } from './AITradingTab';
-import { LiveAITrading } from './LiveAITrading';
+import { UnifiedAITrading } from './UnifiedAITrading';
 import { MarketActivityFeed } from './MarketActivityFeed';
 
 const TradingDashboard: React.FC = () => {
@@ -35,18 +34,17 @@ const TradingDashboard: React.FC = () => {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="grid w-full grid-cols-6">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="portfolio">Portfolio</TabsTrigger>
           <TabsTrigger value="trading">Manual Trading</TabsTrigger>
           <TabsTrigger value="analyzer">Stock Analysis</TabsTrigger>
-          <TabsTrigger value="ai-trading">AI Trading</TabsTrigger>
-          <TabsTrigger value="live-view">Market View</TabsTrigger>
-          <TabsTrigger value="live-ai" className="relative">
-            Live AI Trading
+          <TabsTrigger value="ai-trading" className="relative">
+            AI Trading
             {isLiveTrading && (
               <div className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
             )}
           </TabsTrigger>
+          <TabsTrigger value="live-view">Market View</TabsTrigger>
         </TabsList>
 
         <TabsContent value="portfolio">
@@ -62,7 +60,7 @@ const TradingDashboard: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="ai-trading">
-          <AITradingTab />
+          <UnifiedAITrading />
         </TabsContent>
         
         <TabsContent value="live-view">
@@ -72,17 +70,6 @@ const TradingDashboard: React.FC = () => {
             </div>
             <div>
               <MarketActivityFeed isActive={true} />
-            </div>
-          </div>
-        </TabsContent>
-        
-        <TabsContent value="live-ai">
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-            <div className="lg:col-span-3">
-              <LiveAITrading />
-            </div>
-            <div>
-              <MarketActivityFeed isActive={isLiveTrading} />
             </div>
           </div>
         </TabsContent>

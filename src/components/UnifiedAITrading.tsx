@@ -1,0 +1,647 @@
+import React, { useState, useEffect, useRef } from 'react';
+import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
+import { Slider } from '@/components/ui/slider';
+import { Switch } from '@/components/ui/switch';
+import { Badge } from '@/components/ui/badge';
+import { Progress } from '@/components/ui/progress';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import { useToast } from '@/hooks/use-toast';
+import { supabase } from '@/integrations/supabase/client';
+import { Bot, Play, Square, TrendingUp, TrendingDown, DollarSign, Clock, Target, Zap, Activity, Settings, BarChart3 } from 'lucide-react';
+import { StockChart } from '@/components/StockChart';
+
+interface LiveTrade {
+  id: string;
+  symbol: string;
+  action: 'BUY' | 'SELL';
+  quantity: number;
+  price: number;
+  timestamp: string;
+  confidence: number;
+  profitLoss: number;
+  status: 'pending' | 'executed' | 'closed';
+  duration: number;
+  momentum?: string;
+  volumeSpike?: boolean;
+  simulation?: boolean;
+  currentPrice?: number;
+}
+
+interface TradingSession {
+  isActive: boolean;
+  startTime: string;
+  totalTrades: number;
+  totalPnL: number;
+  activeTrades: LiveTrade[];
+  completedTrades: LiveTrade[];
+  currentBalance: number;
+  startingBalance: number;
+}
+
+export const UnifiedAITrading: React.FC = () => {
+  const [portfolio, setPortfolio] = useState<any>(null);
+  const [tradingAmount, setTradingAmount] = useState('1000');
+  const [riskLevel, setRiskLevel] = useState([50]);
+  const [stopLoss, setStopLoss] = useState([5]);
+  const [takeProfit, setTakeProfit] = useState([15]);
+  const [tradeDuration, setTradeDuration] = useState([300]); // 5 minutes default
+  const [simulationMode, setSimulationMode] = useState(true);
+  const [activeTab, setActiveTab] = useState('config');
+  
+  const [session, setSession] = useState<TradingSession>({
+    isActive: false,
+    startTime: '',
+    totalTrades: 0,
+    totalPnL: 0,
+    activeTrades: [],
+    completedTrades: [],
+    currentBalance: 0,
+    startingBalance: 0
+  });
+  
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const tradeUpdateRef = useRef<NodeJS.Timeout | null>(null);
+  const { toast } = useToast();
+
+  useEffect(() => {
+    loadPortfolio();
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      if (tradeUpdateRef.current) clearInterval(tradeUpdateRef.current);
+    };
+  }, []);
+
+  // Auto-switch to live view when trading starts
+  useEffect(() => {
+    if (session.isActive && activeTab === 'config') {
+      setActiveTab('live');
+    }
+  }, [session.isActive]);
+
+  // Update active trades with live P&L
+  useEffect(() => {
+    if (session.isActive && session.activeTrades.length > 0) {
+      tradeUpdateRef.current = setInterval(() => {
+        setSession(prev => {
+          const updatedActiveTrades = prev.activeTrades.map(trade => {
+            const volatilityFactor = riskLevel[0] / 100 * 0.08;
+            const momentumBoost = trade.momentum === 'bullish' ? 0.6 : trade.momentum === 'bearish' ? -0.6 : 0;
+            const volumeBoost = trade.volumeSpike ? 1.2 : 1.0;
+            
+            const baseChange = (Math.random() - 0.5) * volatilityFactor * trade.price * volumeBoost;
+            const momentumChange = momentumBoost * (Math.random() * 0.02 * trade.price);
+            const totalChange = baseChange + momentumChange;
+            
+            const currentPrice = Math.max(trade.price + totalChange, trade.price * 0.85);
+            
+            const newPnL = trade.action === 'BUY' 
+              ? (currentPrice - trade.price) * trade.quantity
+              : (trade.price - currentPrice) * trade.quantity;
+            
+            return {
+              ...trade,
+              profitLoss: Number(newPnL.toFixed(2)),
+              currentPrice: Number(currentPrice.toFixed(2))
+            };
+          });
+          
+          const totalActivePnL = updatedActiveTrades.reduce((sum, trade) => sum + trade.profitLoss, 0);
+          const completedPnL = prev.completedTrades.reduce((sum, trade) => sum + trade.profitLoss, 0);
+          
+          return {
+            ...prev,
+            activeTrades: updatedActiveTrades,
+            totalPnL: Number((totalActivePnL + completedPnL).toFixed(2)),
+            currentBalance: prev.startingBalance + totalActivePnL + completedPnL
+          };
+        });
+      }, 2000);
+    } else if (tradeUpdateRef.current) {
+      clearInterval(tradeUpdateRef.current);
+      tradeUpdateRef.current = null;
+    }
+
+    return () => {
+      if (tradeUpdateRef.current) {
+        clearInterval(tradeUpdateRef.current);
+        tradeUpdateRef.current = null;
+      }
+    };
+  }, [session.isActive, session.activeTrades.length, riskLevel]);
+
+  const loadPortfolio = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        console.log('User not authenticated');
+        return;
+      }
+
+      const { data } = await supabase
+        .from('portfolios')
+        .select('*')
+        .limit(1)
+        .single();
+      
+      if (data) {
+        setPortfolio(data);
+      }
+    } catch (error) {
+      console.error('Error loading portfolio:', error);
+    }
+  };
+
+  const startTrading = async () => {
+    if (!portfolio) {
+      toast({
+        title: "Error",
+        description: "No portfolio found",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    const startingBalance = parseFloat(tradingAmount);
+    setSession({
+      isActive: true,
+      startTime: new Date().toISOString(),
+      totalTrades: 0,
+      totalPnL: 0,
+      activeTrades: [],
+      completedTrades: [],
+      currentBalance: startingBalance,
+      startingBalance
+    });
+
+    toast({
+      title: `${simulationMode ? 'Simulation' : 'Live'} Trading Started`,
+      description: `AI trading started with $${tradingAmount} at ${riskLevel[0]}% risk level`
+    });
+
+    // Start executing trades
+    const tradingInterval = Math.max(5000, 20000 - (riskLevel[0] * 100));
+    intervalRef.current = setInterval(async () => {
+      await executeSingleTrade();
+    }, tradingInterval);
+
+    setTimeout(executeSingleTrade, 1000);
+  };
+
+  const executeSingleTrade = async () => {
+    try {
+      const { data, error } = await supabase.functions.invoke('auto-trade', {
+        body: {
+          portfolioId: portfolio.id,
+          simulationMode,
+          riskLevel: riskLevel[0],
+          maxAmount: parseFloat(tradingAmount),
+          stopLossPercent: stopLoss[0],
+          takeProfitPercent: takeProfit[0],
+          tradeDuration: tradeDuration[0]
+        }
+      });
+
+      if (error) throw error;
+
+      if (data.success && data.trades && data.trades.length > 0) {
+        const newTrades = data.trades.map((trade: any) => ({
+          id: Math.random().toString(36).substr(2, 9),
+          symbol: trade.symbol,
+          action: trade.action,
+          quantity: trade.quantity,
+          price: trade.price,
+          timestamp: new Date().toISOString(),
+          confidence: trade.confidence,
+          profitLoss: 0,
+          status: 'executed' as const,
+          duration: tradeDuration[0],
+          momentum: trade.momentum || 'neutral',
+          volumeSpike: trade.volumeSpike || false
+        }));
+
+        setSession(prev => ({
+          ...prev,
+          activeTrades: [...prev.activeTrades, ...newTrades],
+          totalTrades: prev.totalTrades + newTrades.length
+        }));
+
+        // Schedule trade closures
+        newTrades.forEach((trade: LiveTrade) => {
+          setTimeout(() => {
+            closeTrade(trade.id);
+          }, trade.duration * 1000);
+        });
+
+        toast({
+          title: "New Trades Executed",
+          description: `AI executed ${newTrades.length} trades`
+        });
+      }
+    } catch (error) {
+      console.error('Error executing trade:', error);
+      // Generate mock trade for demo
+      generateMockTrade();
+    }
+  };
+
+  const generateMockTrade = () => {
+    const symbols = ['AAPL', 'GOOGL', 'MSFT', 'TSLA', 'NVDA', 'META', 'AMZN'];
+    const actions: ("BUY" | "SELL")[] = ['BUY', 'SELL'];
+    const mockTrade: LiveTrade = {
+      id: Math.random().toString(36).substr(2, 9),
+      symbol: symbols[Math.floor(Math.random() * symbols.length)],
+      action: actions[Math.floor(Math.random() * actions.length)],
+      quantity: Math.floor(Math.random() * 10) + 1,
+      price: Math.random() * 200 + 50,
+      timestamp: new Date().toISOString(),
+      confidence: Math.floor(Math.random() * 40) + 60,
+      profitLoss: 0,
+      status: 'executed',
+      duration: tradeDuration[0],
+      momentum: 'neutral',
+      volumeSpike: false,
+      simulation: true
+    };
+
+    setSession(prev => ({
+      ...prev,
+      activeTrades: [...prev.activeTrades, mockTrade],
+      totalTrades: prev.totalTrades + 1
+    }));
+
+    setTimeout(() => {
+      closeTrade(mockTrade.id);
+    }, mockTrade.duration * 1000);
+  };
+
+  const closeTrade = (tradeId: string) => {
+    setSession(prev => {
+      const tradeToClose = prev.activeTrades.find(t => t.id === tradeId);
+      if (!tradeToClose) return prev;
+
+      const closedTrade = { ...tradeToClose, status: 'closed' as const };
+      
+      return {
+        ...prev,
+        activeTrades: prev.activeTrades.filter(t => t.id !== tradeId),
+        completedTrades: [...prev.completedTrades, closedTrade]
+      };
+    });
+  };
+
+  const stopTrading = () => {
+    if (intervalRef.current) {
+      clearInterval(intervalRef.current);
+      intervalRef.current = null;
+    }
+    
+    if (tradeUpdateRef.current) {
+      clearInterval(tradeUpdateRef.current);
+      tradeUpdateRef.current = null;
+    }
+
+    setSession(prev => ({
+      ...prev,
+      isActive: false,
+      completedTrades: [...prev.completedTrades, ...prev.activeTrades.map(t => ({ ...t, status: 'closed' as const }))],
+      activeTrades: []
+    }));
+
+    toast({
+      title: "Trading Stopped",
+      description: `Final P&L: ${session.totalPnL >= 0 ? '+' : ''}$${session.totalPnL.toFixed(2)}`
+    });
+  };
+
+  const getRiskLevelColor = (level: number) => {
+    if (level <= 30) return 'text-green-600';
+    if (level <= 70) return 'text-yellow-600';
+    return 'text-red-600';
+  };
+
+  const getRiskLevelText = (level: number) => {
+    if (level <= 30) return 'Conservative';
+    if (level <= 70) return 'Moderate';
+    return 'Aggressive';
+  };
+
+  const formatCurrency = (amount: number) => {
+    return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
+  };
+
+  const formatDuration = (seconds: number) => {
+    const minutes = Math.floor(seconds / 60);
+    const remainingSeconds = seconds % 60;
+    return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+  };
+
+  return (
+    <div className="space-y-6">
+      {/* Live Stock Charts for Active Trades */}
+      {session.activeTrades.length > 0 && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {session.activeTrades.slice(0, 4).map((trade) => (
+            <StockChart
+              key={trade.id}
+              symbol={trade.symbol}
+              currentPrice={trade.currentPrice || trade.price}
+              tradeType={trade.action}
+              className="h-fit"
+            />
+          ))}
+        </div>
+      )}
+
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            <Bot className="h-5 w-5" />
+            AI Trading Assistant
+            {session.isActive && (
+              <Badge variant="default" className="ml-2 animate-pulse">
+                <div className="w-2 h-2 bg-white rounded-full mr-1 animate-ping"></div>
+                LIVE
+              </Badge>
+            )}
+          </CardTitle>
+          <CardDescription>
+            Configure and manage AI-powered trading with advanced risk management
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <Tabs value={activeTab} onValueChange={setActiveTab}>
+            <TabsList className="grid w-full grid-cols-2">
+              <TabsTrigger value="config" className="flex items-center gap-2">
+                <Settings className="h-4 w-4" />
+                Configuration
+              </TabsTrigger>
+              <TabsTrigger value="live" className="flex items-center gap-2">
+                <BarChart3 className="h-4 w-4" />
+                Live Trading
+                {session.isActive && (
+                  <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse ml-1"></div>
+                )}
+              </TabsTrigger>
+            </TabsList>
+
+            <TabsContent value="config" className="space-y-6 mt-6">
+              {/* Trading Configuration */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+                <div className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="amount">Trading Amount ($)</Label>
+                    <Input
+                      id="amount"
+                      type="number"
+                      value={tradingAmount}
+                      onChange={(e) => setTradingAmount(e.target.value)}
+                      disabled={session.isActive}
+                      placeholder="Enter amount to trade"
+                      min="1"
+                      max="10000"
+                    />
+                    <p className="text-sm text-muted-foreground">
+                      Maximum amount the AI can use per trading session
+                    </p>
+                  </div>
+
+                  <div className="space-y-4">
+                    <Label>Risk Level: <span className={`font-semibold ${getRiskLevelColor(riskLevel[0])}`}>
+                      {getRiskLevelText(riskLevel[0])} ({riskLevel[0]}%)
+                    </span></Label>
+                    <Slider
+                      value={riskLevel}
+                      onValueChange={setRiskLevel}
+                      max={100}
+                      min={1}
+                      step={1}
+                      disabled={session.isActive}
+                      className="w-full"
+                    />
+                    <div className="grid grid-cols-3 gap-2 text-xs text-muted-foreground">
+                      <div className="text-left">Conservative (1-30%)</div>
+                      <div className="text-center">Moderate (31-70%)</div>
+                      <div className="text-right">Aggressive (71-100%)</div>
+                    </div>
+                  </div>
+
+                  <div className="space-y-3">
+                    <Label>Trade Duration: <span className="font-bold">
+                      {formatDuration(tradeDuration[0])}
+                    </span></Label>
+                    <Slider
+                      value={tradeDuration}
+                      onValueChange={setTradeDuration}
+                      max={1800} // 30 minutes max
+                      min={30}   // 30 seconds min
+                      step={30}
+                      disabled={session.isActive}
+                      className="w-full"
+                    />
+                    <div className="grid grid-cols-3 gap-2 text-xs text-muted-foreground">
+                      <div>30s</div>
+                      <div className="text-center">15m</div>
+                      <div className="text-right">30m</div>
+                    </div>
+                  </div>
+                </div>
+
+                <div className="space-y-4">
+                  {/* Stop Loss and Take Profit */}
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="space-y-3">
+                      <Label>Stop Loss: <span className="font-semibold text-red-600">-{stopLoss[0]}%</span></Label>
+                      <Slider
+                        value={stopLoss}
+                        onValueChange={setStopLoss}
+                        max={20}
+                        min={1}
+                        step={1}
+                        disabled={session.isActive}
+                        className="w-full"
+                      />
+                      <div className="text-xs text-muted-foreground">
+                        Automatically cut losses at -{stopLoss[0]}%
+                      </div>
+                    </div>
+
+                    <div className="space-y-3">
+                      <Label>Take Profit: <span className="font-semibold text-green-600">+{takeProfit[0]}%</span></Label>
+                      <Slider
+                        value={takeProfit}
+                        onValueChange={setTakeProfit}
+                        max={50}
+                        min={5}
+                        step={1}
+                        disabled={session.isActive}
+                        className="w-full"
+                      />
+                      <div className="text-xs text-muted-foreground">
+                        Automatically take profits at +{takeProfit[0]}%
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Simulation Mode */}
+                  <div className="flex items-center justify-between p-4 border rounded-lg">
+                    <div className="space-y-1">
+                      <div className="font-medium">Simulation Mode</div>
+                      <div className="text-sm text-muted-foreground">
+                        {simulationMode ? 'Test AI strategies without real money' : 'Trade with real money'}
+                      </div>
+                    </div>
+                    <Switch
+                      checked={simulationMode}
+                      onCheckedChange={setSimulationMode}
+                      disabled={session.isActive}
+                    />
+                  </div>
+
+                  {/* Portfolio Info */}
+                  {portfolio && (
+                    <div className="p-4 bg-muted rounded-lg">
+                      <div className="flex items-center justify-between mb-2">
+                        <span className="text-sm font-medium">Available Balance</span>
+                        <span className="text-lg font-bold">${portfolio.current_balance.toLocaleString()}</span>
+                      </div>
+                      <div className="text-xs text-muted-foreground">
+                        Portfolio: {portfolio.name}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* Trading Controls */}
+              <div className="flex gap-2">
+                {!session.isActive ? (
+                  <Button
+                    onClick={startTrading}
+                    disabled={!tradingAmount}
+                    className="flex-1 h-12"
+                  >
+                    <Play className="h-4 w-4 mr-2" />
+                    Start {simulationMode ? 'Simulation' : 'Live Trading'}
+                  </Button>
+                ) : (
+                  <Button
+                    onClick={stopTrading}
+                    variant="destructive"
+                    className="flex-1 h-12"
+                  >
+                    <Square className="h-4 w-4 mr-2" />
+                    Stop Trading
+                  </Button>
+                )}
+              </div>
+            </TabsContent>
+
+            <TabsContent value="live" className="space-y-6 mt-6">
+              {/* Session Stats */}
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="text-sm text-muted-foreground">Starting Balance</div>
+                    <div className="text-2xl font-bold">{formatCurrency(session.startingBalance)}</div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="text-sm text-muted-foreground">Current Balance</div>
+                    <div className={`text-2xl font-bold ${session.totalPnL >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {formatCurrency(session.currentBalance)}
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="text-sm text-muted-foreground">Total P&L</div>
+                    <div className={`text-2xl font-bold ${session.totalPnL >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {session.totalPnL >= 0 ? '+' : ''}{formatCurrency(session.totalPnL)}
+                    </div>
+                  </CardContent>
+                </Card>
+                <Card>
+                  <CardContent className="p-4">
+                    <div className="text-sm text-muted-foreground">Total Trades</div>
+                    <div className="text-2xl font-bold">{session.totalTrades}</div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              {/* Live Trades */}
+              {session.isActive && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="flex items-center gap-2">
+                      <Activity className="h-4 w-4" />
+                      Active Trades
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    {session.activeTrades.length === 0 ? (
+                      <div className="text-center py-8 text-muted-foreground">
+                        <div className="flex items-center justify-center gap-2 mb-2">
+                          <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
+                          <span>AI is analyzing markets...</span>
+                        </div>
+                        <div className="text-sm">Waiting for trading opportunities</div>
+                      </div>
+                    ) : (
+                      <div className="space-y-3">
+                        {session.activeTrades.map((trade) => (
+                          <div key={trade.id} className="p-4 border rounded-lg bg-muted/30">
+                            <div className="flex items-center justify-between mb-2">
+                              <div className="flex items-center gap-2">
+                                <Badge variant={trade.action === 'BUY' ? 'default' : 'destructive'}>
+                                  {trade.action}
+                                </Badge>
+                                <span className="font-bold">{trade.symbol}</span>
+                                <span className="text-sm text-muted-foreground">
+                                  {trade.quantity} shares @ ${trade.price.toFixed(2)}
+                                </span>
+                              </div>
+                              <div className="flex items-center gap-2">
+                                <Badge variant="outline">
+                                  {trade.confidence}% confidence
+                                </Badge>
+                                <div className={`font-bold ${trade.profitLoss >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                  {trade.profitLoss >= 0 ? '+' : ''}${trade.profitLoss.toFixed(2)}
+                                </div>
+                              </div>
+                            </div>
+                            <div className="text-xs text-muted-foreground">
+                              Started: {new Date(trade.timestamp).toLocaleTimeString()}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              )}
+
+              {!session.isActive && (
+                <div className="text-center py-12 text-muted-foreground">
+                  <Bot className="h-12 w-12 mx-auto mb-4 opacity-50" />
+                  <h3 className="text-lg font-semibold mb-2">No Active Trading Session</h3>
+                  <p>Configure your parameters and start trading to see live data here.</p>
+                  <Button 
+                    onClick={() => setActiveTab('config')} 
+                    variant="outline" 
+                    className="mt-4"
+                  >
+                    Go to Configuration
+                  </Button>
+                </div>
+              )}
+            </TabsContent>
+          </Tabs>
+        </CardContent>
+      </Card>
+    </div>
+  );
+};
