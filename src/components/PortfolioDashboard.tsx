@@ -154,10 +154,10 @@ export const PortfolioDashboard: React.FC = () => {
   useEffect(() => {
     loadPortfolioData();
     
-    // Auto-refresh portfolio every 5 seconds to show real-time changes
+    // Auto-refresh portfolio every 3 seconds to show real-time changes
     const refreshInterval = setInterval(() => {
       loadPortfolioData();
-    }, 5000);
+    }, 3000);
     
     return () => clearInterval(refreshInterval);
   }, []);

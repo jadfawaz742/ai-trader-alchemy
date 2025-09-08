@@ -182,10 +182,15 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
     if (!portfolio) return;
     
     try {
+      // Get current user
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
       // Save to trades table
       const { error: tradeError } = await supabase
         .from('trades')
         .insert({
+          user_id: user.id,
           portfolio_id: portfolio.id,
           symbol: trade.symbol,
           trade_type: trade.action,
@@ -200,7 +205,7 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
           }
         });
 
-      if (tradeError) throw tradeError;
+      console.log('Trade saved successfully:', trade.symbol, trade.action);
 
       // Update or create position
       const { data: existingPosition } = await supabase
@@ -247,6 +252,7 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
         await supabase
           .from('positions')
           .insert({
+            user_id: user.id,
             portfolio_id: portfolio.id,
             symbol: trade.symbol,
             quantity: trade.quantity,
@@ -275,8 +281,8 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
 
         if (portfolioError) throw portfolioError;
         
-        // Reload portfolio to get updated balance
-        loadPortfolio();
+        // Reload portfolio to get updated balance immediately
+        setTimeout(loadPortfolio, 500);
       }
     } catch (error) {
       console.error('Error saving trade:', error);
