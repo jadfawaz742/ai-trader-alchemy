@@ -28,6 +28,7 @@ interface LiveTrade {
   volumeSpike?: boolean;
   simulation?: boolean;
   currentPrice?: number;
+  closeReason?: 'stop_loss' | 'take_profit' | 'manual' | 'duration';
 }
 
 interface TradingSession {
@@ -81,12 +82,15 @@ export const UnifiedAITrading: React.FC = () => {
     }
   }, [session.isActive]);
 
-  // Update active trades with live P&L
+  // Update active trades with live P&L and auto-stop based on parameters
   useEffect(() => {
     if (session.isActive && session.activeTrades.length > 0) {
       tradeUpdateRef.current = setInterval(() => {
         setSession(prev => {
-          const updatedActiveTrades = prev.activeTrades.map(trade => {
+          const updatedActiveTrades = [];
+          const newlyClosedTrades = [];
+
+          prev.activeTrades.forEach(trade => {
             const volatilityFactor = riskLevel[0] / 100 * 0.08;
             const momentumBoost = trade.momentum === 'bullish' ? 0.6 : trade.momentum === 'bearish' ? -0.6 : 0;
             const volumeBoost = trade.volumeSpike ? 1.2 : 1.0;
@@ -100,20 +104,54 @@ export const UnifiedAITrading: React.FC = () => {
             const newPnL = trade.action === 'BUY' 
               ? (currentPrice - trade.price) * trade.quantity
               : (trade.price - currentPrice) * trade.quantity;
-            
-            return {
-              ...trade,
-              profitLoss: Number(newPnL.toFixed(2)),
-              currentPrice: Number(currentPrice.toFixed(2))
-            };
+
+            const percentChange = ((currentPrice - trade.price) / trade.price) * 100;
+            const actualPnLPercent = trade.action === 'BUY' ? percentChange : -percentChange;
+
+            // Check stop loss and take profit conditions
+            const shouldStopLoss = actualPnLPercent <= -stopLoss[0];
+            const shouldTakeProfit = actualPnLPercent >= takeProfit[0];
+
+            if (shouldStopLoss || shouldTakeProfit) {
+              // Save trade to database before closing
+              saveTrade({
+                ...trade,
+                profitLoss: Number(newPnL.toFixed(2)),
+                currentPrice: Number(currentPrice.toFixed(2)),
+                status: 'closed',
+                closeReason: shouldStopLoss ? 'stop_loss' : 'take_profit'
+              });
+
+              newlyClosedTrades.push({
+                ...trade,
+                profitLoss: Number(newPnL.toFixed(2)),
+                currentPrice: Number(currentPrice.toFixed(2)),
+                status: 'closed' as const,
+                closeReason: shouldStopLoss ? 'stop_loss' : 'take_profit'
+              });
+
+              toast({
+                title: shouldStopLoss ? "Stop Loss Triggered" : "Take Profit Triggered",
+                description: `${trade.symbol} ${trade.action} closed at ${shouldStopLoss ? '-' : '+'}${Math.abs(actualPnLPercent).toFixed(1)}%`,
+                variant: shouldStopLoss ? "destructive" : "default"
+              });
+            } else {
+              updatedActiveTrades.push({
+                ...trade,
+                profitLoss: Number(newPnL.toFixed(2)),
+                currentPrice: Number(currentPrice.toFixed(2))
+              });
+            }
           });
           
           const totalActivePnL = updatedActiveTrades.reduce((sum, trade) => sum + trade.profitLoss, 0);
-          const completedPnL = prev.completedTrades.reduce((sum, trade) => sum + trade.profitLoss, 0);
+          const allCompletedTrades = [...prev.completedTrades, ...newlyClosedTrades];
+          const completedPnL = allCompletedTrades.reduce((sum, trade) => sum + trade.profitLoss, 0);
           
           return {
             ...prev,
             activeTrades: updatedActiveTrades,
+            completedTrades: allCompletedTrades,
             totalPnL: Number((totalActivePnL + completedPnL).toFixed(2)),
             currentBalance: prev.startingBalance + totalActivePnL + completedPnL
           };
@@ -130,7 +168,7 @@ export const UnifiedAITrading: React.FC = () => {
         tradeUpdateRef.current = null;
       }
     };
-  }, [session.isActive, session.activeTrades.length, riskLevel]);
+  }, [session.isActive, session.activeTrades.length, riskLevel, stopLoss, takeProfit, toast]);
 
   const loadPortfolio = async () => {
     try {
@@ -151,6 +189,50 @@ export const UnifiedAITrading: React.FC = () => {
       }
     } catch (error) {
       console.error('Error loading portfolio:', error);
+    }
+  };
+
+  const saveTrade = async (trade: LiveTrade) => {
+    if (!portfolio) return;
+    
+    try {
+      // Save to trades table
+      const { error: tradeError } = await supabase
+        .from('trades')
+        .insert({
+          portfolio_id: portfolio.id,
+          symbol: trade.symbol,
+          trade_type: trade.action,
+          quantity: trade.quantity,
+          price: trade.price,
+          total_amount: Math.abs(trade.price * trade.quantity),
+          risk_score: 50, // Default risk score
+          ppo_signal: { confidence: trade.confidence }
+        });
+
+      if (tradeError) throw tradeError;
+
+      // Update portfolio balance if not simulation
+      if (!simulationMode) {
+        const balanceChange = trade.action === 'BUY' 
+          ? -(trade.price * trade.quantity) + (trade.profitLoss || 0)
+          : (trade.price * trade.quantity) + (trade.profitLoss || 0);
+
+        const { error: portfolioError } = await supabase
+          .from('portfolios')
+          .update({ 
+            current_balance: portfolio.current_balance + balanceChange,
+            total_pnl: portfolio.total_pnl + (trade.profitLoss || 0)
+          })
+          .eq('id', portfolio.id);
+
+        if (portfolioError) throw portfolioError;
+        
+        // Reload portfolio to get updated balance
+        loadPortfolio();
+      }
+    } catch (error) {
+      console.error('Error saving trade:', error);
     }
   };
 
@@ -228,9 +310,10 @@ export const UnifiedAITrading: React.FC = () => {
           totalTrades: prev.totalTrades + newTrades.length
         }));
 
-        // Schedule trade closures
+        // Schedule trade closures based on duration
         newTrades.forEach((trade: LiveTrade) => {
           setTimeout(() => {
+            saveTrade({...trade, status: 'closed'});
             closeTrade(trade.id);
           }, trade.duration * 1000);
         });
@@ -273,6 +356,7 @@ export const UnifiedAITrading: React.FC = () => {
     }));
 
     setTimeout(() => {
+      saveTrade({...mockTrade, status: 'closed'});
       closeTrade(mockTrade.id);
     }, mockTrade.duration * 1000);
   };
@@ -527,6 +611,24 @@ export const UnifiedAITrading: React.FC = () => {
                     Start {simulationMode ? 'Simulation' : 'Live Trading'}
                   </Button>
                 ) : (
+                  <div className="text-center py-4 text-muted-foreground">
+                    <p>Trading is active. Go to Live Trading tab to monitor and stop.</p>
+                    <Button 
+                      onClick={() => setActiveTab('live')} 
+                      variant="outline" 
+                      className="mt-2"
+                    >
+                      View Live Trading
+                    </Button>
+                  </div>
+                )}
+              </div>
+            </TabsContent>
+
+            <TabsContent value="live" className="space-y-6 mt-6">
+              {/* Trading Controls in Live Tab */}
+              {session.isActive && (
+                <div className="flex gap-2 mb-6">
                   <Button
                     onClick={stopTrading}
                     variant="destructive"
@@ -535,11 +637,9 @@ export const UnifiedAITrading: React.FC = () => {
                     <Square className="h-4 w-4 mr-2" />
                     Stop Trading
                   </Button>
-                )}
-              </div>
-            </TabsContent>
+                </div>
+              )}
 
-            <TabsContent value="live" className="space-y-6 mt-6">
               {/* Session Stats */}
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <Card>
@@ -572,6 +672,39 @@ export const UnifiedAITrading: React.FC = () => {
                 </Card>
               </div>
 
+              {/* Live Parameters Display */}
+              {session.isActive && (
+                <Card>
+                  <CardHeader>
+                    <CardTitle className="text-lg">Active Parameters</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-sm">
+                      <div>
+                        <div className="text-muted-foreground">Stop Loss</div>
+                        <div className="font-semibold text-red-600">-{stopLoss[0]}%</div>
+                      </div>
+                      <div>
+                        <div className="text-muted-foreground">Take Profit</div>
+                        <div className="font-semibold text-green-600">+{takeProfit[0]}%</div>
+                      </div>
+                      <div>
+                        <div className="text-muted-foreground">Risk Level</div>
+                        <div className={`font-semibold ${getRiskLevelColor(riskLevel[0])}`}>
+                          {riskLevel[0]}%
+                        </div>
+                      </div>
+                      <div>
+                        <div className="text-muted-foreground">Mode</div>
+                        <Badge variant={simulationMode ? "secondary" : "default"}>
+                          {simulationMode ? 'SIM' : 'LIVE'}
+                        </Badge>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
               {/* Live Trades */}
               {session.isActive && (
                 <Card>
@@ -592,32 +725,43 @@ export const UnifiedAITrading: React.FC = () => {
                       </div>
                     ) : (
                       <div className="space-y-3">
-                        {session.activeTrades.map((trade) => (
-                          <div key={trade.id} className="p-4 border rounded-lg bg-muted/30">
-                            <div className="flex items-center justify-between mb-2">
-                              <div className="flex items-center gap-2">
-                                <Badge variant={trade.action === 'BUY' ? 'default' : 'destructive'}>
-                                  {trade.action}
-                                </Badge>
-                                <span className="font-bold">{trade.symbol}</span>
-                                <span className="text-sm text-muted-foreground">
-                                  {trade.quantity} shares @ ${trade.price.toFixed(2)}
-                                </span>
-                              </div>
-                              <div className="flex items-center gap-2">
-                                <Badge variant="outline">
-                                  {trade.confidence}% confidence
-                                </Badge>
-                                <div className={`font-bold ${trade.profitLoss >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                  {trade.profitLoss >= 0 ? '+' : ''}${trade.profitLoss.toFixed(2)}
+                        {session.activeTrades.map((trade) => {
+                          const percentChange = trade.currentPrice 
+                            ? ((trade.currentPrice - trade.price) / trade.price) * 100
+                            : 0;
+                          const actualPnLPercent = trade.action === 'BUY' ? percentChange : -percentChange;
+                          
+                          return (
+                            <div key={trade.id} className="p-4 border rounded-lg bg-muted/30">
+                              <div className="flex items-center justify-between mb-2">
+                                <div className="flex items-center gap-2">
+                                  <Badge variant={trade.action === 'BUY' ? 'default' : 'destructive'}>
+                                    {trade.action}
+                                  </Badge>
+                                  <span className="font-bold">{trade.symbol}</span>
+                                  <span className="text-sm text-muted-foreground">
+                                    {trade.quantity} shares @ ${trade.price.toFixed(2)}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <Badge variant="outline">
+                                    {trade.confidence}% confidence
+                                  </Badge>
+                                  <div className={`font-bold ${trade.profitLoss >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                    {actualPnLPercent >= 0 ? '+' : ''}{actualPnLPercent.toFixed(1)}%
+                                  </div>
+                                  <div className={`font-bold ${trade.profitLoss >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                    {trade.profitLoss >= 0 ? '+' : ''}${trade.profitLoss.toFixed(2)}
+                                  </div>
                                 </div>
                               </div>
+                              <div className="flex items-center justify-between text-xs text-muted-foreground">
+                                <span>Started: {new Date(trade.timestamp).toLocaleTimeString()}</span>
+                                <span>Current: ${trade.currentPrice?.toFixed(2) || trade.price.toFixed(2)}</span>
+                              </div>
                             </div>
-                            <div className="text-xs text-muted-foreground">
-                              Started: {new Date(trade.timestamp).toLocaleTimeString()}
-                            </div>
-                          </div>
-                        ))}
+                          );
+                        })}
                       </div>
                     )}
                   </CardContent>

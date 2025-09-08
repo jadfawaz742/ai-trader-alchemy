@@ -238,7 +238,7 @@ export const TradingInterface: React.FC = () => {
         setPpoSignal(null);
         setRiskAssessment(null);
         
-        // Reload portfolio
+        // Reload portfolio to reflect changes
         loadPortfolio();
       } else {
         throw new Error(data?.error || 'Trade execution failed');
@@ -247,7 +247,9 @@ export const TradingInterface: React.FC = () => {
       console.error('Error executing trade:', error);
       toast({
         title: "Trade Failed",
-        description: error.message || "Failed to execute trade",
+        description: typeof error === 'object' && error !== null && 'message' in error 
+          ? (error as Error).message 
+          : "Failed to execute trade",
         variant: "destructive"
       });
     } finally {
