@@ -102,7 +102,7 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
           const newlyClosedTrades = [];
 
           prev.activeTrades.forEach(trade => {
-            // EXTREMELY aggressive price simulation to force stop triggers
+            // EXTREMELY aggressive price simulation to force triggers at YOUR parameters
             const volatilityFactor = riskLevel[0] / 100 * 0.30; // Maximum volatility
             const momentumBoost = trade.momentum === 'bullish' ? 1.5 : trade.momentum === 'bearish' ? -1.5 : 0;
             const volumeBoost = trade.volumeSpike ? 2.0 : 1.0;
@@ -120,11 +120,11 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
             const percentChange = ((currentPrice - trade.price) / trade.price) * 100;
             const actualPnLPercent = trade.action === 'BUY' ? percentChange : -percentChange;
 
-            console.log(`${trade.symbol}: P&L% = ${actualPnLPercent.toFixed(2)}%, Stop Loss = ${stopLoss[0]}%, Take Profit = ${takeProfit[0]}%`);
+            console.log(`${trade.symbol}: P&L% = ${actualPnLPercent.toFixed(2)}%, YOUR Stop Loss = ${stopLoss[0]}%, YOUR Take Profit = ${takeProfit[0]}%`);
 
-            // Check stop loss and take profit conditions
-            const shouldStopLoss = actualPnLPercent <= -stopLoss[0];
-            const shouldTakeProfit = actualPnLPercent >= takeProfit[0];
+            // Use YOUR EXACT parameters for stop loss and take profit
+            const shouldStopLoss = actualPnLPercent <= -Math.abs(stopLoss[0]);
+            const shouldTakeProfit = actualPnLPercent >= Math.abs(takeProfit[0]);
 
             if (shouldStopLoss || shouldTakeProfit) {
               // Save closed trade to database with final P&L
@@ -141,10 +141,10 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
 
               newlyClosedTrades.push(closedTrade);
 
-              console.log(`🚨 ${shouldStopLoss ? 'STOP LOSS' : 'TAKE PROFIT'} TRIGGERED: ${trade.symbol} at ${actualPnLPercent.toFixed(2)}%`);
+              console.log(`🚨 ${shouldStopLoss ? 'YOUR STOP LOSS' : 'YOUR TAKE PROFIT'} TRIGGERED: ${trade.symbol} at ${actualPnLPercent.toFixed(2)}% (Trigger: ${shouldStopLoss ? stopLoss[0] : takeProfit[0]}%)`);
 
               toast({
-                title: shouldStopLoss ? "🔻 STOP LOSS TRIGGERED!" : "🚀 TAKE PROFIT TRIGGERED!",
+                title: shouldStopLoss ? `🔻 STOP LOSS at ${stopLoss[0]}%!` : `🚀 TAKE PROFIT at ${takeProfit[0]}%!`,
                 description: `${trade.symbol} ${trade.action} closed at ${shouldStopLoss ? '-' : '+'}${Math.abs(actualPnLPercent).toFixed(1)}% | P&L: ${newPnL >= 0 ? '+' : ''}$${newPnL.toFixed(2)}`,
                 variant: shouldStopLoss ? "destructive" : "default"
               });

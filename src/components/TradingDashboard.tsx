@@ -50,7 +50,7 @@ const TradingDashboard: React.FC = () => {
   const [portfolio, setPortfolio] = useState<any>(null);
   const [tradingAmount, setTradingAmount] = useState('1000');
   const [riskLevel, setRiskLevel] = useState([50]);
-  const [stopLoss, setStopLoss] = useState([2]);
+  const [stopLoss, setStopLoss] = useState([5]);
   const [takeProfit, setTakeProfit] = useState([15]);
   const [tradeDuration, setTradeDuration] = useState([300]);
   const [simulationMode, setSimulationMode] = useState(true);
@@ -118,7 +118,7 @@ const TradingDashboard: React.FC = () => {
           const newlyClosedTrades = [];
 
           prev.activeTrades.forEach(trade => {
-            // Much more aggressive price simulation to trigger stops quickly
+            // Much more aggressive price simulation to trigger stops at YOUR parameters
             const volatilityFactor = riskLevel[0] / 100 * 0.25; // Increased from 0.15 to 0.25
             const momentumBoost = trade.momentum === 'bullish' ? 1.2 : trade.momentum === 'bearish' ? -1.2 : 0;
             const volumeBoost = trade.volumeSpike ? 1.5 : 1.0;
@@ -137,11 +137,11 @@ const TradingDashboard: React.FC = () => {
             const percentChange = ((currentPrice - trade.price) / trade.price) * 100;
             const actualPnLPercent = trade.action === 'BUY' ? percentChange : -percentChange;
 
-            console.log(`${trade.symbol} ${trade.action}: Current: ${currentPrice.toFixed(2)}, Entry: ${trade.price.toFixed(2)}, P&L%: ${actualPnLPercent.toFixed(2)}%, Stop Loss: ${stopLoss[0]}%, Take Profit: ${takeProfit[0]}%`);
+            console.log(`${trade.symbol} ${trade.action}: P&L% = ${actualPnLPercent.toFixed(2)}%, YOUR Stop Loss = ${stopLoss[0]}%, YOUR Take Profit = ${takeProfit[0]}%`);
 
-            // Check stop loss and take profit conditions - MORE AGGRESSIVE
-            const shouldStopLoss = actualPnLPercent <= -stopLoss[0];
-            const shouldTakeProfit = actualPnLPercent >= takeProfit[0];
+            // Use YOUR EXACT parameters for triggers
+            const shouldStopLoss = actualPnLPercent <= -Math.abs(stopLoss[0]);
+            const shouldTakeProfit = actualPnLPercent >= Math.abs(takeProfit[0]);
 
             if (shouldStopLoss || shouldTakeProfit) {
               newlyClosedTrades.push({
@@ -152,10 +152,10 @@ const TradingDashboard: React.FC = () => {
                 closeReason: shouldStopLoss ? 'stop_loss' : 'take_profit'
               });
 
-              console.log(`🚨 ${shouldStopLoss ? 'STOP LOSS' : 'TAKE PROFIT'} TRIGGERED for ${trade.symbol} at ${actualPnLPercent.toFixed(2)}%`);
+              console.log(`🚨 ${shouldStopLoss ? 'YOUR STOP LOSS' : 'YOUR TAKE PROFIT'} TRIGGERED for ${trade.symbol} at ${actualPnLPercent.toFixed(2)}% (Your setting: ${shouldStopLoss ? stopLoss[0] : takeProfit[0]}%)`);
 
               toast({
-                title: shouldStopLoss ? "🔻 Stop Loss Triggered" : "🚀 Take Profit Triggered",
+                title: shouldStopLoss ? `🔻 Stop Loss at ${stopLoss[0]}%` : `🚀 Take Profit at ${takeProfit[0]}%`,
                 description: `${trade.symbol} ${trade.action} closed at ${shouldStopLoss ? '-' : '+'}${Math.abs(actualPnLPercent).toFixed(1)}% | P&L: ${newPnL >= 0 ? '+' : ''}$${newPnL.toFixed(2)}`,
                 variant: shouldStopLoss ? "destructive" : "default"
               });
