@@ -42,45 +42,56 @@ interface TradingSession {
   startingBalance: number;
 }
 
-export const UnifiedAITrading: React.FC = () => {
-  const [portfolio, setPortfolio] = useState<any>(null);
-  const [tradingAmount, setTradingAmount] = useState('1000');
-  const [riskLevel, setRiskLevel] = useState([50]);
-  const [stopLoss, setStopLoss] = useState([5]);
-  const [takeProfit, setTakeProfit] = useState([15]);
-  const [tradeDuration, setTradeDuration] = useState([300]); // 5 minutes default
-  const [simulationMode, setSimulationMode] = useState(true);
-  const [activeTab, setActiveTab] = useState('config');
-  
-  const [session, setSession] = useState<TradingSession>({
-    isActive: false,
-    startTime: '',
-    totalTrades: 0,
-    totalPnL: 0,
-    activeTrades: [],
-    completedTrades: [],
-    currentBalance: 0,
-    startingBalance: 0
-  });
-  
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
-  const tradeUpdateRef = useRef<NodeJS.Timeout | null>(null);
-  const { toast } = useToast();
+interface UnifiedAITradingProps {
+  portfolio: any;
+  tradingAmount: string;
+  setTradingAmount: (value: string) => void;
+  riskLevel: number[];
+  setRiskLevel: (value: number[]) => void;
+  stopLoss: number[];
+  setStopLoss: (value: number[]) => void;
+  takeProfit: number[];
+  setTakeProfit: (value: number[]) => void;
+  tradeDuration: number[];
+  setTradeDuration: (value: number[]) => void;
+  simulationMode: boolean;
+  setSimulationMode: (value: boolean) => void;
+  session: TradingSession;
+  setSession: (value: TradingSession | ((prev: TradingSession) => TradingSession)) => void;
+  intervalRef: React.MutableRefObject<NodeJS.Timeout | null>;
+  tradeUpdateRef: React.MutableRefObject<NodeJS.Timeout | null>;
+  loadPortfolio: () => void;
+}
 
-  useEffect(() => {
-    loadPortfolio();
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-      if (tradeUpdateRef.current) clearInterval(tradeUpdateRef.current);
-    };
-  }, []);
+export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
+  portfolio,
+  tradingAmount,
+  setTradingAmount,
+  riskLevel,
+  setRiskLevel,
+  stopLoss,
+  setStopLoss,
+  takeProfit,
+  setTakeProfit,
+  tradeDuration,
+  setTradeDuration,
+  simulationMode,
+  setSimulationMode,
+  session,
+  setSession,
+  intervalRef,
+  tradeUpdateRef,
+  loadPortfolio
+}) => {
+  const [activeTab, setActiveTab] = useState('config');
+  const { toast } = useToast();
 
   // Auto-switch to live view when trading starts
   useEffect(() => {
     if (session.isActive && activeTab === 'config') {
       setActiveTab('live');
     }
-  }, [session.isActive]);
+  }, [session.isActive, activeTab]);
 
   // Update active trades with live P&L and auto-stop based on parameters
   useEffect(() => {
@@ -168,29 +179,7 @@ export const UnifiedAITrading: React.FC = () => {
         tradeUpdateRef.current = null;
       }
     };
-  }, [session.isActive, session.activeTrades.length, riskLevel, stopLoss, takeProfit, toast]);
-
-  const loadPortfolio = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        console.log('User not authenticated');
-        return;
-      }
-
-      const { data } = await supabase
-        .from('portfolios')
-        .select('*')
-        .limit(1)
-        .single();
-      
-      if (data) {
-        setPortfolio(data);
-      }
-    } catch (error) {
-      console.error('Error loading portfolio:', error);
-    }
-  };
+  }, [session.isActive, session.activeTrades.length, riskLevel, stopLoss, takeProfit, toast, setSession, tradeUpdateRef]);
 
   const saveTrade = async (trade: LiveTrade) => {
     if (!portfolio) return;

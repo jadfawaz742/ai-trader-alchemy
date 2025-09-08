@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
@@ -10,10 +10,205 @@ import StockAnalyzer from './StockAnalyzer';
 import { LiveTradingView } from './LiveTradingView';
 import { UnifiedAITrading } from './UnifiedAITrading';
 import { MarketActivityFeed } from './MarketActivityFeed';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
+
+interface LiveTrade {
+  id: string;
+  symbol: string;
+  action: 'BUY' | 'SELL';
+  quantity: number;
+  price: number;
+  timestamp: string;
+  confidence: number;
+  profitLoss: number;
+  status: 'pending' | 'executed' | 'closed';
+  duration: number;
+  momentum?: string;
+  volumeSpike?: boolean;
+  simulation?: boolean;
+  currentPrice?: number;
+  closeReason?: 'stop_loss' | 'take_profit' | 'manual' | 'duration';
+}
+
+interface TradingSession {
+  isActive: boolean;
+  startTime: string;
+  totalTrades: number;
+  totalPnL: number;
+  activeTrades: LiveTrade[];
+  completedTrades: LiveTrade[];
+  currentBalance: number;
+  startingBalance: number;
+}
 
 const TradingDashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState("portfolio");
   const [isLiveTrading, setIsLiveTrading] = useState(false);
+  
+  // Global trading state
+  const [portfolio, setPortfolio] = useState<any>(null);
+  const [tradingAmount, setTradingAmount] = useState('1000');
+  const [riskLevel, setRiskLevel] = useState([50]);
+  const [stopLoss, setStopLoss] = useState([5]);
+  const [takeProfit, setTakeProfit] = useState([15]);
+  const [tradeDuration, setTradeDuration] = useState([300]);
+  const [simulationMode, setSimulationMode] = useState(true);
+  
+  const [session, setSession] = useState<TradingSession>({
+    isActive: false,
+    startTime: '',
+    totalTrades: 0,
+    totalPnL: 0,
+    activeTrades: [],
+    completedTrades: [],
+    currentBalance: 0,
+    startingBalance: 0
+  });
+
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const tradeUpdateRef = useRef<NodeJS.Timeout | null>(null);
+  const { toast } = useToast();
+
+  // Update isLiveTrading based on session state
+  useEffect(() => {
+    setIsLiveTrading(session.isActive);
+  }, [session.isActive]);
+
+  // Cleanup on unmount
+  useEffect(() => {
+    return () => {
+      if (intervalRef.current) clearInterval(intervalRef.current);
+      if (tradeUpdateRef.current) clearInterval(tradeUpdateRef.current);
+    };
+  }, []);
+
+  const loadPortfolio = async () => {
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        console.log('User not authenticated');
+        return;
+      }
+
+      const { data } = await supabase
+        .from('portfolios')
+        .select('*')
+        .limit(1)
+        .single();
+      
+      if (data) {
+        setPortfolio(data);
+      }
+    } catch (error) {
+      console.error('Error loading portfolio:', error);
+    }
+  };
+
+  useEffect(() => {
+    loadPortfolio();
+  }, []);
+
+  // Update active trades with live P&L and auto-stop based on parameters
+  useEffect(() => {
+    if (session.isActive && session.activeTrades.length > 0) {
+      tradeUpdateRef.current = setInterval(() => {
+        setSession(prev => {
+          const updatedActiveTrades = [];
+          const newlyClosedTrades = [];
+
+          prev.activeTrades.forEach(trade => {
+            const volatilityFactor = riskLevel[0] / 100 * 0.08;
+            const momentumBoost = trade.momentum === 'bullish' ? 0.6 : trade.momentum === 'bearish' ? -0.6 : 0;
+            const volumeBoost = trade.volumeSpike ? 1.2 : 1.0;
+            
+            const baseChange = (Math.random() - 0.5) * volatilityFactor * trade.price * volumeBoost;
+            const momentumChange = momentumBoost * (Math.random() * 0.02 * trade.price);
+            const totalChange = baseChange + momentumChange;
+            
+            const currentPrice = Math.max(trade.price + totalChange, trade.price * 0.85);
+            
+            const newPnL = trade.action === 'BUY' 
+              ? (currentPrice - trade.price) * trade.quantity
+              : (trade.price - currentPrice) * trade.quantity;
+
+            const percentChange = ((currentPrice - trade.price) / trade.price) * 100;
+            const actualPnLPercent = trade.action === 'BUY' ? percentChange : -percentChange;
+
+            // Check stop loss and take profit conditions
+            const shouldStopLoss = actualPnLPercent <= -stopLoss[0];
+            const shouldTakeProfit = actualPnLPercent >= takeProfit[0];
+
+            if (shouldStopLoss || shouldTakeProfit) {
+              newlyClosedTrades.push({
+                ...trade,
+                profitLoss: Number(newPnL.toFixed(2)),
+                currentPrice: Number(currentPrice.toFixed(2)),
+                status: 'closed' as const,
+                closeReason: shouldStopLoss ? 'stop_loss' : 'take_profit'
+              });
+
+              toast({
+                title: shouldStopLoss ? "Stop Loss Triggered" : "Take Profit Triggered",
+                description: `${trade.symbol} ${trade.action} closed at ${shouldStopLoss ? '-' : '+'}${Math.abs(actualPnLPercent).toFixed(1)}%`,
+                variant: shouldStopLoss ? "destructive" : "default"
+              });
+            } else {
+              updatedActiveTrades.push({
+                ...trade,
+                profitLoss: Number(newPnL.toFixed(2)),
+                currentPrice: Number(currentPrice.toFixed(2))
+              });
+            }
+          });
+          
+          const totalActivePnL = updatedActiveTrades.reduce((sum, trade) => sum + trade.profitLoss, 0);
+          const allCompletedTrades = [...prev.completedTrades, ...newlyClosedTrades];
+          const completedPnL = allCompletedTrades.reduce((sum, trade) => sum + trade.profitLoss, 0);
+          
+          return {
+            ...prev,
+            activeTrades: updatedActiveTrades,
+            completedTrades: allCompletedTrades,
+            totalPnL: Number((totalActivePnL + completedPnL).toFixed(2)),
+            currentBalance: prev.startingBalance + totalActivePnL + completedPnL
+          };
+        });
+      }, 2000);
+    } else if (tradeUpdateRef.current) {
+      clearInterval(tradeUpdateRef.current);
+      tradeUpdateRef.current = null;
+    }
+
+    return () => {
+      if (tradeUpdateRef.current) {
+        clearInterval(tradeUpdateRef.current);
+        tradeUpdateRef.current = null;
+      }
+    };
+  }, [session.isActive, session.activeTrades.length, riskLevel, stopLoss, takeProfit, toast]);
+
+  // Pass all trading props and functions to UnifiedAITrading
+  const tradingProps = {
+    portfolio,
+    tradingAmount,
+    setTradingAmount,
+    riskLevel,
+    setRiskLevel,
+    stopLoss,
+    setStopLoss,
+    takeProfit,
+    setTakeProfit,
+    tradeDuration,
+    setTradeDuration,
+    simulationMode,
+    setSimulationMode,
+    session,
+    setSession,
+    intervalRef,
+    tradeUpdateRef,
+    loadPortfolio
+  };
 
   return (
     <div className="container mx-auto p-6 space-y-6">
@@ -60,7 +255,7 @@ const TradingDashboard: React.FC = () => {
         </TabsContent>
 
         <TabsContent value="ai-trading">
-          <UnifiedAITrading />
+          <UnifiedAITrading {...tradingProps} />
         </TabsContent>
         
         <TabsContent value="live-view">
