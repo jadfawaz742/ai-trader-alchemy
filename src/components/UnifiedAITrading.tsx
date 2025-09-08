@@ -124,26 +124,23 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
             const shouldTakeProfit = actualPnLPercent >= takeProfit[0];
 
             if (shouldStopLoss || shouldTakeProfit) {
-              // Save trade to database before closing
-              saveTrade({
-                ...trade,
-                profitLoss: Number(newPnL.toFixed(2)),
-                currentPrice: Number(currentPrice.toFixed(2)),
-                status: 'closed',
-                closeReason: shouldStopLoss ? 'stop_loss' : 'take_profit'
-              });
-
-              newlyClosedTrades.push({
+              // Save closed trade to database with final P&L
+              const closedTrade = {
                 ...trade,
                 profitLoss: Number(newPnL.toFixed(2)),
                 currentPrice: Number(currentPrice.toFixed(2)),
                 status: 'closed' as const,
-                closeReason: shouldStopLoss ? 'stop_loss' : 'take_profit'
-              });
+                closeReason: (shouldStopLoss ? 'stop_loss' : 'take_profit') as 'stop_loss' | 'take_profit'
+              };
+              
+              // Save to database immediately
+              saveTrade(closedTrade);
+
+              newlyClosedTrades.push(closedTrade);
 
               toast({
                 title: shouldStopLoss ? "Stop Loss Triggered" : "Take Profit Triggered",
-                description: `${trade.symbol} ${trade.action} closed at ${shouldStopLoss ? '-' : '+'}${Math.abs(actualPnLPercent).toFixed(1)}%`,
+                description: `${trade.symbol} ${trade.action} closed at ${shouldStopLoss ? '-' : '+'}${Math.abs(actualPnLPercent).toFixed(1)}% | P&L: ${newPnL >= 0 ? '+' : ''}$${newPnL.toFixed(2)}`,
                 variant: shouldStopLoss ? "destructive" : "default"
               });
             } else {
@@ -342,7 +339,7 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
         const newTrades = data.trades.map((trade: any) => ({
           id: Math.random().toString(36).substr(2, 9),
           symbol: trade.symbol,
-          action: trade.action,
+          action: trade.action.toUpperCase(),
           quantity: trade.quantity,
           price: trade.price,
           timestamp: new Date().toISOString(),
@@ -351,8 +348,14 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
           status: 'executed' as const,
           duration: tradeDuration[0],
           momentum: trade.momentum || 'neutral',
-          volumeSpike: trade.volumeSpike || false
+          volumeSpike: trade.volumeSpike || false,
+          simulation: simulationMode
         }));
+
+        // Save each trade immediately when executed
+        for (const trade of newTrades) {
+          await saveTrade(trade);
+        }
 
         setSession(prev => ({
           ...prev,
@@ -363,14 +366,13 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
         // Schedule trade closures based on duration
         newTrades.forEach((trade: LiveTrade) => {
           setTimeout(() => {
-            saveTrade({...trade, status: 'closed'});
             closeTrade(trade.id);
           }, trade.duration * 1000);
         });
 
         toast({
           title: "New Trades Executed",
-          description: `AI executed ${newTrades.length} trades`
+          description: `AI executed ${newTrades.length} trades with ${stopLoss[0]}% stop loss`
         });
       }
     } catch (error) {
@@ -380,7 +382,7 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
     }
   };
 
-  const generateMockTrade = () => {
+  const generateMockTrade = async () => {
     const symbols = ['AAPL', 'GOOGL', 'MSFT', 'TSLA', 'NVDA', 'META', 'AMZN'];
     const actions: ("BUY" | "SELL")[] = ['BUY', 'SELL'];
     const mockTrade: LiveTrade = {
@@ -399,6 +401,9 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
       simulation: true
     };
 
+    // Save the mock trade immediately
+    await saveTrade(mockTrade);
+
     setSession(prev => ({
       ...prev,
       activeTrades: [...prev.activeTrades, mockTrade],
@@ -406,7 +411,6 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
     }));
 
     setTimeout(() => {
-      saveTrade({...mockTrade, status: 'closed'});
       closeTrade(mockTrade.id);
     }, mockTrade.duration * 1000);
   };
