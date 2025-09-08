@@ -286,8 +286,10 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
 
         if (portfolioError) throw portfolioError;
         
-        // Reload portfolio to get updated balance immediately
-        setTimeout(loadPortfolio, 500);
+        // Reload portfolio to get updated balance after delay
+        setTimeout(() => {
+          loadPortfolio();
+        }, 1000);
       }
     } catch (error) {
       console.error('Error saving trade:', error);

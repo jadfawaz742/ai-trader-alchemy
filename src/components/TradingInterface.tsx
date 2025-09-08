@@ -238,8 +238,10 @@ export const TradingInterface: React.FC = () => {
         setPpoSignal(null);
         setRiskAssessment(null);
         
-        // Reload portfolio to reflect changes immediately
-        setTimeout(loadPortfolio, 1000);
+        // Reload portfolio after trade execution with delay
+        setTimeout(() => {
+          loadPortfolio();
+        }, 1500);
       } else {
         throw new Error(data?.error || 'Trade execution failed');
       }
