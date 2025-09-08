@@ -153,6 +153,13 @@ export const PortfolioDashboard: React.FC = () => {
 
   useEffect(() => {
     loadPortfolioData();
+    
+    // Auto-refresh portfolio every 5 seconds to show real-time changes
+    const refreshInterval = setInterval(() => {
+      loadPortfolioData();
+    }, 5000);
+    
+    return () => clearInterval(refreshInterval);
   }, []);
 
   const totalPortfolioValue = portfolio ? portfolio.current_balance + positions.reduce((sum, pos) => sum + pos.current_value, 0) : 0;

@@ -166,13 +166,36 @@ const TradingDashboard: React.FC = () => {
           const allCompletedTrades = [...prev.completedTrades, ...newlyClosedTrades];
           const completedPnL = allCompletedTrades.reduce((sum, trade) => sum + trade.profitLoss, 0);
           
-          return {
+          const newSession = {
             ...prev,
             activeTrades: updatedActiveTrades,
             completedTrades: allCompletedTrades,
             totalPnL: Number((totalActivePnL + completedPnL).toFixed(2)),
             currentBalance: prev.startingBalance + totalActivePnL + completedPnL
           };
+
+          // Auto-stop trading if all trades are closed due to stop loss/take profit
+          if (updatedActiveTrades.length === 0 && newlyClosedTrades.length > 0 && prev.activeTrades.length > 0) {
+            // Clear intervals
+            if (intervalRef.current) {
+              clearInterval(intervalRef.current);
+              intervalRef.current = null;
+            }
+            if (tradeUpdateRef.current) {
+              clearInterval(tradeUpdateRef.current);
+              tradeUpdateRef.current = null;
+            }
+            
+            toast({
+              title: "Trading Auto-Stopped",
+              description: "All positions closed due to stop loss/take profit triggers",
+              variant: "default"
+            });
+            
+            return { ...newSession, isActive: false };
+          }
+          
+          return newSession;
         });
       }, 2000);
     } else if (tradeUpdateRef.current) {
@@ -186,7 +209,7 @@ const TradingDashboard: React.FC = () => {
         tradeUpdateRef.current = null;
       }
     };
-  }, [session.isActive, session.activeTrades.length, riskLevel, stopLoss, takeProfit, toast]);
+  }, [session.isActive, session.activeTrades.length, riskLevel, stopLoss, takeProfit, toast, intervalRef]);
 
   // Pass all trading props and functions to UnifiedAITrading
   const tradingProps = {

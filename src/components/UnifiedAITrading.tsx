@@ -193,25 +193,86 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
           symbol: trade.symbol,
           trade_type: trade.action,
           quantity: trade.quantity,
-          price: trade.price,
-          total_amount: Math.abs(trade.price * trade.quantity),
-          risk_score: 50, // Default risk score
-          ppo_signal: { confidence: trade.confidence }
+          price: trade.currentPrice || trade.price,
+          total_amount: Math.abs((trade.currentPrice || trade.price) * trade.quantity),
+          risk_score: Math.round(100 - trade.confidence), // Convert confidence to risk score
+          ppo_signal: { 
+            confidence: trade.confidence,
+            momentum: trade.momentum,
+            closeReason: trade.closeReason
+          }
         });
 
       if (tradeError) throw tradeError;
 
+      // Update or create position
+      const { data: existingPosition } = await supabase
+        .from('positions')
+        .select('*')
+        .eq('portfolio_id', portfolio.id)
+        .eq('symbol', trade.symbol)
+        .single();
+
+      if (existingPosition) {
+        // Update existing position
+        let newQuantity = trade.action === 'BUY' 
+          ? existingPosition.quantity + trade.quantity
+          : existingPosition.quantity - trade.quantity;
+
+        if (newQuantity <= 0) {
+          // Close position if quantity reaches zero or below
+          await supabase
+            .from('positions')
+            .delete()
+            .eq('id', existingPosition.id);
+        } else {
+          // Update position with new average price
+          const totalCost = existingPosition.total_cost + (trade.action === 'BUY' ? 1 : -1) * (trade.currentPrice || trade.price) * trade.quantity;
+          const avgPrice = totalCost / newQuantity;
+          const currentValue = newQuantity * (trade.currentPrice || trade.price);
+          const unrealizedPnL = currentValue - totalCost;
+
+          await supabase
+            .from('positions')
+            .update({
+              quantity: newQuantity,
+              average_price: avgPrice,
+              current_price: trade.currentPrice || trade.price,
+              total_cost: totalCost,
+              current_value: currentValue,
+              unrealized_pnl: unrealizedPnL
+            })
+            .eq('id', existingPosition.id);
+        }
+      } else if (trade.action === 'BUY') {
+        // Create new position for BUY orders only
+        const totalCost = (trade.currentPrice || trade.price) * trade.quantity;
+        await supabase
+          .from('positions')
+          .insert({
+            portfolio_id: portfolio.id,
+            symbol: trade.symbol,
+            quantity: trade.quantity,
+            average_price: trade.currentPrice || trade.price,
+            current_price: trade.currentPrice || trade.price,
+            total_cost: totalCost,
+            current_value: totalCost,
+            unrealized_pnl: 0
+          });
+      }
+
       // Update portfolio balance if not simulation
       if (!simulationMode) {
+        const realizedPnL = trade.profitLoss || 0;
         const balanceChange = trade.action === 'BUY' 
-          ? -(trade.price * trade.quantity) + (trade.profitLoss || 0)
-          : (trade.price * trade.quantity) + (trade.profitLoss || 0);
+          ? -(trade.price * trade.quantity) + realizedPnL
+          : (trade.currentPrice || trade.price) * trade.quantity + realizedPnL;
 
         const { error: portfolioError } = await supabase
           .from('portfolios')
           .update({ 
             current_balance: portfolio.current_balance + balanceChange,
-            total_pnl: portfolio.total_pnl + (trade.profitLoss || 0)
+            total_pnl: portfolio.total_pnl + realizedPnL
           })
           .eq('id', portfolio.id);
 
