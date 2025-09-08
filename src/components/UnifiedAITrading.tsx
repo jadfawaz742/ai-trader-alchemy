@@ -102,15 +102,16 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
           const newlyClosedTrades = [];
 
           prev.activeTrades.forEach(trade => {
-            const volatilityFactor = riskLevel[0] / 100 * 0.08;
-            const momentumBoost = trade.momentum === 'bullish' ? 0.6 : trade.momentum === 'bearish' ? -0.6 : 0;
-            const volumeBoost = trade.volumeSpike ? 1.2 : 1.0;
+            // More aggressive price simulation for stop loss/take profit testing
+            const volatilityFactor = riskLevel[0] / 100 * 0.15; // Increased volatility
+            const momentumBoost = trade.momentum === 'bullish' ? 0.8 : trade.momentum === 'bearish' ? -0.8 : 0;
+            const volumeBoost = trade.volumeSpike ? 1.3 : 1.0;
             
             const baseChange = (Math.random() - 0.5) * volatilityFactor * trade.price * volumeBoost;
-            const momentumChange = momentumBoost * (Math.random() * 0.02 * trade.price);
+            const momentumChange = momentumBoost * (Math.random() * 0.05 * trade.price);
             const totalChange = baseChange + momentumChange;
             
-            const currentPrice = Math.max(trade.price + totalChange, trade.price * 0.85);
+            const currentPrice = Math.max(trade.price + totalChange, trade.price * 0.80);
             
             const newPnL = trade.action === 'BUY' 
               ? (currentPrice - trade.price) * trade.quantity
@@ -118,6 +119,8 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
 
             const percentChange = ((currentPrice - trade.price) / trade.price) * 100;
             const actualPnLPercent = trade.action === 'BUY' ? percentChange : -percentChange;
+
+            console.log(`${trade.symbol}: P&L% = ${actualPnLPercent.toFixed(2)}%, Stop Loss = ${stopLoss[0]}%, Take Profit = ${takeProfit[0]}%`);
 
             // Check stop loss and take profit conditions
             const shouldStopLoss = actualPnLPercent <= -stopLoss[0];
@@ -138,8 +141,10 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
 
               newlyClosedTrades.push(closedTrade);
 
+              console.log(`🚨 ${shouldStopLoss ? 'STOP LOSS' : 'TAKE PROFIT'} TRIGGERED: ${trade.symbol} at ${actualPnLPercent.toFixed(2)}%`);
+
               toast({
-                title: shouldStopLoss ? "Stop Loss Triggered" : "Take Profit Triggered",
+                title: shouldStopLoss ? "🔻 Stop Loss Triggered" : "🚀 Take Profit Triggered",
                 description: `${trade.symbol} ${trade.action} closed at ${shouldStopLoss ? '-' : '+'}${Math.abs(actualPnLPercent).toFixed(1)}% | P&L: ${newPnL >= 0 ? '+' : ''}$${newPnL.toFixed(2)}`,
                 variant: shouldStopLoss ? "destructive" : "default"
               });
