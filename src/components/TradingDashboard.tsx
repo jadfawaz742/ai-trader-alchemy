@@ -50,7 +50,7 @@ const TradingDashboard: React.FC = () => {
   const [portfolio, setPortfolio] = useState<any>(null);
   const [tradingAmount, setTradingAmount] = useState('1000');
   const [riskLevel, setRiskLevel] = useState([50]);
-  const [stopLoss, setStopLoss] = useState([5]);
+  const [stopLoss, setStopLoss] = useState([2]);
   const [takeProfit, setTakeProfit] = useState([15]);
   const [tradeDuration, setTradeDuration] = useState([300]);
   const [simulationMode, setSimulationMode] = useState(true);
@@ -118,18 +118,18 @@ const TradingDashboard: React.FC = () => {
           const newlyClosedTrades = [];
 
           prev.activeTrades.forEach(trade => {
-            // More aggressive price simulation for demonstration
-            const volatilityFactor = riskLevel[0] / 100 * 0.15; // Increased from 0.08
-            const momentumBoost = trade.momentum === 'bullish' ? 0.8 : trade.momentum === 'bearish' ? -0.8 : 0;
-            const volumeBoost = trade.volumeSpike ? 1.3 : 1.0;
+            // Much more aggressive price simulation to trigger stops quickly
+            const volatilityFactor = riskLevel[0] / 100 * 0.25; // Increased from 0.15 to 0.25
+            const momentumBoost = trade.momentum === 'bullish' ? 1.2 : trade.momentum === 'bearish' ? -1.2 : 0;
+            const volumeBoost = trade.volumeSpike ? 1.5 : 1.0;
             
-            // More significant price changes
+            // Create larger price swings
             const baseChange = (Math.random() - 0.5) * volatilityFactor * trade.price * volumeBoost;
-            const momentumChange = momentumBoost * (Math.random() * 0.05 * trade.price); // Increased from 0.02
+            const momentumChange = momentumBoost * (Math.random() * 0.08 * trade.price); // Increased from 0.05
             const totalChange = baseChange + momentumChange;
             
-            const currentPrice = Math.max(trade.price + totalChange, trade.price * 0.80); // Allow bigger drops
-            
+            const currentPrice = Math.max(trade.price + totalChange, trade.price * 0.70); // Allow 30% drops
+
             const newPnL = trade.action === 'BUY' 
               ? (currentPrice - trade.price) * trade.quantity
               : (trade.price - currentPrice) * trade.quantity;
@@ -139,7 +139,7 @@ const TradingDashboard: React.FC = () => {
 
             console.log(`${trade.symbol} ${trade.action}: Current: ${currentPrice.toFixed(2)}, Entry: ${trade.price.toFixed(2)}, P&L%: ${actualPnLPercent.toFixed(2)}%, Stop Loss: ${stopLoss[0]}%, Take Profit: ${takeProfit[0]}%`);
 
-            // Check stop loss and take profit conditions
+            // Check stop loss and take profit conditions - MORE AGGRESSIVE
             const shouldStopLoss = actualPnLPercent <= -stopLoss[0];
             const shouldTakeProfit = actualPnLPercent >= takeProfit[0];
 

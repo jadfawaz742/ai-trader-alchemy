@@ -102,16 +102,16 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
           const newlyClosedTrades = [];
 
           prev.activeTrades.forEach(trade => {
-            // More aggressive price simulation for stop loss/take profit testing
-            const volatilityFactor = riskLevel[0] / 100 * 0.15; // Increased volatility
-            const momentumBoost = trade.momentum === 'bullish' ? 0.8 : trade.momentum === 'bearish' ? -0.8 : 0;
-            const volumeBoost = trade.volumeSpike ? 1.3 : 1.0;
+            // EXTREMELY aggressive price simulation to force stop triggers
+            const volatilityFactor = riskLevel[0] / 100 * 0.30; // Maximum volatility
+            const momentumBoost = trade.momentum === 'bullish' ? 1.5 : trade.momentum === 'bearish' ? -1.5 : 0;
+            const volumeBoost = trade.volumeSpike ? 2.0 : 1.0;
             
             const baseChange = (Math.random() - 0.5) * volatilityFactor * trade.price * volumeBoost;
-            const momentumChange = momentumBoost * (Math.random() * 0.05 * trade.price);
+            const momentumChange = momentumBoost * (Math.random() * 0.1 * trade.price);
             const totalChange = baseChange + momentumChange;
             
-            const currentPrice = Math.max(trade.price + totalChange, trade.price * 0.80);
+            const currentPrice = Math.max(trade.price + totalChange, trade.price * 0.65); // Allow 35% drops
             
             const newPnL = trade.action === 'BUY' 
               ? (currentPrice - trade.price) * trade.quantity
@@ -144,7 +144,7 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
               console.log(`🚨 ${shouldStopLoss ? 'STOP LOSS' : 'TAKE PROFIT'} TRIGGERED: ${trade.symbol} at ${actualPnLPercent.toFixed(2)}%`);
 
               toast({
-                title: shouldStopLoss ? "🔻 Stop Loss Triggered" : "🚀 Take Profit Triggered",
+                title: shouldStopLoss ? "🔻 STOP LOSS TRIGGERED!" : "🚀 TAKE PROFIT TRIGGERED!",
                 description: `${trade.symbol} ${trade.action} closed at ${shouldStopLoss ? '-' : '+'}${Math.abs(actualPnLPercent).toFixed(1)}% | P&L: ${newPnL >= 0 ? '+' : ''}$${newPnL.toFixed(2)}`,
                 variant: shouldStopLoss ? "destructive" : "default"
               });
