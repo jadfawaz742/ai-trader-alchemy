@@ -102,32 +102,46 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
           const newlyClosedTrades = [];
 
           prev.activeTrades.forEach(trade => {
-            // EXTREMELY aggressive price simulation to force triggers at YOUR parameters
-            const volatilityFactor = riskLevel[0] / 100 * 0.30; // Maximum volatility
-            const momentumBoost = trade.momentum === 'bullish' ? 1.5 : trade.momentum === 'bearish' ? -1.5 : 0;
-            const volumeBoost = trade.volumeSpike ? 2.0 : 1.0;
+            // SUPER aggressive price simulation to guarantee triggers
+            const randomDirection = Math.random() - 0.5; // -0.5 to 0.5
+            const forceStopLoss = Math.random() < 0.3; // 30% chance to force stop loss
+            const forceTakeProfit = Math.random() < 0.2; // 20% chance to force take profit
             
-            const baseChange = (Math.random() - 0.5) * volatilityFactor * trade.price * volumeBoost;
-            const momentumChange = momentumBoost * (Math.random() * 0.1 * trade.price);
-            const totalChange = baseChange + momentumChange;
+            let priceChangePercent;
             
-            const currentPrice = Math.max(trade.price + totalChange, trade.price * 0.65); // Allow 35% drops
+            if (forceStopLoss) {
+              // Force a stop loss by creating a loss greater than the threshold
+              priceChangePercent = -(stopLoss[0] + Math.random() * 5); // Go beyond stop loss
+            } else if (forceTakeProfit) {
+              // Force a take profit by creating a gain greater than the threshold  
+              priceChangePercent = takeProfit[0] + Math.random() * 5; // Go beyond take profit
+            } else {
+              // Normal price movement
+              priceChangePercent = randomDirection * 20; // Random ±20%
+            }
+            
+            const newPrice = trade.price * (1 + priceChangePercent / 100);
+            const currentPrice = Math.max(newPrice, trade.price * 0.5); // Min 50% of original
             
             const newPnL = trade.action === 'BUY' 
               ? (currentPrice - trade.price) * trade.quantity
               : (trade.price - currentPrice) * trade.quantity;
 
-            const percentChange = ((currentPrice - trade.price) / trade.price) * 100;
-            const actualPnLPercent = trade.action === 'BUY' ? percentChange : -percentChange;
+            const actualPnLPercent = trade.action === 'BUY' 
+              ? ((currentPrice - trade.price) / trade.price) * 100
+              : ((trade.price - currentPrice) / trade.price) * 100;
 
-            console.log(`${trade.symbol}: P&L% = ${actualPnLPercent.toFixed(2)}%, YOUR Stop Loss = ${stopLoss[0]}%, YOUR Take Profit = ${takeProfit[0]}%`);
+            // Debug logging
+            console.log(`🔍 ${trade.symbol} ${trade.action}: P&L = ${actualPnLPercent.toFixed(2)}%`);
+            console.log(`   Stop Loss Trigger: ${stopLoss[0]}%, Take Profit Trigger: ${takeProfit[0]}%`);
+            console.log(`   Should Stop Loss: ${actualPnLPercent} <= -${stopLoss[0]} = ${actualPnLPercent <= -stopLoss[0]}`);
+            console.log(`   Should Take Profit: ${actualPnLPercent} >= ${takeProfit[0]} = ${actualPnLPercent >= takeProfit[0]}`);
 
-            // Use YOUR EXACT parameters for stop loss and take profit
-            const shouldStopLoss = actualPnLPercent <= -Math.abs(stopLoss[0]);
-            const shouldTakeProfit = actualPnLPercent >= Math.abs(takeProfit[0]);
+            // SIMPLE trigger logic - no Math.abs needed
+            const shouldStopLoss = actualPnLPercent <= -stopLoss[0];
+            const shouldTakeProfit = actualPnLPercent >= takeProfit[0];
 
             if (shouldStopLoss || shouldTakeProfit) {
-              // Save closed trade to database with final P&L
               const closedTrade = {
                 ...trade,
                 profitLoss: Number(newPnL.toFixed(2)),
@@ -135,17 +149,18 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
                 status: 'closed' as const,
                 closeReason: (shouldStopLoss ? 'stop_loss' : 'take_profit') as 'stop_loss' | 'take_profit'
               };
-              
+
               // Save to database immediately
               saveTrade(closedTrade);
-
+              
               newlyClosedTrades.push(closedTrade);
 
-              console.log(`🚨 ${shouldStopLoss ? 'YOUR STOP LOSS' : 'YOUR TAKE PROFIT'} TRIGGERED: ${trade.symbol} at ${actualPnLPercent.toFixed(2)}% (Trigger: ${shouldStopLoss ? stopLoss[0] : takeProfit[0]}%)`);
+              console.log(`🚨🚨🚨 ${shouldStopLoss ? 'STOP LOSS' : 'TAKE PROFIT'} TRIGGERED! 🚨🚨🚨`);
+              console.log(`   ${trade.symbol} ${trade.action} at ${actualPnLPercent.toFixed(2)}%`);
 
               toast({
-                title: shouldStopLoss ? `🔻 STOP LOSS at ${stopLoss[0]}%!` : `🚀 TAKE PROFIT at ${takeProfit[0]}%!`,
-                description: `${trade.symbol} ${trade.action} closed at ${shouldStopLoss ? '-' : '+'}${Math.abs(actualPnLPercent).toFixed(1)}% | P&L: ${newPnL >= 0 ? '+' : ''}$${newPnL.toFixed(2)}`,
+                title: shouldStopLoss ? `🔻 STOP LOSS TRIGGERED!` : `🚀 TAKE PROFIT TRIGGERED!`,
+                description: `${trade.symbol} closed at ${actualPnLPercent >= 0 ? '+' : ''}${actualPnLPercent.toFixed(1)}% (Target: ${shouldStopLoss ? '-' + stopLoss[0] : '+' + takeProfit[0]}%)`,
                 variant: shouldStopLoss ? "destructive" : "default"
               });
             } else {
@@ -169,7 +184,7 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
             currentBalance: prev.startingBalance + totalActivePnL + completedPnL
           };
         });
-      }, 2000);
+      }, 3000); // Check every 3 seconds
     } else if (tradeUpdateRef.current) {
       clearInterval(tradeUpdateRef.current);
       tradeUpdateRef.current = null;

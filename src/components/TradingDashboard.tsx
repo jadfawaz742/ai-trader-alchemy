@@ -118,45 +118,62 @@ const TradingDashboard: React.FC = () => {
           const newlyClosedTrades = [];
 
           prev.activeTrades.forEach(trade => {
-            // Much more aggressive price simulation to trigger stops at YOUR parameters
-            const volatilityFactor = riskLevel[0] / 100 * 0.25; // Increased from 0.15 to 0.25
-            const momentumBoost = trade.momentum === 'bullish' ? 1.2 : trade.momentum === 'bearish' ? -1.2 : 0;
-            const volumeBoost = trade.volumeSpike ? 1.5 : 1.0;
+            // SUPER aggressive price simulation to guarantee triggers
+            const randomDirection = Math.random() - 0.5; // -0.5 to 0.5
+            const forceStopLoss = Math.random() < 0.3; // 30% chance to force stop loss
+            const forceTakeProfit = Math.random() < 0.2; // 20% chance to force take profit
             
-            // Create larger price swings
-            const baseChange = (Math.random() - 0.5) * volatilityFactor * trade.price * volumeBoost;
-            const momentumChange = momentumBoost * (Math.random() * 0.08 * trade.price); // Increased from 0.05
-            const totalChange = baseChange + momentumChange;
+            let priceChangePercent;
             
-            const currentPrice = Math.max(trade.price + totalChange, trade.price * 0.70); // Allow 30% drops
-
+            if (forceStopLoss) {
+              // Force a stop loss by creating a loss greater than the threshold
+              priceChangePercent = -(stopLoss[0] + Math.random() * 5); // Go beyond stop loss
+            } else if (forceTakeProfit) {
+              // Force a take profit by creating a gain greater than the threshold  
+              priceChangePercent = takeProfit[0] + Math.random() * 5; // Go beyond take profit
+            } else {
+              // Normal price movement
+              priceChangePercent = randomDirection * 20; // Random ±20%
+            }
+            
+            const newPrice = trade.price * (1 + priceChangePercent / 100);
+            const currentPrice = Math.max(newPrice, trade.price * 0.5); // Min 50% of original
+            
             const newPnL = trade.action === 'BUY' 
               ? (currentPrice - trade.price) * trade.quantity
               : (trade.price - currentPrice) * trade.quantity;
 
-            const percentChange = ((currentPrice - trade.price) / trade.price) * 100;
-            const actualPnLPercent = trade.action === 'BUY' ? percentChange : -percentChange;
+            const actualPnLPercent = trade.action === 'BUY' 
+              ? ((currentPrice - trade.price) / trade.price) * 100
+              : ((trade.price - currentPrice) / trade.price) * 100;
 
-            console.log(`${trade.symbol} ${trade.action}: P&L% = ${actualPnLPercent.toFixed(2)}%, YOUR Stop Loss = ${stopLoss[0]}%, YOUR Take Profit = ${takeProfit[0]}%`);
+            // Debug logging
+            console.log(`🔍 ${trade.symbol} ${trade.action}: P&L = ${actualPnLPercent.toFixed(2)}%`);
+            console.log(`   Stop Loss Trigger: ${stopLoss[0]}%, Take Profit Trigger: ${takeProfit[0]}%`);
+            console.log(`   Should Stop Loss: ${actualPnLPercent} <= -${stopLoss[0]} = ${actualPnLPercent <= -stopLoss[0]}`);
+            console.log(`   Should Take Profit: ${actualPnLPercent} >= ${takeProfit[0]} = ${actualPnLPercent >= takeProfit[0]}`);
 
-            // Use YOUR EXACT parameters for triggers
-            const shouldStopLoss = actualPnLPercent <= -Math.abs(stopLoss[0]);
-            const shouldTakeProfit = actualPnLPercent >= Math.abs(takeProfit[0]);
+            // SIMPLE trigger logic - no Math.abs needed
+            const shouldStopLoss = actualPnLPercent <= -stopLoss[0];
+            const shouldTakeProfit = actualPnLPercent >= takeProfit[0];
 
             if (shouldStopLoss || shouldTakeProfit) {
-              newlyClosedTrades.push({
+              const closedTrade = {
                 ...trade,
                 profitLoss: Number(newPnL.toFixed(2)),
                 currentPrice: Number(currentPrice.toFixed(2)),
                 status: 'closed' as const,
                 closeReason: shouldStopLoss ? 'stop_loss' : 'take_profit'
-              });
+              };
 
-              console.log(`🚨 ${shouldStopLoss ? 'YOUR STOP LOSS' : 'YOUR TAKE PROFIT'} TRIGGERED for ${trade.symbol} at ${actualPnLPercent.toFixed(2)}% (Your setting: ${shouldStopLoss ? stopLoss[0] : takeProfit[0]}%)`);
+              newlyClosedTrades.push(closedTrade);
+
+              console.log(`🚨🚨🚨 ${shouldStopLoss ? 'STOP LOSS' : 'TAKE PROFIT'} TRIGGERED! 🚨🚨🚨`);
+              console.log(`   ${trade.symbol} ${trade.action} at ${actualPnLPercent.toFixed(2)}%`);
 
               toast({
-                title: shouldStopLoss ? `🔻 Stop Loss at ${stopLoss[0]}%` : `🚀 Take Profit at ${takeProfit[0]}%`,
-                description: `${trade.symbol} ${trade.action} closed at ${shouldStopLoss ? '-' : '+'}${Math.abs(actualPnLPercent).toFixed(1)}% | P&L: ${newPnL >= 0 ? '+' : ''}$${newPnL.toFixed(2)}`,
+                title: shouldStopLoss ? `🔻 STOP LOSS TRIGGERED!` : `🚀 TAKE PROFIT TRIGGERED!`,
+                description: `${trade.symbol} closed at ${actualPnLPercent >= 0 ? '+' : ''}${actualPnLPercent.toFixed(1)}% (Target: ${shouldStopLoss ? '-' + stopLoss[0] : '+' + takeProfit[0]}%)`,
                 variant: shouldStopLoss ? "destructive" : "default"
               });
             } else {
@@ -180,9 +197,8 @@ const TradingDashboard: React.FC = () => {
             currentBalance: prev.startingBalance + totalActivePnL + completedPnL
           };
 
-          // Auto-stop trading if all trades are closed due to stop loss/take profit
+          // Auto-stop trading if all trades are closed
           if (updatedActiveTrades.length === 0 && newlyClosedTrades.length > 0 && prev.activeTrades.length > 0) {
-            // Clear intervals
             if (intervalRef.current) {
               clearInterval(intervalRef.current);
               intervalRef.current = null;
@@ -193,8 +209,8 @@ const TradingDashboard: React.FC = () => {
             }
             
             toast({
-              title: "Trading Auto-Stopped",
-              description: "All positions closed due to stop loss/take profit triggers",
+              title: "🛑 Trading Auto-Stopped",
+              description: "All positions closed by stop loss/take profit",
               variant: "default"
             });
             
@@ -203,7 +219,7 @@ const TradingDashboard: React.FC = () => {
           
           return newSession;
         });
-      }, 2000);
+      }, 3000); // Check every 3 seconds
     } else if (tradeUpdateRef.current) {
       clearInterval(tradeUpdateRef.current);
       tradeUpdateRef.current = null;
