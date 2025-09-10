@@ -1,6 +1,7 @@
 import StockAnalyzer from "@/components/StockAnalyzer";
 import TradingDashboard from "@/components/TradingDashboard";
 import NewsWidget from "@/components/NewsWidget";
+import { MarketActivityFeed } from "@/components/MarketActivityFeed";
 import { PortfolioProvider } from "@/components/PortfolioProvider";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
@@ -114,7 +115,10 @@ const Index = () => {
             </TabsContent>
             
             <TabsContent value="trading">
-              <TradingDashboard />
+              <div className="space-y-6">
+                <TradingDashboard />
+                <MarketActivityFeed isActive={true} />
+              </div>
             </TabsContent>
           </Tabs>
         </div>

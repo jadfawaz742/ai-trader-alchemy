@@ -52,8 +52,9 @@ export const PortfolioDashboard: React.FC = () => {
   const { toast } = useToast();
 
 
-  const totalPortfolioValue = portfolio ? portfolio.current_balance + positions.reduce((sum, pos) => sum + pos.current_value, 0) : 0;
-  const totalUnrealizedPnl = positions.reduce((sum, pos) => sum + pos.unrealized_pnl, 0);
+  const totalPortfolioValue = portfolio ? portfolio.current_balance + positions.reduce((sum, pos) => sum + (pos.current_value || 0), 0) : 0;
+  const totalUnrealizedPnl = positions.reduce((sum, pos) => sum + (pos.unrealized_pnl || 0), 0);
+  const totalRealizedPnl = portfolio ? portfolio.current_balance - portfolio.initial_balance : 0;
   const totalReturnPercent = portfolio ? ((totalPortfolioValue - portfolio.initial_balance) / portfolio.initial_balance) * 100 : 0;
 
   const formatCurrency = (amount: number) => {
@@ -174,9 +175,9 @@ export const PortfolioDashboard: React.FC = () => {
                 </div>
               </div>
               <div className="space-y-2">
-                <div className="text-sm text-muted-foreground">Unrealized P&L</div>
-                <div className={`text-2xl font-bold ${totalUnrealizedPnl >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {formatCurrency(totalUnrealizedPnl)}
+                <div className="text-sm text-muted-foreground">Total P&L</div>
+                <div className={`text-2xl font-bold ${(totalRealizedPnl + totalUnrealizedPnl) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  {formatCurrency(totalRealizedPnl + totalUnrealizedPnl)}
                 </div>
               </div>
             </div>

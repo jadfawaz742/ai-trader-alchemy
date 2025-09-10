@@ -870,16 +870,15 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
                   {session.activeTrades.length} Active
                 </Badge>
               </div>
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                {session.activeTrades.slice(0, 6).map((trade) => (
-                  <div key={trade.id} className="h-64 border rounded-lg p-2">
-                    <StockChart
-                      symbol={trade.symbol}
-                      currentPrice={trade.currentPrice || trade.price}
-                      tradeType={trade.action}
-                      className="h-full w-full"
-                    />
-                  </div>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
+                {session.activeTrades.slice(0, 4).map((trade) => (
+                  <StockChart
+                    key={trade.id}
+                    symbol={trade.symbol}
+                    currentPrice={trade.currentPrice || trade.price}
+                    tradeType={trade.action}
+                    className="h-[200px]"
+                  />
                 ))}
               </div>
             </div>

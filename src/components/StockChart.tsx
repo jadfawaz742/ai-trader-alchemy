@@ -201,19 +201,19 @@ export const StockChart: React.FC<StockChartProps> = ({
 
   return (
     <Card className={className}>
-      <CardHeader className="pb-4">
+      <CardHeader className="pb-2 p-3">
         <div className="flex items-center justify-between">
           <div>
-            <CardTitle className="flex items-center gap-2">
-              {symbol} Stock Chart
+            <CardTitle className="flex items-center gap-2 text-sm">
+              {symbol}
               {tradeType && (
-                <Badge variant={tradeType === 'BUY' ? 'default' : 'destructive'}>
+                <Badge variant={tradeType === 'BUY' ? 'default' : 'destructive'} className="text-xs">
                   {tradeType}
                 </Badge>
               )}
             </CardTitle>
-            <CardDescription>
-              Real-time price movements and trading signals
+            <CardDescription className="text-xs">
+              Live trading chart
             </CardDescription>
           </div>
           <div className="flex items-center gap-2">
@@ -269,8 +269,8 @@ export const StockChart: React.FC<StockChartProps> = ({
         </div>
       </CardHeader>
 
-      <CardContent>
-        <ChartContainer config={chartConfig} className="h-[300px] w-full">
+      <CardContent className="p-3">
+        <ChartContainer config={chartConfig} className="h-[180px] w-full">
           <ResponsiveContainer width="100%" height="100%">
             <LineChart
               data={chartData}

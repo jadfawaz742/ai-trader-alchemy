@@ -246,32 +246,54 @@ export const usePortfolio = () => {
           });
       }
 
-      // Update portfolio balance
+      // Update portfolio balance - For BUY, subtract cash; for SELL, add cash
       const balanceChange = trade.trade_type === 'BUY' 
         ? -(trade.total_amount || 0)
         : (trade.total_amount || 0);
 
       const newBalance = portfolio.current_balance + balanceChange;
-      const newPnL = newBalance - portfolio.initial_balance;
+      
+      // Calculate total P&L including both unrealized (from positions) and realized (from balance change)
+      const totalUnrealizedPnL = positions.reduce((sum, pos) => sum + (pos.unrealized_pnl || 0), 0);
+      const realizedPnL = newBalance - portfolio.initial_balance;
+      const totalPnL = realizedPnL + totalUnrealizedPnL;
 
       await supabase
         .from('portfolios')
         .update({ 
           current_balance: newBalance,
-          total_pnl: newPnL,
+          total_pnl: totalPnL,
           updated_at: new Date().toISOString()
         })
         .eq('id', portfolio.id);
 
-      // Update local state
+      // Reload portfolio data to get updated positions before calculating total P&L
+      await loadPortfolio();
+      
+      // After reload, get the updated positions and calculate total P&L including unrealized gains
+      const { data: updatedPositions } = await supabase
+        .from('positions')
+        .select('*')
+        .eq('portfolio_id', portfolio.id)
+        .gt('quantity', 0);
+      
+      const updatedTotalUnrealizedPnL = (updatedPositions || []).reduce((sum, pos) => sum + (pos.unrealized_pnl || 0), 0);
+      const updatedTotalPnL = (newBalance - portfolio.initial_balance) + updatedTotalUnrealizedPnL;
+      
+      // Final update with complete P&L calculation
+      await supabase
+        .from('portfolios')
+        .update({ 
+          total_pnl: updatedTotalPnL,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', portfolio.id);
+
       setPortfolio(prev => prev ? {
         ...prev,
         current_balance: newBalance,
-        total_pnl: newPnL
+        total_pnl: updatedTotalPnL
       } : null);
-
-      // Reload portfolio data to sync positions
-      await loadPortfolio();
     } catch (error) {
       console.error('Error adding trade:', error);
     }
