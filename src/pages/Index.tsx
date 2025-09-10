@@ -105,8 +105,25 @@ const Index = () => {
               <StockAnalyzer />
             </div>
             <div className="space-y-6">
-              <TradingDashboard />
-              <MarketActivityFeed isActive={true} />
+              <Tabs defaultValue="analysis" className="w-full">
+                <TabsList className="grid w-full grid-cols-2 mb-4">
+                  <TabsTrigger value="analysis" className="text-sm">
+                    AI Analysis
+                  </TabsTrigger>
+                  <TabsTrigger value="trading" className="text-sm">
+                    PPO Trading
+                  </TabsTrigger>
+                </TabsList>
+                
+                <TabsContent value="analysis" className="space-y-6">
+                  <NewsWidget />
+                </TabsContent>
+                
+                <TabsContent value="trading" className="space-y-6">
+                  <TradingDashboard />
+                  <MarketActivityFeed isActive={true} />
+                </TabsContent>
+              </Tabs>
             </div>
           </div>
         </div>
