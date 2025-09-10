@@ -11,7 +11,7 @@ import { LiveTradingView } from './LiveTradingView';
 import { UnifiedAITrading } from './UnifiedAITrading';
 import { MarketActivityFeed } from './MarketActivityFeed';
 import { useToast } from '@/hooks/use-toast';
-import { usePortfolio } from '@/hooks/usePortfolio';
+import { usePortfolioContext } from '@/components/PortfolioProvider';
 
 interface LiveTrade {
   id: string;
@@ -51,7 +51,7 @@ const TradingDashboard: React.FC = () => {
   const [tradeDuration, setTradeDuration] = useState([30]);
   const [simulationMode, setSimulationMode] = useState(true);
   const { toast } = useToast();
-  const { portfolio, resetPortfolio } = usePortfolio();
+  const { portfolio, resetPortfolio } = usePortfolioContext();
 
   const [session, setSession] = useState<TradingSession>({
     isActive: false,

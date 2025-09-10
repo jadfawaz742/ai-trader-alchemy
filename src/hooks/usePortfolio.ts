@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, createContext, useContext } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
@@ -35,7 +35,7 @@ interface Trade {
   executed_at: string;
 }
 
-interface PortfolioContextType {
+export interface PortfolioData {
   portfolio: Portfolio | null;
   positions: Position[];
   recentTrades: Trade[];
@@ -46,17 +46,7 @@ interface PortfolioContextType {
   resetPortfolio: () => Promise<void>;
 }
 
-const PortfolioContext = createContext<PortfolioContextType | null>(null);
-
 export const usePortfolio = () => {
-  const context = useContext(PortfolioContext);
-  if (!context) {
-    throw new Error('usePortfolio must be used within a PortfolioProvider');
-  }
-  return context;
-};
-
-export const usePortfolioProvider = () => {
   const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
   const [positions, setPositions] = useState<Position[]>([]);
   const [recentTrades, setRecentTrades] = useState<Trade[]>([]);
@@ -252,5 +242,3 @@ export const usePortfolioProvider = () => {
     resetPortfolio,
   };
 };
-
-export { PortfolioContext };

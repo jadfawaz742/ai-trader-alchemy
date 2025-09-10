@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Label } from '@/components/ui/label';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { usePortfolio } from '@/hooks/usePortfolio';
+import { usePortfolioContext } from '@/components/PortfolioProvider';
 import { TrendingUp, TrendingDown, DollarSign, PieChart, BarChart3, RefreshCw, ShoppingCart, Minus } from 'lucide-react';
 
 interface Portfolio {
@@ -44,7 +44,7 @@ interface Trade {
 }
 
 export const PortfolioDashboard: React.FC = () => {
-  const { portfolio, positions, recentTrades, loading } = usePortfolio();
+  const { portfolio, positions, recentTrades, loading } = usePortfolioContext();
   const [selectedPosition, setSelectedPosition] = useState<Position | null>(null);
   const [tradeQuantity, setTradeQuantity] = useState('');
   const [tradePrice, setTradePrice] = useState('');

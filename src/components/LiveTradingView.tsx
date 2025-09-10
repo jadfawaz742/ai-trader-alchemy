@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { usePortfolio } from '@/hooks/usePortfolio';
+import { usePortfolioContext } from '@/components/PortfolioProvider';
 import { Activity, Bot, TrendingUp, TrendingDown, Zap, Eye, Play, Square } from 'lucide-react';
 
 interface LiveTrade {
@@ -33,7 +33,7 @@ export const LiveTradingView: React.FC = () => {
   const [marketData, setMarketData] = useState<MarketFluctuation[]>([]);
   const [totalPnL, setTotalPnL] = useState(0);
   const [botStatus, setBotStatus] = useState<'idle' | 'analyzing' | 'trading'>('idle');
-  const { portfolio, updateBalance } = usePortfolio();
+  const { portfolio, updateBalance } = usePortfolioContext();
 
   // Simulate live market data updates
   useEffect(() => {

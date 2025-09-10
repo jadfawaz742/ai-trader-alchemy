@@ -9,12 +9,12 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { usePortfolio } from '@/hooks/usePortfolio';
+import { usePortfolioContext } from '@/components/PortfolioProvider';
 import { TrendingUp, TrendingDown, AlertTriangle, DollarSign, Zap, Minimize2 } from 'lucide-react';
 import { StockChart } from '@/components/StockChart';
 
 export const TradingInterface: React.FC = () => {
-  const { portfolio } = usePortfolio();
+  const { portfolio } = usePortfolioContext();
   const [symbol, setSymbol] = useState('');
   const [tradeType, setTradeType] = useState<'BUY' | 'SELL'>('BUY');
   const [quantity, setQuantity] = useState('');
