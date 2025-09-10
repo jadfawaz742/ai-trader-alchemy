@@ -100,27 +100,15 @@ const Index = () => {
             </DropdownMenu>
           </div>
           
-          <Tabs defaultValue="analysis" className="w-full">
-            <TabsList className="grid w-full grid-cols-2 mb-8">
-              <TabsTrigger value="analysis" className="text-lg py-3">
-                Stage 1: AI Analysis
-              </TabsTrigger>
-              <TabsTrigger value="trading" className="text-lg py-3">
-                Stage 2: PPO Trading
-              </TabsTrigger>
-            </TabsList>
-            
-            <TabsContent value="analysis">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="space-y-6">
               <StockAnalyzer />
-            </TabsContent>
-            
-            <TabsContent value="trading">
-              <div className="space-y-6">
-                <TradingDashboard />
-                <MarketActivityFeed isActive={true} />
-              </div>
-            </TabsContent>
-          </Tabs>
+            </div>
+            <div className="space-y-6">
+              <TradingDashboard />
+              <MarketActivityFeed isActive={true} />
+            </div>
+          </div>
         </div>
       </div>
     </PortfolioProvider>
