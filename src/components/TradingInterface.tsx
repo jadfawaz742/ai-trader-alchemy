@@ -14,7 +14,7 @@ import { TrendingUp, TrendingDown, AlertTriangle, DollarSign, Zap, Minimize2 } f
 import { StockChart } from '@/components/StockChart';
 
 export const TradingInterface: React.FC = () => {
-  const { portfolio } = usePortfolioContext();
+  const { portfolio, addTrade } = usePortfolioContext();
   const [symbol, setSymbol] = useState('');
   const [tradeType, setTradeType] = useState<'BUY' | 'SELL'>('BUY');
   const [quantity, setQuantity] = useState('');
@@ -183,21 +183,24 @@ export const TradingInterface: React.FC = () => {
 
     setLoading(true);
     try {
-      const { data, error } = await supabase.functions.invoke('execute-trade', {
-        body: {
-          portfolioId: portfolio.id,
+      // Use the portfolio context addTrade function for proper integration
+      if (addTrade) {
+        await addTrade({
           symbol: symbol.toUpperCase(),
-          tradeType,
+          trade_type: tradeType,
           quantity: parseInt(quantity),
-          currentPrice: parseFloat(price)
-        }
-      });
+          price: parseFloat(price),
+          total_amount: parseFloat(price) * parseInt(quantity),
+          risk_score: riskAssessment?.score || 50,
+          ppo_signal: ppoSignal ? {
+            ppo: ppoSignal.ppo,
+            signal: ppoSignal.signal,
+            strength: ppoSignal.strength,
+            histogram: ppoSignal.histogram,
+            confidence: ppoSignal.confidence
+          } : {}
+        });
 
-      if (error) {
-        throw error;
-      }
-
-      if (data?.success) {
         toast({
           title: "Trade Executed Successfully!",
           description: `${tradeType} ${quantity} shares of ${symbol.toUpperCase()} at $${price}`
@@ -210,7 +213,7 @@ export const TradingInterface: React.FC = () => {
         setPpoSignal(null);
         setRiskAssessment(null);
       } else {
-        throw new Error(data?.error || 'Trade execution failed');
+        throw new Error('Portfolio system not available');
       }
     } catch (error) {
       console.error('Error executing trade:', error);

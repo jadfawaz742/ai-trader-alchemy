@@ -281,26 +281,36 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
       }
 
       // Update portfolio balance if not simulation
-      if (!simulationMode && loadPortfolio) {
+      if (!simulationMode) {
         const realizedPnL = trade.profitLoss || 0;
         const balanceChange = trade.action === 'BUY' 
           ? -(trade.price * trade.quantity) + realizedPnL
           : (trade.currentPrice || trade.price) * trade.quantity + realizedPnL;
 
+        const newBalance = portfolio.current_balance + balanceChange;
+        const newPnL = newBalance - portfolio.initial_balance;
+
         const { error: portfolioError } = await supabase
           .from('portfolios')
           .update({ 
-            current_balance: portfolio.current_balance + balanceChange,
-            total_pnl: portfolio.total_pnl + realizedPnL
+            current_balance: newBalance,
+            total_pnl: newPnL,
+            updated_at: new Date().toISOString()
           })
           .eq('id', portfolio.id);
 
         if (portfolioError) throw portfolioError;
         
-        // Reload portfolio to get updated balance after delay
-        setTimeout(() => {
-          if (loadPortfolio) loadPortfolio();
-        }, 1000);
+        // Update session balance immediately for UI responsiveness
+        setSession(prev => ({
+          ...prev,
+          currentBalance: newBalance
+        }));
+      }
+      
+      // Reload portfolio data efficiently
+      if (loadPortfolio) {
+        loadPortfolio();
       }
     } catch (error) {
       console.error('Error saving trade:', error);
@@ -502,21 +512,6 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
 
   return (
     <div className="space-y-6">
-      {/* Live Stock Charts for Active Trades */}
-      {session.activeTrades.length > 0 && (
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
-          {session.activeTrades.slice(0, 4).map((trade) => (
-            <StockChart
-              key={trade.id}
-              symbol={trade.symbol}
-              currentPrice={trade.currentPrice || trade.price}
-              tradeType={trade.action}
-              className="h-fit"
-            />
-          ))}
-        </div>
-      )}
-
       <Card>
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
@@ -862,6 +857,33 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
               )}
             </TabsContent>
           </Tabs>
+
+          {/* Live Stock Charts - Positioned below tabs when trading is active */}
+          {session.isActive && session.activeTrades.length > 0 && (
+            <div className="mt-6 space-y-4">
+              <div className="flex items-center justify-between">
+                <h3 className="text-lg font-semibold flex items-center gap-2">
+                  <BarChart3 className="h-4 w-4" />
+                  Live Trade Charts
+                </h3>
+                <Badge variant="secondary" className="text-xs">
+                  {session.activeTrades.length} Active
+                </Badge>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {session.activeTrades.slice(0, 6).map((trade) => (
+                  <div key={trade.id} className="h-64 border rounded-lg p-2">
+                    <StockChart
+                      symbol={trade.symbol}
+                      currentPrice={trade.currentPrice || trade.price}
+                      tradeType={trade.action}
+                      className="h-full w-full"
+                    />
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </CardContent>
       </Card>
     </div>

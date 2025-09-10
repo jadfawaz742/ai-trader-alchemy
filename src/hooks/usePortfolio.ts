@@ -168,7 +168,8 @@ export const usePortfolio = () => {
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) return;
 
-      const { error } = await supabase
+      // Insert trade record
+      const { error: tradeError } = await supabase
         .from('trades')
         .insert({
           user_id: user.id,
@@ -182,10 +183,95 @@ export const usePortfolio = () => {
           ppo_signal: trade.ppo_signal || {}
         });
 
-      if (!error) {
-        // Reload data to reflect changes
-        setTimeout(loadPortfolio, 1000);
+      if (tradeError) throw tradeError;
+
+      // Update or create position
+      const { data: existingPosition } = await supabase
+        .from('positions')
+        .select('*')
+        .eq('portfolio_id', portfolio.id)
+        .eq('symbol', trade.symbol)
+        .single();
+
+      if (existingPosition) {
+        // Update existing position
+        let newQuantity = trade.trade_type === 'BUY' 
+          ? existingPosition.quantity + (trade.quantity || 0)
+          : existingPosition.quantity - (trade.quantity || 0);
+
+        if (newQuantity <= 0) {
+          // Close position if quantity reaches zero or below
+          await supabase
+            .from('positions')
+            .delete()
+            .eq('id', existingPosition.id);
+        } else {
+          // Update position with new average price
+          const tradeAmount = (trade.price || 0) * (trade.quantity || 0);
+          const totalCost = trade.trade_type === 'BUY' 
+            ? existingPosition.total_cost + tradeAmount
+            : existingPosition.total_cost - (existingPosition.average_price * (trade.quantity || 0));
+          const avgPrice = totalCost / newQuantity;
+          const currentValue = newQuantity * (trade.price || 0);
+          const unrealizedPnL = currentValue - totalCost;
+
+          await supabase
+            .from('positions')
+            .update({
+              quantity: newQuantity,
+              average_price: avgPrice,
+              current_price: trade.price,
+              total_cost: totalCost,
+              current_value: currentValue,
+              unrealized_pnl: unrealizedPnL,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', existingPosition.id);
+        }
+      } else if (trade.trade_type === 'BUY') {
+        // Create new position for BUY orders only
+        const totalCost = (trade.price || 0) * (trade.quantity || 0);
+        await supabase
+          .from('positions')
+          .insert({
+            user_id: user.id,
+            portfolio_id: portfolio.id,
+            symbol: trade.symbol,
+            quantity: trade.quantity,
+            average_price: trade.price,
+            current_price: trade.price,
+            total_cost: totalCost,
+            current_value: totalCost,
+            unrealized_pnl: 0
+          });
       }
+
+      // Update portfolio balance
+      const balanceChange = trade.trade_type === 'BUY' 
+        ? -(trade.total_amount || 0)
+        : (trade.total_amount || 0);
+
+      const newBalance = portfolio.current_balance + balanceChange;
+      const newPnL = newBalance - portfolio.initial_balance;
+
+      await supabase
+        .from('portfolios')
+        .update({ 
+          current_balance: newBalance,
+          total_pnl: newPnL,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', portfolio.id);
+
+      // Update local state
+      setPortfolio(prev => prev ? {
+        ...prev,
+        current_balance: newBalance,
+        total_pnl: newPnL
+      } : null);
+
+      // Reload portfolio data to sync positions
+      await loadPortfolio();
     } catch (error) {
       console.error('Error adding trade:', error);
     }
