@@ -100,32 +100,38 @@ const Index = () => {
             </DropdownMenu>
           </div>
           
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <div className="space-y-6">
-              <StockAnalyzer />
-            </div>
-            <div className="space-y-6">
-              <Tabs defaultValue="analysis" className="w-full">
-                <TabsList className="grid w-full grid-cols-2 mb-4">
-                  <TabsTrigger value="analysis" className="text-sm">
-                    AI Analysis
-                  </TabsTrigger>
-                  <TabsTrigger value="trading" className="text-sm">
-                    PPO Trading
-                  </TabsTrigger>
-                </TabsList>
-                
-                <TabsContent value="analysis" className="space-y-6">
+          <Tabs defaultValue="analysis" className="w-full">
+            <TabsList className="grid w-full grid-cols-2 mb-8">
+              <TabsTrigger value="analysis" className="text-lg py-3">
+                AI Stock Analysis
+              </TabsTrigger>
+              <TabsTrigger value="trading" className="text-lg py-3">
+                PPO Trading Dashboard
+              </TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="analysis">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="space-y-6">
+                  <StockAnalyzer />
+                </div>
+                <div className="space-y-6">
                   <NewsWidget />
-                </TabsContent>
-                
-                <TabsContent value="trading" className="space-y-6">
+                </div>
+              </div>
+            </TabsContent>
+            
+            <TabsContent value="trading">
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                <div className="space-y-6">
                   <TradingDashboard />
+                </div>
+                <div className="space-y-6">
                   <MarketActivityFeed isActive={true} />
-                </TabsContent>
-              </Tabs>
-            </div>
-          </div>
+                </div>
+              </div>
+            </TabsContent>
+          </Tabs>
         </div>
       </div>
     </PortfolioProvider>
