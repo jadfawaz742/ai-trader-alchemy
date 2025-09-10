@@ -1,9 +1,6 @@
-import StockAnalyzer from "@/components/StockAnalyzer";
 import TradingDashboard from "@/components/TradingDashboard";
-import NewsWidget from "@/components/NewsWidget";
 import { MarketActivityFeed } from "@/components/MarketActivityFeed";
 import { PortfolioProvider } from "@/components/PortfolioProvider";
-import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
@@ -100,38 +97,14 @@ const Index = () => {
             </DropdownMenu>
           </div>
           
-          <Tabs defaultValue="analysis" className="w-full">
-            <TabsList className="grid w-full grid-cols-2 mb-8">
-              <TabsTrigger value="analysis" className="text-lg py-3">
-                AI Stock Analysis
-              </TabsTrigger>
-              <TabsTrigger value="trading" className="text-lg py-3">
-                PPO Trading Dashboard
-              </TabsTrigger>
-            </TabsList>
-            
-            <TabsContent value="analysis">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className="space-y-6">
-                  <StockAnalyzer />
-                </div>
-                <div className="space-y-6">
-                  <NewsWidget />
-                </div>
-              </div>
-            </TabsContent>
-            
-            <TabsContent value="trading">
-              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                <div className="space-y-6">
-                  <TradingDashboard />
-                </div>
-                <div className="space-y-6">
-                  <MarketActivityFeed isActive={true} />
-                </div>
-              </div>
-            </TabsContent>
-          </Tabs>
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <div className="space-y-6">
+              <TradingDashboard />
+            </div>
+            <div className="space-y-6">
+              <MarketActivityFeed isActive={true} />
+            </div>
+          </div>
         </div>
       </div>
     </PortfolioProvider>
