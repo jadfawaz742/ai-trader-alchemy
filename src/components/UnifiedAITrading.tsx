@@ -95,127 +95,104 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
 
   // Update active trades with live P&L and auto-stop based on parameters
   useEffect(() => {
-    if (session.isActive && session.activeTrades.length > 0) {
-      tradeUpdateRef.current = setInterval(() => {
-        setSession(prev => {
-          const updatedActiveTrades = [];
-          const newlyClosedTrades = [];
+    if (!session.isActive) return;
+    
+    const interval = setInterval(() => {
+      setSession(prevSession => {
+        if (!prevSession.isActive) {
+          return prevSession;
+        }
 
-          prev.activeTrades.forEach(trade => {
-            // SUPER aggressive price simulation to guarantee triggers
-            const randomDirection = Math.random() - 0.5; // -0.5 to 0.5
-            const forceStopLoss = Math.random() < 0.3; // 30% chance to force stop loss
-            const forceTakeProfit = Math.random() < 0.2; // 20% chance to force take profit
-            
-            let priceChangePercent;
-            
-            if (forceStopLoss) {
-              // Force a stop loss by creating a loss greater than the threshold
-              priceChangePercent = -(stopLoss[0] + Math.random() * 5); // Go beyond stop loss
-            } else if (forceTakeProfit) {
-              // Force a take profit by creating a gain greater than the threshold  
-              priceChangePercent = takeProfit[0] + Math.random() * 5; // Go beyond take profit
-            } else {
-              // Normal price movement
-              priceChangePercent = randomDirection * 20; // Random ±20%
-            }
-            
-            const newPrice = trade.price * (1 + priceChangePercent / 100);
-            const currentPrice = Math.max(newPrice, trade.price * 0.5); // Min 50% of original
-            
-            const newPnL = trade.action === 'BUY' 
-              ? (currentPrice - trade.price) * trade.quantity
-              : (trade.price - currentPrice) * trade.quantity;
-
-            const actualPnLPercent = trade.action === 'BUY' 
-              ? ((currentPrice - trade.price) / trade.price) * 100
-              : ((trade.price - currentPrice) / trade.price) * 100;
-
-            // Debug logging
-            console.log(`🔍 ${trade.symbol} ${trade.action}: P&L = ${actualPnLPercent.toFixed(2)}%`);
-            console.log(`   Stop Loss Trigger: ${stopLoss[0]}%, Take Profit Trigger: ${takeProfit[0]}%`);
-            console.log(`   Should Stop Loss: ${actualPnLPercent} <= -${stopLoss[0]} = ${actualPnLPercent <= -stopLoss[0]}`);
-            console.log(`   Should Take Profit: ${actualPnLPercent} >= ${takeProfit[0]} = ${actualPnLPercent >= takeProfit[0]}`);
-
-            // SIMPLE trigger logic - no Math.abs needed
-            const shouldStopLoss = actualPnLPercent <= -stopLoss[0];
-            const shouldTakeProfit = actualPnLPercent >= takeProfit[0];
-
-            if (shouldStopLoss || shouldTakeProfit) {
-              const closedTrade = {
-                ...trade,
-                profitLoss: Number(newPnL.toFixed(2)),
-                currentPrice: Number(currentPrice.toFixed(2)),
-                status: 'closed' as const,
-                closeReason: (shouldStopLoss ? 'stop_loss' : 'take_profit') as 'stop_loss' | 'take_profit'
-              };
-
-              // Save to database immediately
-              saveTrade(closedTrade);
-              
-              newlyClosedTrades.push(closedTrade);
-
-              console.log(`🚨🚨🚨 ${shouldStopLoss ? 'STOP LOSS' : 'TAKE PROFIT'} TRIGGERED! 🚨🚨🚨`);
-              console.log(`   ${trade.symbol} ${trade.action} at ${actualPnLPercent.toFixed(2)}%`);
-
-              toast({
-                title: shouldStopLoss ? `🔻 STOP LOSS TRIGGERED!` : `🚀 TAKE PROFIT TRIGGERED!`,
-                description: `${trade.symbol} closed at ${actualPnLPercent >= 0 ? '+' : ''}${actualPnLPercent.toFixed(1)}% (Target: ${shouldStopLoss ? '-' + stopLoss[0] : '+' + takeProfit[0]}%)`,
-                variant: shouldStopLoss ? "destructive" : "default"
-              });
-            } else {
-              updatedActiveTrades.push({
-                ...trade,
-                profitLoss: Number(newPnL.toFixed(2)),
-                currentPrice: Number(currentPrice.toFixed(2))
-              });
-            }
+        // Check portfolio-level stop loss/take profit first
+        const portfolioPnLPercent = ((prevSession.currentBalance - prevSession.startingBalance) / prevSession.startingBalance) * 100;
+        
+        // Portfolio-level stop loss check
+        if (portfolioPnLPercent <= -Math.abs(stopLoss[0])) {
+          console.log(`🚨 PORTFOLIO STOP LOSS TRIGGERED! P&L: ${portfolioPnLPercent.toFixed(2)}%`);
+          toast({
+            title: "🚨 Portfolio Stop Loss Triggered!",
+            description: `Portfolio lost ${Math.abs(portfolioPnLPercent).toFixed(2)}% (Limit: ${Math.abs(stopLoss[0])}%)`,
+            variant: "destructive"
           });
           
-          const totalActivePnL = updatedActiveTrades.reduce((sum, trade) => sum + trade.profitLoss, 0);
-          const allCompletedTrades = [...prev.completedTrades, ...newlyClosedTrades];
-          const completedPnL = allCompletedTrades.reduce((sum, trade) => sum + trade.profitLoss, 0);
-          
-          const newSession = {
-            ...prev,
-            activeTrades: updatedActiveTrades,
-            completedTrades: allCompletedTrades,
-            totalPnL: Number((totalActivePnL + completedPnL).toFixed(2)),
-            currentBalance: prev.startingBalance + totalActivePnL + completedPnL
-          };
-
-          // Auto-stop trading if all trades are closed by stop loss/take profit
-          if (updatedActiveTrades.length === 0 && newlyClosedTrades.length > 0 && prev.activeTrades.length > 0) {
-            // Clear intervals
-            if (tradeUpdateRef.current) {
-              clearInterval(tradeUpdateRef.current);
-              tradeUpdateRef.current = null;
-            }
-            
-            toast({
-              title: "🛑 Trading Auto-Stopped",
-              description: "All positions closed by stop loss/take profit triggers",
-              variant: "default"
-            });
-            
-            return { ...newSession, isActive: false };
+          // Stop trading immediately
+          if (intervalRef.current) {
+            clearInterval(intervalRef.current);
+            intervalRef.current = null;
+          }
+          if (tradeUpdateRef.current) {
+            clearInterval(tradeUpdateRef.current);
+            tradeUpdateRef.current = null;
           }
           
-          return newSession;
-        });
-      }, 3000); // Check every 3 seconds
-    } else if (tradeUpdateRef.current) {
-      clearInterval(tradeUpdateRef.current);
-      tradeUpdateRef.current = null;
-    }
+          return {
+            ...prevSession,
+            isActive: false,
+            activeTrades: [] // Close all trades
+          };
+        }
+        
+        // Portfolio-level take profit check
+        if (portfolioPnLPercent >= takeProfit[0]) {
+          console.log(`🎯 PORTFOLIO TAKE PROFIT TRIGGERED! P&L: ${portfolioPnLPercent.toFixed(2)}%`);
+          toast({
+            title: "🎯 Portfolio Take Profit Triggered!",
+            description: `Portfolio gained ${portfolioPnLPercent.toFixed(2)}% (Target: ${takeProfit[0]}%)`,
+            variant: "default"
+          });
+          
+          // Stop trading immediately
+          if (intervalRef.current) {
+            clearInterval(intervalRef.current);
+            intervalRef.current = null;
+          }
+          if (tradeUpdateRef.current) {
+            clearInterval(tradeUpdateRef.current);
+            tradeUpdateRef.current = null;
+          }
+          
+          return {
+            ...prevSession,
+            isActive: false,
+            activeTrades: [] // Close all trades
+          };
+        }
 
-    return () => {
-      if (tradeUpdateRef.current) {
-        clearInterval(tradeUpdateRef.current);
-        tradeUpdateRef.current = null;
-      }
-    };
-  }, [session.isActive, session.activeTrades.length, riskLevel, stopLoss, takeProfit, toast, setSession, tradeUpdateRef]);
+        if (prevSession.activeTrades.length === 0) {
+          return prevSession;
+        }
+
+        const updatedTrades = prevSession.activeTrades.map(trade => {
+          // Simulate more aggressive price movements
+          const volatility = 0.05; // 5% volatility
+          const priceChange = (Math.random() - 0.5) * 2 * volatility;
+          const newPrice = trade.currentPrice ? trade.currentPrice * (1 + priceChange) : trade.price * (1 + priceChange);
+          
+          const pnl = trade.action === 'BUY' 
+            ? (newPrice - trade.price) * trade.quantity
+            : (trade.price - newPrice) * trade.quantity;
+          
+          return {
+            ...trade,
+            currentPrice: newPrice,
+            profitLoss: pnl
+          };
+        });
+
+        const newBalance = prevSession.startingBalance + updatedTrades.reduce((sum, trade) => sum + trade.profitLoss, 0);
+        
+        return {
+          ...prevSession,
+          activeTrades: updatedTrades,
+          currentBalance: newBalance,
+          totalPnL: newBalance - prevSession.startingBalance
+        };
+      });
+    }, 1000);
+
+    tradeUpdateRef.current = interval;
+    return () => clearInterval(interval);
+  }, [session.isActive, stopLoss, takeProfit, toast]);
 
   const saveTrade = async (trade: LiveTrade) => {
     if (!portfolio) return;

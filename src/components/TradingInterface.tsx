@@ -27,6 +27,8 @@ export const TradingInterface: React.FC = () => {
   const [loading, setLoading] = useState(false);
   const [ppoSignal, setPpoSignal] = useState<any>(null);
   const [riskAssessment, setRiskAssessment] = useState<any>(null);
+  const [stopLoss, setStopLoss] = useState('5');
+  const [takeProfit, setTakeProfit] = useState('10');
   const { toast } = useToast();
 
   useEffect(() => {
@@ -265,15 +267,15 @@ export const TradingInterface: React.FC = () => {
 
   const getPPOSignalColor = (signal: string) => {
     switch (signal) {
-      case 'BUY': return 'text-green-600';
+      case 'BUY': return 'text-emerald-600';
       case 'SELL': return 'text-red-600';
-      default: return 'text-yellow-600';
+      default: return 'text-amber-600';
     }
   };
 
   const getRiskColor = (score: number) => {
-    if (score <= 30) return 'text-green-600';
-    if (score <= 60) return 'text-yellow-600';
+    if (score <= 30) return 'text-emerald-600';
+    if (score <= 60) return 'text-amber-600';
     return 'text-red-600';
   };
 
@@ -317,7 +319,7 @@ export const TradingInterface: React.FC = () => {
             <div className="flex items-center space-x-2">
               <RadioGroupItem value="BUY" id="buy" />
               <Label htmlFor="buy" className="flex items-center gap-2">
-                <TrendingUp className="h-4 w-4 text-green-600" />
+                <TrendingUp className="h-4 w-4 text-emerald-600" />
                 Buy
               </Label>
             </div>
@@ -373,11 +375,51 @@ export const TradingInterface: React.FC = () => {
           </div>
         </div>
 
+        {/* Stop Loss and Take Profit */}
+        <div className="grid grid-cols-2 gap-4">
+          <div className="space-y-2">
+            <Label htmlFor="stopLoss">Stop Loss (%)</Label>
+            <Input
+              id="stopLoss"
+              type="number"
+              step="0.1"
+              placeholder="5.0"
+              value={stopLoss}
+              onChange={(e) => setStopLoss(e.target.value)}
+            />
+          </div>
+          <div className="space-y-2">
+            <Label htmlFor="takeProfit">Take Profit (%)</Label>
+            <Input
+              id="takeProfit"
+              type="number"
+              step="0.1"
+              placeholder="10.0"
+              value={takeProfit}
+              onChange={(e) => setTakeProfit(e.target.value)}
+            />
+          </div>
+        </div>
+
         {/* Trade Value */}
         {quantity && price && (
-          <div className="flex justify-between items-center p-3 bg-muted rounded-lg">
-            <span className="text-sm font-medium">Total Trade Value:</span>
-            <span className="text-lg font-bold">{formatCurrency(calculateTradeValue())}</span>
+          <div className="space-y-2">
+            <div className="flex justify-between items-center p-3 bg-muted rounded-lg">
+              <span className="text-sm font-medium">Total Trade Value:</span>
+              <span className="text-lg font-bold">{formatCurrency(calculateTradeValue())}</span>
+            </div>
+            {stopLoss && takeProfit && (
+              <div className="grid grid-cols-2 gap-2 text-sm text-muted-foreground">
+                <div className="flex justify-between">
+                  <span>Stop Loss:</span>
+                  <span className="text-red-600">-{stopLoss}%</span>
+                </div>
+                <div className="flex justify-between">
+                  <span>Take Profit:</span>
+                  <span className="text-emerald-600">+{takeProfit}%</span>
+                </div>
+              </div>
+            )}
           </div>
         )}
 
