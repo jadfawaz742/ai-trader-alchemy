@@ -176,13 +176,32 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
           const allCompletedTrades = [...prev.completedTrades, ...newlyClosedTrades];
           const completedPnL = allCompletedTrades.reduce((sum, trade) => sum + trade.profitLoss, 0);
           
-          return {
+          const newSession = {
             ...prev,
             activeTrades: updatedActiveTrades,
             completedTrades: allCompletedTrades,
             totalPnL: Number((totalActivePnL + completedPnL).toFixed(2)),
             currentBalance: prev.startingBalance + totalActivePnL + completedPnL
           };
+
+          // Auto-stop trading if all trades are closed by stop loss/take profit
+          if (updatedActiveTrades.length === 0 && newlyClosedTrades.length > 0 && prev.activeTrades.length > 0) {
+            // Clear intervals
+            if (tradeUpdateRef.current) {
+              clearInterval(tradeUpdateRef.current);
+              tradeUpdateRef.current = null;
+            }
+            
+            toast({
+              title: "🛑 Trading Auto-Stopped",
+              description: "All positions closed by stop loss/take profit triggers",
+              variant: "default"
+            });
+            
+            return { ...newSession, isActive: false };
+          }
+          
+          return newSession;
         });
       }, 3000); // Check every 3 seconds
     } else if (tradeUpdateRef.current) {
