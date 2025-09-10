@@ -1,17 +1,17 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
+import { Button } from '@/components/ui/button';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
-import { Activity } from 'lucide-react';
-import AITradingModal from './AITradingModal';
+import { Activity, RotateCcw } from 'lucide-react';
 import { PortfolioDashboard } from './PortfolioDashboard';
 import { TradingInterface } from './TradingInterface';
 import StockAnalyzer from './StockAnalyzer';
 import { LiveTradingView } from './LiveTradingView';
 import { UnifiedAITrading } from './UnifiedAITrading';
 import { MarketActivityFeed } from './MarketActivityFeed';
-import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { usePortfolio } from '@/hooks/usePortfolio';
 
 interface LiveTrade {
   id: string;
@@ -44,17 +44,15 @@ interface TradingSession {
 
 const TradingDashboard: React.FC = () => {
   const [activeTab, setActiveTab] = useState("portfolio");
-  const [isLiveTrading, setIsLiveTrading] = useState(false);
-  
-  // Global trading state
-  const [portfolio, setPortfolio] = useState<any>(null);
-  const [tradingAmount, setTradingAmount] = useState('1000');
-  const [riskLevel, setRiskLevel] = useState([50]);
+  const [tradingAmount, setTradingAmount] = useState('10000');
+  const [riskLevel, setRiskLevel] = useState([30]);
   const [stopLoss, setStopLoss] = useState([5]);
   const [takeProfit, setTakeProfit] = useState([15]);
-  const [tradeDuration, setTradeDuration] = useState([300]);
+  const [tradeDuration, setTradeDuration] = useState([30]);
   const [simulationMode, setSimulationMode] = useState(true);
-  
+  const { toast } = useToast();
+  const { portfolio, resetPortfolio } = usePortfolio();
+
   const [session, setSession] = useState<TradingSession>({
     isActive: false,
     startTime: '',
@@ -62,20 +60,23 @@ const TradingDashboard: React.FC = () => {
     totalPnL: 0,
     activeTrades: [],
     completedTrades: [],
-    currentBalance: 0,
-    startingBalance: 0
+    currentBalance: portfolio?.current_balance || 0,
+    startingBalance: portfolio?.current_balance || 0
   });
 
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const tradeUpdateRef = useRef<NodeJS.Timeout | null>(null);
-  const { toast } = useToast();
 
-  // Update isLiveTrading based on session state
   useEffect(() => {
-    setIsLiveTrading(session.isActive);
-  }, [session.isActive]);
+    if (portfolio && !session.isActive) {
+      setSession(prev => ({
+        ...prev,
+        currentBalance: portfolio.current_balance,
+        startingBalance: portfolio.current_balance
+      }));
+    }
+  }, [portfolio, session.isActive]);
 
-  // Cleanup on unmount
   useEffect(() => {
     return () => {
       if (intervalRef.current) clearInterval(intervalRef.current);
@@ -83,36 +84,7 @@ const TradingDashboard: React.FC = () => {
     };
   }, []);
 
-  const loadPortfolio = async () => {
-    try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        console.log('User not authenticated');
-        return;
-      }
-
-      const { data } = await supabase
-        .from('portfolios')
-        .select('*')
-        .limit(1)
-        .single();
-      
-      if (data) {
-        setPortfolio(data);
-      }
-    } catch (error) {
-      console.error('Error loading portfolio:', error);
-    }
-  };
-
-  useEffect(() => {
-    loadPortfolio();
-  }, []);
-
-  // Note: Trade updates are handled by UnifiedAITrading component to prevent race conditions
-
-  // Pass all trading props and functions to UnifiedAITrading
-  const tradingProps = {
+  const tradingProps = useMemo(() => ({
     portfolio,
     tradingAmount,
     setTradingAmount,
@@ -129,25 +101,37 @@ const TradingDashboard: React.FC = () => {
     session,
     setSession,
     intervalRef,
-    tradeUpdateRef,
-    loadPortfolio
-  };
+    tradeUpdateRef
+  }), [
+    portfolio,
+    tradingAmount,
+    riskLevel,
+    stopLoss,
+    takeProfit,
+    tradeDuration,
+    simulationMode,
+    session
+  ]);
 
   return (
-    <div className="container mx-auto p-6 space-y-6">
+    <div className="space-y-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold">AI Trading Dashboard</h1>
+        <h2 className="text-3xl font-bold tracking-tight text-white">Trading Dashboard</h2>
         <div className="flex items-center gap-3">
-          {isLiveTrading && (
-            <Badge variant="default" className="text-sm px-3 py-1 animate-pulse">
-              <div className="w-2 h-2 bg-white rounded-full mr-2 animate-ping"></div>
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={resetPortfolio}
+            className="text-white border-white hover:bg-white hover:text-black"
+          >
+            <RotateCcw className="h-4 w-4 mr-2" />
+            Reset Portfolio
+          </Button>
+          {session.isActive && (
+            <Badge variant="default" className="bg-green-600 text-white animate-pulse">
               Live Trading Active
             </Badge>
           )}
-          <Badge variant="outline" className="text-sm px-3 py-1">
-            <Activity className="h-4 w-4 mr-2" />
-            PPO Risk Management
-          </Badge>
         </div>
       </div>
 
@@ -158,7 +142,7 @@ const TradingDashboard: React.FC = () => {
           <TabsTrigger value="analyzer">Stock Analysis</TabsTrigger>
           <TabsTrigger value="ai-trading" className="relative">
             AI Trading
-            {isLiveTrading && (
+            {session.isActive && (
               <div className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
             )}
           </TabsTrigger>

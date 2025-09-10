@@ -60,7 +60,7 @@ interface UnifiedAITradingProps {
   setSession: (value: TradingSession | ((prev: TradingSession) => TradingSession)) => void;
   intervalRef: React.MutableRefObject<NodeJS.Timeout | null>;
   tradeUpdateRef: React.MutableRefObject<NodeJS.Timeout | null>;
-  loadPortfolio: () => void;
+  loadPortfolio?: () => void;
 }
 
 export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
@@ -281,7 +281,7 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
       }
 
       // Update portfolio balance if not simulation
-      if (!simulationMode) {
+      if (!simulationMode && loadPortfolio) {
         const realizedPnL = trade.profitLoss || 0;
         const balanceChange = trade.action === 'BUY' 
           ? -(trade.price * trade.quantity) + realizedPnL
@@ -299,7 +299,7 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
         
         // Reload portfolio to get updated balance after delay
         setTimeout(() => {
-          loadPortfolio();
+          if (loadPortfolio) loadPortfolio();
         }, 1000);
       }
     } catch (error) {

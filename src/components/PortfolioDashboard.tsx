@@ -8,6 +8,7 @@ import { Dialog, DialogContent, DialogDescription, DialogHeader, DialogTitle, Di
 import { Label } from '@/components/ui/label';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { usePortfolio } from '@/hooks/usePortfolio';
 import { TrendingUp, TrendingDown, DollarSign, PieChart, BarChart3, RefreshCw, ShoppingCart, Minus } from 'lucide-react';
 
 interface Portfolio {
@@ -43,117 +44,13 @@ interface Trade {
 }
 
 export const PortfolioDashboard: React.FC = () => {
-  const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
-  const [positions, setPositions] = useState<Position[]>([]);
-  const [recentTrades, setRecentTrades] = useState<Trade[]>([]);
-  const [loading, setLoading] = useState(true);
+  const { portfolio, positions, recentTrades, loading } = usePortfolio();
   const [selectedPosition, setSelectedPosition] = useState<Position | null>(null);
   const [tradeQuantity, setTradeQuantity] = useState('');
   const [tradePrice, setTradePrice] = useState('');
   const [isTrading, setIsTrading] = useState(false);
   const { toast } = useToast();
 
-  const loadPortfolioData = async () => {
-    setLoading(true);
-    try {
-      // Check authentication first
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        toast({
-          title: "Authentication Required",
-          description: "Please log in to view your portfolio",
-          variant: "destructive"
-        });
-        return;
-      }
-
-      // Load portfolio (user-specific via RLS)
-      const { data: portfolioData } = await supabase
-        .from('portfolios')
-        .select('*')
-        .limit(1)
-        .single();
-
-      if (portfolioData) {
-        setPortfolio(portfolioData);
-
-        // Load positions (user-specific via RLS)
-        const { data: positionsData } = await supabase
-          .from('positions')
-          .select('*')
-          .eq('portfolio_id', portfolioData.id)
-          .gt('quantity', 0);
-
-        setPositions(positionsData || []);
-
-        // Load recent trades (user-specific via RLS)
-        const { data: tradesData } = await supabase
-          .from('trades')
-          .select('*')
-          .eq('portfolio_id', portfolioData.id)
-          .order('executed_at', { ascending: false })
-          .limit(10);
-
-        setRecentTrades(tradesData || []);
-      } else {
-        // No portfolio found, create a default one
-        await createDefaultPortfolio(user.id);
-        // Retry loading after creation
-        setTimeout(loadPortfolioData, 1000);
-      }
-    } catch (error) {
-      console.error('Error loading portfolio data:', error);
-      toast({
-        title: "Error Loading Portfolio", 
-        description: "Failed to load portfolio data. Please try again.",
-        variant: "destructive"
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const createDefaultPortfolio = async (userId: string) => {
-    try {
-      // Create default portfolio
-      const { data: portfolio, error: portfolioError } = await supabase
-        .from('portfolios')
-        .insert({
-          name: 'My Portfolio',
-          user_id: userId,
-          current_balance: 100000,
-          initial_balance: 100000
-        })
-        .select()
-        .single();
-
-      if (portfolioError) throw portfolioError;
-
-      // Create default risk parameters
-      await supabase
-        .from('risk_parameters')
-        .insert({
-          portfolio_id: portfolio.id,
-          user_id: userId,
-          max_position_size: 10.0,
-          stop_loss_percent: 5.0,
-          take_profit_percent: 15.0,
-          min_confidence_score: 75.0,
-          max_daily_trades: 10
-        });
-
-      toast({
-        title: "Portfolio Created",
-        description: "A default portfolio has been created for you with $100,000 starting balance",
-      });
-    } catch (error) {
-      console.error('Error creating portfolio:', error);
-    }
-  };
-
-  useEffect(() => {
-    loadPortfolioData();
-  }, []);
 
   const totalPortfolioValue = portfolio ? portfolio.current_balance + positions.reduce((sum, pos) => sum + pos.current_value, 0) : 0;
   const totalUnrealizedPnl = positions.reduce((sum, pos) => sum + pos.unrealized_pnl, 0);
@@ -211,7 +108,6 @@ export const PortfolioDashboard: React.FC = () => {
         setSelectedPosition(null);
         setTradeQuantity('');
         setTradePrice('');
-        loadPortfolioData(); // Refresh data
       } else {
         throw new Error(data?.error || 'Trade execution failed');
       }
@@ -257,10 +153,6 @@ export const PortfolioDashboard: React.FC = () => {
                 {portfolio?.name || 'Demo Portfolio'}
               </CardDescription>
             </div>
-            <Button variant="outline" size="sm" onClick={loadPortfolioData}>
-              <RefreshCw className="h-4 w-4 mr-2" />
-              Refresh
-            </Button>
           </div>
         </CardHeader>
         <CardContent>

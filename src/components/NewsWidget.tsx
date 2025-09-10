@@ -96,7 +96,7 @@ const NewsWidget = ({ symbol, company }: NewsWidgetProps) => {
           </Button>
         </div>
         <CardDescription className="text-gray-400">
-          {symbol ? `Latest news for ${symbol}` : 'Select a stock to view related news'}
+          {symbol ? `Latest news and sentiment analysis for ${symbol}` : 'This section shows how news sentiment affects trading decisions'}
         </CardDescription>
       </CardHeader>
       <CardContent>

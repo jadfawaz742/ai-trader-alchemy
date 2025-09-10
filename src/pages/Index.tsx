@@ -1,6 +1,7 @@
 import StockAnalyzer from "@/components/StockAnalyzer";
 import TradingDashboard from "@/components/TradingDashboard";
 import NewsWidget from "@/components/NewsWidget";
+import { PortfolioProvider } from "@/components/PortfolioProvider";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
@@ -57,66 +58,68 @@ const Index = () => {
   }
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
-      <div className="container mx-auto px-4 py-8">
-        <div className="flex justify-between items-center mb-8">
-          <div className="text-center flex-1">
-            <h1 className="text-4xl md:text-6xl font-bold text-white mb-4">
-              AI Trading Bot
-            </h1>
-            <p className="text-xl text-gray-300 max-w-2xl mx-auto">
-              AI-powered stock analysis with PPO risk management and automated trading simulation
-            </p>
-          </div>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button variant="outline" className="ml-4">
-                <User className="h-4 w-4 mr-2" />
-                Account
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-48">
-              <DropdownMenuItem asChild>
-                <Link to="/profile" className="flex items-center">
+    <PortfolioProvider>
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
+        <div className="container mx-auto px-4 py-8">
+          <div className="flex justify-between items-center mb-8">
+            <div className="text-center flex-1">
+              <h1 className="text-4xl md:text-6xl font-bold text-white mb-4">
+                AI Trading Bot
+              </h1>
+              <p className="text-xl text-gray-300 max-w-2xl mx-auto">
+                AI-powered stock analysis with PPO risk management and automated trading simulation
+              </p>
+            </div>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button variant="outline" className="ml-4">
                   <User className="h-4 w-4 mr-2" />
-                  Profile
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuItem asChild>
-                <Link to="/settings" className="flex items-center">
-                  <Settings className="h-4 w-4 mr-2" />
-                  Settings
-                </Link>
-              </DropdownMenuItem>
-              <DropdownMenuSeparator />
-              <DropdownMenuItem onClick={handleSignOut}>
-                <LogOut className="h-4 w-4 mr-2" />
-                Sign Out
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+                  Account
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuItem asChild>
+                  <Link to="/profile" className="flex items-center">
+                    <User className="h-4 w-4 mr-2" />
+                    Profile
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuItem asChild>
+                  <Link to="/settings" className="flex items-center">
+                    <Settings className="h-4 w-4 mr-2" />
+                    Settings
+                  </Link>
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem onClick={handleSignOut}>
+                  <LogOut className="h-4 w-4 mr-2" />
+                  Sign Out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </div>
+          
+          <Tabs defaultValue="analysis" className="w-full">
+            <TabsList className="grid w-full grid-cols-2 mb-8">
+              <TabsTrigger value="analysis" className="text-lg py-3">
+                Stage 1: AI Analysis
+              </TabsTrigger>
+              <TabsTrigger value="trading" className="text-lg py-3">
+                Stage 2: PPO Trading
+              </TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="analysis">
+              <StockAnalyzer />
+            </TabsContent>
+            
+            <TabsContent value="trading">
+              <TradingDashboard />
+            </TabsContent>
+          </Tabs>
         </div>
-        
-        <Tabs defaultValue="analysis" className="w-full">
-          <TabsList className="grid w-full grid-cols-2 mb-8">
-            <TabsTrigger value="analysis" className="text-lg py-3">
-              Stage 1: AI Analysis
-            </TabsTrigger>
-            <TabsTrigger value="trading" className="text-lg py-3">
-              Stage 2: PPO Trading
-            </TabsTrigger>
-          </TabsList>
-          
-          <TabsContent value="analysis">
-            <StockAnalyzer />
-          </TabsContent>
-          
-          <TabsContent value="trading">
-            <TradingDashboard />
-          </TabsContent>
-        </Tabs>
       </div>
-    </div>
+    </PortfolioProvider>
   );
 };
 

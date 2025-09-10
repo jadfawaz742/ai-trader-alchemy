@@ -1,0 +1,256 @@
+import { useState, useEffect, useCallback, createContext, useContext } from 'react';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
+
+interface Portfolio {
+  id: string;
+  name: string;
+  initial_balance: number;
+  current_balance: number;
+  total_pnl: number;
+  created_at: string;
+  user_id: string;
+}
+
+interface Position {
+  id: string;
+  symbol: string;
+  quantity: number;
+  average_price: number;
+  current_price: number;
+  current_value: number;
+  unrealized_pnl: number;
+  total_cost: number;
+}
+
+interface Trade {
+  id: string;
+  symbol: string;
+  trade_type: string;
+  quantity: number;
+  price: number;
+  total_amount: number;
+  ppo_signal: any;
+  risk_score: number;
+  executed_at: string;
+}
+
+interface PortfolioContextType {
+  portfolio: Portfolio | null;
+  positions: Position[];
+  recentTrades: Trade[];
+  loading: boolean;
+  loadPortfolio: () => Promise<void>;
+  updateBalance: (newBalance: number) => Promise<void>;
+  addTrade: (trade: Partial<Trade>) => Promise<void>;
+  resetPortfolio: () => Promise<void>;
+}
+
+const PortfolioContext = createContext<PortfolioContextType | null>(null);
+
+export const usePortfolio = () => {
+  const context = useContext(PortfolioContext);
+  if (!context) {
+    throw new Error('usePortfolio must be used within a PortfolioProvider');
+  }
+  return context;
+};
+
+export const usePortfolioProvider = () => {
+  const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
+  const [positions, setPositions] = useState<Position[]>([]);
+  const [recentTrades, setRecentTrades] = useState<Trade[]>([]);
+  const [loading, setLoading] = useState(true);
+  const { toast } = useToast();
+
+  const loadPortfolio = useCallback(async () => {
+    setLoading(true);
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        setLoading(false);
+        return;
+      }
+
+      // Load portfolio
+      const { data: portfolioData } = await supabase
+        .from('portfolios')
+        .select('*')
+        .limit(1)
+        .single();
+
+      if (portfolioData) {
+        setPortfolio(portfolioData);
+
+        // Load positions
+        const { data: positionsData } = await supabase
+          .from('positions')
+          .select('*')
+          .eq('portfolio_id', portfolioData.id)
+          .gt('quantity', 0);
+
+        setPositions(positionsData || []);
+
+        // Load recent trades
+        const { data: tradesData } = await supabase
+          .from('trades')
+          .select('*')
+          .eq('portfolio_id', portfolioData.id)
+          .order('executed_at', { ascending: false })
+          .limit(20);
+
+        setRecentTrades(tradesData || []);
+      } else {
+        // Create default portfolio
+        const { data: newPortfolio } = await supabase
+          .from('portfolios')
+          .insert({
+            name: 'My Portfolio',
+            user_id: user.id,
+            current_balance: 100000,
+            initial_balance: 100000
+          })
+          .select()
+          .single();
+
+        if (newPortfolio) {
+          setPortfolio(newPortfolio);
+          
+          // Create default risk parameters
+          await supabase
+            .from('risk_parameters')
+            .insert({
+              portfolio_id: newPortfolio.id,
+              user_id: user.id,
+              max_position_size: 10.0,
+              stop_loss_percent: 5.0,
+              take_profit_percent: 15.0,
+              min_confidence_score: 75.0,
+              max_daily_trades: 10
+            });
+
+          toast({
+            title: "Portfolio Created",
+            description: "A new portfolio has been created with $100,000 starting balance",
+          });
+        }
+      }
+    } catch (error) {
+      console.error('Error loading portfolio:', error);
+      toast({
+        title: "Error Loading Portfolio",
+        description: "Failed to load portfolio data. Please try again.",
+        variant: "destructive"
+      });
+    } finally {
+      setLoading(false);
+    }
+  }, [toast]);
+
+  const updateBalance = useCallback(async (newBalance: number) => {
+    if (!portfolio) return;
+
+    try {
+      const { error } = await supabase
+        .from('portfolios')
+        .update({ 
+          current_balance: newBalance,
+          total_pnl: newBalance - portfolio.initial_balance
+        })
+        .eq('id', portfolio.id);
+
+      if (error) throw error;
+
+      setPortfolio(prev => prev ? {
+        ...prev,
+        current_balance: newBalance,
+        total_pnl: newBalance - prev.initial_balance
+      } : null);
+    } catch (error) {
+      console.error('Error updating balance:', error);
+    }
+  }, [portfolio]);
+
+  const addTrade = useCallback(async (trade: Partial<Trade>) => {
+    if (!portfolio) return;
+
+    try {
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) return;
+
+      const { error } = await supabase
+        .from('trades')
+        .insert({
+          user_id: user.id,
+          portfolio_id: portfolio.id,
+          symbol: trade.symbol,
+          trade_type: trade.trade_type,
+          quantity: trade.quantity,
+          price: trade.price,
+          total_amount: trade.total_amount,
+          risk_score: trade.risk_score || 50,
+          ppo_signal: trade.ppo_signal || {}
+        });
+
+      if (!error) {
+        // Reload data to reflect changes
+        setTimeout(loadPortfolio, 1000);
+      }
+    } catch (error) {
+      console.error('Error adding trade:', error);
+    }
+  }, [portfolio, loadPortfolio]);
+
+  const resetPortfolio = useCallback(async () => {
+    if (!portfolio) return;
+
+    try {
+      // Reset portfolio balance
+      await supabase
+        .from('portfolios')
+        .update({ 
+          current_balance: portfolio.initial_balance,
+          total_pnl: 0
+        })
+        .eq('id', portfolio.id);
+
+      // Clear positions and trades
+      await Promise.all([
+        supabase.from('positions').delete().eq('portfolio_id', portfolio.id),
+        supabase.from('trades').delete().eq('portfolio_id', portfolio.id)
+      ]);
+
+      toast({
+        title: "Portfolio Reset",
+        description: "Portfolio has been reset to initial state",
+      });
+
+      // Reload data
+      await loadPortfolio();
+    } catch (error) {
+      console.error('Error resetting portfolio:', error);
+      toast({
+        title: "Error",
+        description: "Failed to reset portfolio",
+        variant: "destructive"
+      });
+    }
+  }, [portfolio, loadPortfolio, toast]);
+
+  useEffect(() => {
+    loadPortfolio();
+  }, [loadPortfolio]);
+
+  return {
+    portfolio,
+    positions,
+    recentTrades,
+    loading,
+    loadPortfolio,
+    updateBalance,
+    addTrade,
+    resetPortfolio,
+  };
+};
+
+export { PortfolioContext };

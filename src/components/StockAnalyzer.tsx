@@ -193,10 +193,12 @@ const StockAnalyzer = () => {
 
                   <div className="space-y-2">
                     <h4 className="text-sm font-medium text-white">AI Analysis Report</h4>
-                    <div className="bg-slate-800/50 rounded-lg p-4 border border-slate-700">
-                      <pre className="text-sm text-gray-300 whitespace-pre-wrap font-mono">
-                        {analysis.llm_analysis}
-                      </pre>
+                    <div className="bg-gradient-to-br from-slate-800/80 to-slate-900/80 rounded-lg p-6 border border-slate-600 shadow-xl">
+                      <div className="prose prose-invert max-w-none">
+                        <div className="text-gray-200 leading-relaxed whitespace-pre-wrap font-sans text-sm">
+                          {analysis.llm_analysis}
+                        </div>
+                      </div>
                     </div>
                   </div>
 

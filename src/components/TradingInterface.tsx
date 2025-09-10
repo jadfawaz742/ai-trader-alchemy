@@ -9,17 +9,12 @@ import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group';
 import { Alert, AlertDescription } from '@/components/ui/alert';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
-import { TrendingUp, TrendingDown, AlertTriangle, DollarSign, Zap } from 'lucide-react';
+import { usePortfolio } from '@/hooks/usePortfolio';
+import { TrendingUp, TrendingDown, AlertTriangle, DollarSign, Zap, Minimize2 } from 'lucide-react';
 import { StockChart } from '@/components/StockChart';
 
-interface Portfolio {
-  id: string;
-  name: string;
-  current_balance: number;
-}
-
 export const TradingInterface: React.FC = () => {
-  const [portfolio, setPortfolio] = useState<Portfolio | null>(null);
+  const { portfolio } = usePortfolio();
   const [symbol, setSymbol] = useState('');
   const [tradeType, setTradeType] = useState<'BUY' | 'SELL'>('BUY');
   const [quantity, setQuantity] = useState('');
@@ -29,34 +24,9 @@ export const TradingInterface: React.FC = () => {
   const [riskAssessment, setRiskAssessment] = useState<any>(null);
   const [stopLoss, setStopLoss] = useState('5');
   const [takeProfit, setTakeProfit] = useState('10');
+  const [showChart, setShowChart] = useState(false);
   const { toast } = useToast();
 
-  useEffect(() => {
-    loadPortfolio();
-  }, []);
-
-  const loadPortfolio = async () => {
-    try {
-      // Check authentication first
-      const { data: { user } } = await supabase.auth.getUser();  
-      if (!user) {
-        console.log('User not authenticated');
-        return;
-      }
-
-      const { data } = await supabase
-        .from('portfolios')
-        .select('*')
-        .limit(1)
-        .single();
-      
-      if (data) {
-        setPortfolio(data);
-      }
-    } catch (error) {
-      console.error('Error loading portfolio:', error);
-    }
-  };
 
   const calculateTradeValue = () => {
     const qty = parseInt(quantity) || 0;
@@ -239,11 +209,6 @@ export const TradingInterface: React.FC = () => {
         setPrice('');
         setPpoSignal(null);
         setRiskAssessment(null);
-        
-        // Reload portfolio after trade execution with delay
-        setTimeout(() => {
-          loadPortfolio();
-        }, 1500);
       } else {
         throw new Error(data?.error || 'Trade execution failed');
       }
@@ -281,24 +246,39 @@ export const TradingInterface: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Stock Chart */}
-      {symbol && (
+      {/* Compact Stock Chart */}
+      {symbol && showChart && (
         <StockChart 
           symbol={symbol}
           currentPrice={price ? parseFloat(price) : undefined}
           tradeType={tradeType}
+          className="h-[300px]"
         />
       )}
 
       <Card>
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Zap className="h-5 w-5" />
-            AI Trading Interface
-          </CardTitle>
-          <CardDescription>
-            Execute trades with PPO analysis and risk management
-          </CardDescription>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle className="flex items-center gap-2">
+                <Zap className="h-5 w-5" />
+                Manual Trading Interface
+              </CardTitle>
+              <CardDescription>
+                Execute manual trades with advanced risk management and stop orders
+              </CardDescription>
+            </div>
+            {symbol && (
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowChart(!showChart)}
+              >
+                <Minimize2 className="h-4 w-4 mr-2" />
+                {showChart ? 'Hide' : 'Show'} Chart
+              </Button>
+            )}
+          </div>
         </CardHeader>
         <CardContent className="space-y-6">
         {/* Portfolio Balance */}

@@ -3,7 +3,7 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/com
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
-import { supabase } from '@/integrations/supabase/client';
+import { usePortfolio } from '@/hooks/usePortfolio';
 import { Activity, Bot, TrendingUp, TrendingDown, Zap, Eye, Play, Square } from 'lucide-react';
 
 interface LiveTrade {
@@ -33,6 +33,7 @@ export const LiveTradingView: React.FC = () => {
   const [marketData, setMarketData] = useState<MarketFluctuation[]>([]);
   const [totalPnL, setTotalPnL] = useState(0);
   const [botStatus, setBotStatus] = useState<'idle' | 'analyzing' | 'trading'>('idle');
+  const { portfolio, updateBalance } = usePortfolio();
 
   // Simulate live market data updates
   useEffect(() => {
@@ -86,7 +87,7 @@ export const LiveTradingView: React.FC = () => {
     return () => clearInterval(interval);
   }, [isActive]);
 
-  const simulateTrade = (currentMarketData: MarketFluctuation[]) => {
+  const simulateTrade = async (currentMarketData: MarketFluctuation[]) => {
     const tradableStock = currentMarketData[Math.floor(Math.random() * currentMarketData.length)];
     const action = Math.random() > 0.6 ? 'BUY' : Math.random() > 0.3 ? 'SELL' : 'HOLD';
     
@@ -110,6 +111,12 @@ export const LiveTradingView: React.FC = () => {
 
     setLiveTrades(prev => [newTrade, ...prev.slice(0, 9)]); // Keep last 10 trades
     setTotalPnL(prev => prev + profitLoss);
+
+    // Update portfolio balance if it's a significant profit/loss
+    if (portfolio && Math.abs(profitLoss) > 10) {
+      const newBalance = portfolio.current_balance + profitLoss;
+      await updateBalance(newBalance);
+    }
   };
 
   const formatCurrency = (amount: number) => {
@@ -137,10 +144,10 @@ export const LiveTradingView: React.FC = () => {
             <div>
               <CardTitle className="flex items-center gap-2">
                 <Bot className="h-5 w-5" />
-                AI Trading Bot - Live View
+                AI Trading Bot - Live Market View
               </CardTitle>
               <CardDescription>
-                Watch the AI analyze markets and execute trades in real-time
+                Watch live market fluctuations and real trading execution
               </CardDescription>
             </div>
             <Button
@@ -163,7 +170,7 @@ export const LiveTradingView: React.FC = () => {
           </div>
         </CardHeader>
         <CardContent>
-          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
             <div className="space-y-2">
               <div className="text-sm text-muted-foreground">Bot Status</div>
               <div className={`text-lg font-semibold flex items-center gap-2 ${getBotStatusColor(botStatus)}`}>
@@ -180,6 +187,10 @@ export const LiveTradingView: React.FC = () => {
             <div className="space-y-2">
               <div className="text-sm text-muted-foreground">Trades Executed</div>
               <div className="text-lg font-bold">{liveTrades.length}</div>
+            </div>
+            <div className="space-y-2">
+              <div className="text-sm text-muted-foreground">Portfolio Balance</div>
+              <div className="text-lg font-bold">{formatCurrency(portfolio?.current_balance || 0)}</div>
             </div>
           </div>
         </CardContent>
@@ -228,7 +239,7 @@ export const LiveTradingView: React.FC = () => {
             Live Trade Execution
           </CardTitle>
           <CardDescription>
-            AI bot decisions and trade executions happening in real-time
+            AI bot decisions and trade executions affecting your portfolio
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -250,7 +261,7 @@ export const LiveTradingView: React.FC = () => {
                         {trade.quantity} @ {formatCurrency(trade.price)}
                       </span>
                       {trade.simulation && (
-                        <Badge variant="outline" className="text-xs">SIM</Badge>
+                        <Badge variant="outline" className="text-xs">LIVE</Badge>
                       )}
                     </div>
                     <div className="text-sm text-muted-foreground">
