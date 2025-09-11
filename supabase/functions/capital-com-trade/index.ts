@@ -58,7 +58,7 @@ serve(async (req) => {
       apiKey: Deno.env.get('CAPITAL_COM_API_KEY') ?? '',
       apiSecret: Deno.env.get('CAPITAL_COM_API_SECRET') ?? '',
       accountType: (Deno.env.get('CAPITAL_COM_ACCOUNT_TYPE') ?? 'demo') as 'demo' | 'live',
-      identifier: Deno.env.get('CAPITAL_COM_IDENTIFIER') ?? user.email || undefined
+      identifier: (Deno.env.get('CAPITAL_COM_IDENTIFIER') ?? user.email) || undefined
     };
 
     if (!apiCredentials.apiKey || !apiCredentials.apiSecret || !apiCredentials.identifier) {
