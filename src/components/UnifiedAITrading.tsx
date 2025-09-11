@@ -393,23 +393,53 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
     // Save each trade immediately when executed
     for (const trade of newTrades) {
       if (useCapitalCom && !simulationMode) {
-        // Execute real trade on Capital.com
+        // Execute real trade on Capital.com with user credentials
         try {
-          const { data: capitalResult, error: capitalError } = await supabase.functions.invoke('capital-com-trade', {
+          // Get Capital.com credentials from localStorage
+          const apiKey = localStorage.getItem('capital_com_api_key');
+          const password = localStorage.getItem('capital_com_password');
+          const email = localStorage.getItem('capital_com_email');
+          
+          if (!apiKey || !password || !email) {
+            toast({
+              title: "❌ Missing Capital.com Credentials",
+              description: "Please set your Capital.com credentials in the header settings",
+              variant: "destructive"
+            });
+            throw new Error('Missing Capital.com credentials');
+          }
+
+          const { data: capitalResult, error: capitalError } = await supabase.functions.invoke('execute-trade', {
             body: {
+              portfolioId: portfolio.id,
               symbol: trade.symbol,
               tradeType: trade.action,
               quantity: trade.quantity,
               currentPrice: trade.price,
-              portfolioId: portfolio.id
+              platform: 'capital.com',
+              credentials: {
+                apiKey,
+                email,
+                password
+              }
             }
           });
 
           if (capitalError) throw capitalError;
           
-          console.log('Capital.com trade executed:', capitalResult);
+          console.log('Capital.com AI trade executed:', capitalResult);
+          
+          toast({
+            title: "✅ Live Trade Executed!",
+            description: `${trade.action} ${trade.quantity} ${trade.symbol} at $${trade.price.toFixed(2)} on Capital.com`,
+          });
         } catch (capitalError) {
-          console.error('Capital.com trade failed:', capitalError);
+          console.error('Capital.com AI trade failed:', capitalError);
+          toast({
+            title: "❌ Capital.com Trade Failed",
+            description: "Falling back to simulation mode for this trade",
+            variant: "destructive"
+          });
           // Fall back to saving simulation trade
           await saveTrade(trade);
         }
