@@ -331,41 +331,42 @@ const updateInitialBalance = useCallback(async (amount: number) => {
     }
   }, [portfolio, loadPortfolio]);
 
-  const resetPortfolio = useCallback(async () => {
-    if (!portfolio) return;
+const resetPortfolio = useCallback(async () => {
+  if (!portfolio) return;
 
-    try {
-      // Reset portfolio balance
-      await supabase
-        .from('portfolios')
-        .update({ 
-          current_balance: portfolio.initial_balance,
-          total_pnl: 0
-        })
-        .eq('id', portfolio.id);
+  try {
+    // Reset portfolio balance to initial balance (which can now be changed)
+    await supabase
+      .from('portfolios')
+      .update({ 
+        current_balance: portfolio.initial_balance,
+        total_pnl: 0,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', portfolio.id);
 
-      // Clear positions and trades
-      await Promise.all([
-        supabase.from('positions').delete().eq('portfolio_id', portfolio.id),
-        supabase.from('trades').delete().eq('portfolio_id', portfolio.id)
-      ]);
+    // Clear positions and trades
+    await Promise.all([
+      supabase.from('positions').delete().eq('portfolio_id', portfolio.id),
+      supabase.from('trades').delete().eq('portfolio_id', portfolio.id)
+    ]);
 
-      toast({
-        title: "Portfolio Reset",
-        description: "Portfolio has been reset to initial state",
-      });
+    toast({
+      title: "Portfolio Reset",
+      description: `Portfolio reset to $${portfolio.initial_balance.toLocaleString()} initial balance`,
+    });
 
-      // Reload data
-      await loadPortfolio();
-    } catch (error) {
-      console.error('Error resetting portfolio:', error);
-      toast({
-        title: "Error",
-        description: "Failed to reset portfolio",
-        variant: "destructive"
-      });
-    }
-  }, [portfolio, loadPortfolio, toast]);
+    // Reload data
+    await loadPortfolio();
+  } catch (error) {
+    console.error('Error resetting portfolio:', error);
+    toast({
+      title: "Error",
+      description: "Failed to reset portfolio",
+      variant: "destructive"
+    });
+  }
+}, [portfolio, loadPortfolio, toast]);
 
   useEffect(() => {
     loadPortfolio();

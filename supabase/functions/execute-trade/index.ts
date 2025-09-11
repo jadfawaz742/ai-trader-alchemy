@@ -38,11 +38,42 @@ serve(async (req) => {
       });
     }
 
-    const { portfolioId, symbol, tradeType, quantity, currentPrice } = await req.json();
+    const { portfolioId, symbol, tradeType, quantity, currentPrice, platform } = await req.json();
 
     if (!portfolioId || !symbol || !tradeType || !quantity || !currentPrice) {
       return new Response(JSON.stringify({ error: 'Missing required parameters' }), {
         status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    // Route to Capital.com if platform is specified
+    if (platform === 'capital.com') {
+      const { data, error } = await supabase.functions.invoke('capital-com-trade', {
+        body: {
+          symbol,
+          tradeType,
+          quantity,
+          currentPrice,
+          portfolioId
+        },
+        headers: {
+          'Authorization': authHeader
+        }
+      });
+
+      if (error) {
+        console.error('Capital.com trade error:', error);
+        return new Response(JSON.stringify({ 
+          success: false, 
+          error: 'Capital.com trading failed: ' + error.message 
+        }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
+      return new Response(JSON.stringify(data), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }

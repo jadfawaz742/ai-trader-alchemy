@@ -51,6 +51,7 @@ const TradingDashboard: React.FC = () => {
   const [takeProfit, setTakeProfit] = useState([15]);
   const [tradeDuration, setTradeDuration] = useState([30]);
   const [simulationMode, setSimulationMode] = useState(true);
+  const [useCapitalCom, setUseCapitalCom] = useState(false);
   const { toast } = useToast();
 const { portfolio, resetPortfolio, updateInitialBalance } = usePortfolioContext();
 
@@ -108,6 +109,8 @@ useEffect(() => {
     setTradeDuration,
     simulationMode,
     setSimulationMode,
+    useCapitalCom,
+    setUseCapitalCom,
     session,
     setSession,
     intervalRef,
@@ -120,6 +123,7 @@ useEffect(() => {
     takeProfit,
     tradeDuration,
     simulationMode,
+    useCapitalCom,
     session
   ]);
 

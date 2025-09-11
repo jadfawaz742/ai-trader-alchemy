@@ -12,6 +12,7 @@ import { useToast } from '@/hooks/use-toast';
 import { usePortfolioContext } from '@/components/PortfolioProvider';
 import { TrendingUp, TrendingDown, AlertTriangle, DollarSign, Zap, Minimize2 } from 'lucide-react';
 import { StockChart } from '@/components/StockChart';
+import { Switch } from '@/components/ui/switch';
 
 export const TradingInterface: React.FC = () => {
   const { portfolio, addTrade } = usePortfolioContext();
@@ -25,6 +26,7 @@ export const TradingInterface: React.FC = () => {
   const [stopLoss, setStopLoss] = useState('5');
   const [takeProfit, setTakeProfit] = useState('10');
   const [showChart, setShowChart] = useState(false);
+  const [useCapitalCom, setUseCapitalCom] = useState(false);
   const { toast } = useToast();
 
 
@@ -183,38 +185,64 @@ export const TradingInterface: React.FC = () => {
 
     setLoading(true);
     try {
-      // Use the portfolio context addTrade function for proper integration
-      if (addTrade) {
-        await addTrade({
-          symbol: symbol.toUpperCase(),
-          trade_type: tradeType,
-          quantity: parseInt(quantity),
-          price: parseFloat(price),
-          total_amount: parseFloat(price) * parseInt(quantity),
-          risk_score: riskAssessment?.score || 50,
-          ppo_signal: ppoSignal ? {
-            ppo: ppoSignal.ppo,
-            signal: ppoSignal.signal,
-            strength: ppoSignal.strength,
-            histogram: ppoSignal.histogram,
-            confidence: ppoSignal.confidence
-          } : {}
+      if (useCapitalCom) {
+        // Execute real trade on Capital.com via execute-trade with platform routing
+        const { data, error } = await supabase.functions.invoke('execute-trade', {
+          body: {
+            portfolioId: portfolio.id,
+            symbol: symbol.toUpperCase(),
+            tradeType,
+            quantity: parseInt(quantity),
+            currentPrice: parseFloat(price),
+            platform: 'capital.com'
+          }
         });
 
-        toast({
-          title: "Trade Executed Successfully!",
-          description: `${tradeType} ${quantity} shares of ${symbol.toUpperCase()} at $${price}`
-        });
+        if (error) throw error;
 
-        // Reset form
-        setSymbol('');
-        setQuantity('');
-        setPrice('');
-        setPpoSignal(null);
-        setRiskAssessment(null);
+        if (data?.success) {
+          toast({
+            title: "Real Trade Executed!",
+            description: `${tradeType} ${quantity} shares of ${symbol.toUpperCase()} at $${price} on Capital.com`,
+          });
+        } else {
+          throw new Error(data?.error || 'Capital.com trade failed');
+        }
       } else {
-        throw new Error('Portfolio system not available');
+        // Use the portfolio context addTrade function for simulation
+        if (addTrade) {
+          await addTrade({
+            symbol: symbol.toUpperCase(),
+            trade_type: tradeType,
+            quantity: parseInt(quantity),
+            price: parseFloat(price),
+            total_amount: parseFloat(price) * parseInt(quantity),
+            risk_score: riskAssessment?.score || 50,
+            ppo_signal: ppoSignal ? {
+              ppo: ppoSignal.ppo,
+              signal: ppoSignal.signal,
+              strength: ppoSignal.strength,
+              histogram: ppoSignal.histogram,
+              confidence: ppoSignal.confidence,
+              platform: 'simulation'
+            } : { platform: 'simulation' }
+          });
+
+          toast({
+            title: "Simulated Trade Executed!",
+            description: `${tradeType} ${quantity} shares of ${symbol.toUpperCase()} at $${price} (Simulation Mode)`
+          });
+        } else {
+          throw new Error('Portfolio system not available');
+        }
       }
+
+      // Reset form
+      setSymbol('');
+      setQuantity('');
+      setPrice('');
+      setPpoSignal(null);
+      setRiskAssessment(null);
     } catch (error) {
       console.error('Error executing trade:', error);
       toast({
@@ -284,14 +312,33 @@ export const TradingInterface: React.FC = () => {
           </div>
         </CardHeader>
         <CardContent className="space-y-6">
-        {/* Portfolio Balance */}
+        {/* Portfolio Balance & Trading Mode */}
         {portfolio && (
-          <div className="flex items-center justify-between p-4 bg-muted rounded-lg">
-            <div className="flex items-center gap-2">
-              <DollarSign className="h-4 w-4" />
-              <span className="text-sm font-medium">Available Balance:</span>
+          <div className="space-y-4">
+            <div className="flex items-center justify-between p-4 bg-muted rounded-lg">
+              <div className="flex items-center gap-2">
+                <DollarSign className="h-4 w-4" />
+                <span className="text-sm font-medium">Available Balance:</span>
+              </div>
+              <span className="text-lg font-bold">{formatCurrency(portfolio.current_balance)}</span>
             </div>
-            <span className="text-lg font-bold">{formatCurrency(portfolio.current_balance)}</span>
+            
+            <div className="flex items-center justify-between p-4 bg-muted rounded-lg">
+              <div className="space-y-1">
+                <div className="text-sm font-medium">Trading Mode</div>
+                <div className="text-xs text-muted-foreground">
+                  {useCapitalCom ? 'Real trading with Capital.com' : 'Simulation mode'}
+                </div>
+              </div>
+              <div className="flex items-center space-x-2">
+                <Label htmlFor="capital-mode" className="text-sm">Capital.com</Label>
+                <Switch
+                  id="capital-mode"
+                  checked={useCapitalCom}
+                  onCheckedChange={setUseCapitalCom}
+                />
+              </div>
+            </div>
           </div>
         )}
 

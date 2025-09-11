@@ -56,6 +56,8 @@ interface UnifiedAITradingProps {
   setTradeDuration: (value: number[]) => void;
   simulationMode: boolean;
   setSimulationMode: (value: boolean) => void;
+  useCapitalCom?: boolean;
+  setUseCapitalCom?: (value: boolean) => void;
   session: TradingSession;
   setSession: (value: TradingSession | ((prev: TradingSession) => TradingSession)) => void;
   intervalRef: React.MutableRefObject<NodeJS.Timeout | null>;
@@ -77,6 +79,8 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
   setTradeDuration,
   simulationMode,
   setSimulationMode,
+  useCapitalCom = false,
+  setUseCapitalCom,
   session,
   setSession,
   intervalRef,
@@ -340,7 +344,7 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
     });
 
     toast({
-      title: `${simulationMode ? 'Simulation' : 'Live'} Trading Started`,
+      title: `${useCapitalCom && !simulationMode ? 'Live' : 'Simulation'} Trading Started`,
       description: `AI trading started with $${tradingAmount} at ${riskLevel[0]}% risk level`
     });
 
@@ -386,10 +390,34 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
           simulation: simulationMode
         }));
 
-        // Save each trade immediately when executed
-        for (const trade of newTrades) {
+    // Save each trade immediately when executed
+    for (const trade of newTrades) {
+      if (useCapitalCom && !simulationMode) {
+        // Execute real trade on Capital.com
+        try {
+          const { data: capitalResult, error: capitalError } = await supabase.functions.invoke('capital-com-trade', {
+            body: {
+              symbol: trade.symbol,
+              tradeType: trade.action,
+              quantity: trade.quantity,
+              currentPrice: trade.price,
+              portfolioId: portfolio.id
+            }
+          });
+
+          if (capitalError) throw capitalError;
+          
+          console.log('Capital.com trade executed:', capitalResult);
+        } catch (capitalError) {
+          console.error('Capital.com trade failed:', capitalError);
+          // Fall back to saving simulation trade
           await saveTrade(trade);
         }
+      } else {
+        // Save simulation trade
+        await saveTrade(trade);
+      }
+    }
 
         setSession(prev => ({
           ...prev,
