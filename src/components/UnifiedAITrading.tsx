@@ -715,6 +715,23 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
                     />
                   </div>
 
+                  {/* Capital.com Integration */}
+                  {setUseCapitalCom && (
+                    <div className="flex items-center justify-between p-4 border rounded-lg">
+                      <div className="space-y-1">
+                        <div className="font-medium">Use Capital.com</div>
+                        <div className="text-sm text-muted-foreground">
+                          {useCapitalCom ? 'Execute trades on Capital.com platform' : 'Use internal portfolio only'}
+                        </div>
+                      </div>
+                      <Switch
+                        checked={useCapitalCom}
+                        onCheckedChange={setUseCapitalCom}
+                        disabled={session.isActive || simulationMode}
+                      />
+                    </div>
+                  )}
+
                   {/* Portfolio Info */}
                   {portfolio && (
                     <div className="p-4 bg-muted rounded-lg">
