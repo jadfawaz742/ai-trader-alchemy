@@ -45,26 +45,30 @@ serve(async (req) => {
       throw new Error('Unauthorized');
     }
 
-    const { symbol, tradeType, quantity, currentPrice, portfolioId }: TradeRequest = await req.json();
+    const { symbol, tradeType, quantity, currentPrice, portfolioId, credentials }: TradeRequest & { credentials?: { apiKey: string; password: string } } = await req.json();
 
-    // Get Capital.com API credentials
-    const credentials: CapitalComCredentials = {
+    // Get Capital.com API credentials from request or environment
+    const apiCredentials: CapitalComCredentials = credentials ? {
+      apiKey: credentials.apiKey,
+      apiSecret: credentials.password,
+      accountType: (Deno.env.get('CAPITAL_COM_ACCOUNT_TYPE') ?? 'demo') as 'demo' | 'live'
+    } : {
       apiKey: Deno.env.get('CAPITAL_COM_API_KEY') ?? '',
       apiSecret: Deno.env.get('CAPITAL_COM_API_SECRET') ?? '',
       accountType: (Deno.env.get('CAPITAL_COM_ACCOUNT_TYPE') ?? 'demo') as 'demo' | 'live'
     };
 
-    if (!credentials.apiKey || !credentials.apiSecret) {
+    if (!apiCredentials.apiKey || !apiCredentials.apiSecret) {
       throw new Error('Capital.com API credentials not configured');
     }
 
     console.log(`Executing ${tradeType} trade for ${quantity} shares of ${symbol} at $${currentPrice}`);
 
     // Get authentication token from Capital.com
-    const authToken = await getCapitalComAuthToken(credentials);
+    const authToken = await getCapitalComAuthToken(apiCredentials);
     
     // Get market info for the symbol
-    const marketInfo = await getMarketInfo(symbol, authToken, credentials);
+    const marketInfo = await getMarketInfo(symbol, authToken, apiCredentials);
     
     if (!marketInfo) {
       throw new Error(`Market ${symbol} not found or not available for trading`);
@@ -76,7 +80,7 @@ serve(async (req) => {
       direction: tradeType === 'BUY' ? 'BUY' : 'SELL',
       size: quantity,
       orderType: 'MARKET'
-    }, authToken, credentials);
+    }, authToken, apiCredentials);
 
     console.log('Capital.com trade result:', tradeResult);
 

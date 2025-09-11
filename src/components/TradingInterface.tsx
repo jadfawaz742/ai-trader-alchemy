@@ -186,6 +186,19 @@ export const TradingInterface: React.FC = () => {
     setLoading(true);
     try {
       if (useCapitalCom) {
+        // Get Capital.com credentials from localStorage
+        const apiKey = localStorage.getItem('capital_com_api_key');
+        const password = localStorage.getItem('capital_com_password');
+        
+        if (!apiKey || !password) {
+          toast({
+            title: "❌ Missing Credentials",
+            description: "Please set your Capital.com API credentials first",
+            variant: "destructive"
+          });
+          return;
+        }
+
         // Execute real trade on Capital.com via execute-trade with platform routing
         const { data, error } = await supabase.functions.invoke('execute-trade', {
           body: {
@@ -194,7 +207,11 @@ export const TradingInterface: React.FC = () => {
             tradeType,
             quantity: parseInt(quantity),
             currentPrice: parseFloat(price),
-            platform: 'capital.com'
+            platform: 'capital.com',
+            credentials: {
+              apiKey,
+              password
+            }
           }
         });
 

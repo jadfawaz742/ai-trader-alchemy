@@ -38,7 +38,7 @@ serve(async (req) => {
       });
     }
 
-    const { portfolioId, symbol, tradeType, quantity, currentPrice, platform } = await req.json();
+    const { portfolioId, symbol, tradeType, quantity, currentPrice, platform, credentials } = await req.json();
 
     if (!portfolioId || !symbol || !tradeType || !quantity || !currentPrice) {
       return new Response(JSON.stringify({ error: 'Missing required parameters' }), {
@@ -49,13 +49,21 @@ serve(async (req) => {
 
     // Route to Capital.com if platform is specified
     if (platform === 'capital.com') {
+      if (!credentials || !credentials.apiKey || !credentials.password) {
+        return new Response(JSON.stringify({ error: 'Capital.com credentials required' }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+
       const { data, error } = await supabase.functions.invoke('capital-com-trade', {
         body: {
           symbol,
           tradeType,
           quantity,
           currentPrice,
-          portfolioId
+          portfolioId,
+          credentials
         },
         headers: {
           'Authorization': authHeader
