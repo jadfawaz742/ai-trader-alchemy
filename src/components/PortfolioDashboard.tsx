@@ -52,10 +52,11 @@ export const PortfolioDashboard: React.FC = () => {
   const { toast } = useToast();
 
 
-  const totalPortfolioValue = portfolio ? portfolio.current_balance + positions.reduce((sum, pos) => sum + (pos.current_value || 0), 0) : 0;
-  const totalUnrealizedPnl = positions.reduce((sum, pos) => sum + (pos.unrealized_pnl || 0), 0);
-  const totalRealizedPnl = portfolio ? portfolio.current_balance - portfolio.initial_balance : 0;
-  const totalReturnPercent = portfolio ? ((totalPortfolioValue - portfolio.initial_balance) / portfolio.initial_balance) * 100 : 0;
+const positionsValue = positions.reduce((sum, pos) => sum + (pos.current_value || 0), 0);
+const totalPortfolioValue = portfolio ? portfolio.current_balance + positionsValue : 0;
+const totalUnrealizedPnl = positions.reduce((sum, pos) => sum + (pos.unrealized_pnl || 0), 0);
+const totalPnL = portfolio ? totalPortfolioValue - portfolio.initial_balance : 0;
+const totalReturnPercent = portfolio && portfolio.initial_balance > 0 ? (totalPnL / portfolio.initial_balance) * 100 : 0;
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
@@ -174,12 +175,12 @@ export const PortfolioDashboard: React.FC = () => {
                   {formatPercent(totalReturnPercent)}
                 </div>
               </div>
-              <div className="space-y-2">
-                <div className="text-sm text-muted-foreground">Total P&L</div>
-                <div className={`text-2xl font-bold ${(totalRealizedPnl + totalUnrealizedPnl) >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {formatCurrency(totalRealizedPnl + totalUnrealizedPnl)}
-                </div>
-              </div>
+<div className="space-y-2">
+  <div className="text-sm text-muted-foreground">Total P&L</div>
+  <div className={`text-2xl font-bold ${totalPnL >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+    {formatCurrency(totalPnL)}
+  </div>
+</div>
             </div>
           )}
         </CardContent>

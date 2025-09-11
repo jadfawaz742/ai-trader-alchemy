@@ -42,6 +42,7 @@ export interface PortfolioData {
   loading: boolean;
   loadPortfolio: () => Promise<void>;
   updateBalance: (newBalance: number) => Promise<void>;
+  updateInitialBalance: (amount: number) => Promise<void>;
   addTrade: (trade: Partial<Trade>) => Promise<void>;
   resetPortfolio: () => Promise<void>;
 }
@@ -160,6 +161,37 @@ export const usePortfolio = () => {
       console.error('Error updating balance:', error);
     }
   }, [portfolio]);
+const updateInitialBalance = useCallback(async (amount: number) => {
+  if (!portfolio) return;
+
+  try {
+    await supabase
+      .from('portfolios')
+      .update({ 
+        initial_balance: amount,
+        current_balance: amount,
+        total_pnl: 0,
+        updated_at: new Date().toISOString()
+      })
+      .eq('id', portfolio.id);
+
+    setPortfolio(prev => prev ? {
+      ...prev,
+      initial_balance: amount,
+      current_balance: amount,
+      total_pnl: 0
+    } : null);
+
+    toast({
+      title: "Investment Amount Set",
+      description: `Portfolio funded with $${amount.toLocaleString()}`,
+    });
+
+    await loadPortfolio();
+  } catch (error) {
+    console.error('Error setting investment amount:', error);
+  }
+}, [portfolio, loadPortfolio, toast]);
 
   const addTrade = useCallback(async (trade: Partial<Trade>) => {
     if (!portfolio) return;
@@ -339,14 +371,15 @@ export const usePortfolio = () => {
     loadPortfolio();
   }, [loadPortfolio]);
 
-  return {
-    portfolio,
-    positions,
-    recentTrades,
-    loading,
-    loadPortfolio,
-    updateBalance,
-    addTrade,
-    resetPortfolio,
-  };
+return {
+  portfolio,
+  positions,
+  recentTrades,
+  loading,
+  loadPortfolio,
+  updateBalance,
+  updateInitialBalance,
+  addTrade,
+  resetPortfolio,
+};
 };

@@ -7,11 +7,12 @@ import { Activity, RotateCcw } from 'lucide-react';
 import { PortfolioDashboard } from './PortfolioDashboard';
 import { TradingInterface } from './TradingInterface';
 import StockAnalyzer from './StockAnalyzer';
-import { LiveTradingView } from './LiveTradingView';
 import { UnifiedAITrading } from './UnifiedAITrading';
-import { MarketActivityFeed } from './MarketActivityFeed';
 import { useToast } from '@/hooks/use-toast';
 import { usePortfolioContext } from '@/components/PortfolioProvider';
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
+import { Input } from '@/components/ui/input';
+import { Label } from '@/components/ui/label';
 
 interface LiveTrade {
   id: string;
@@ -51,7 +52,7 @@ const TradingDashboard: React.FC = () => {
   const [tradeDuration, setTradeDuration] = useState([30]);
   const [simulationMode, setSimulationMode] = useState(true);
   const { toast } = useToast();
-  const { portfolio, resetPortfolio } = usePortfolioContext();
+const { portfolio, resetPortfolio, updateInitialBalance } = usePortfolioContext();
 
   const [session, setSession] = useState<TradingSession>({
     isActive: false,
@@ -64,8 +65,12 @@ const TradingDashboard: React.FC = () => {
     startingBalance: portfolio?.current_balance || 0
   });
 
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
-  const tradeUpdateRef = useRef<NodeJS.Timeout | null>(null);
+const intervalRef = useRef<NodeJS.Timeout | null>(null);
+const tradeUpdateRef = useRef<NodeJS.Timeout | null>(null);
+
+// Funding dialog state
+const [fundDialogOpen, setFundDialogOpen] = useState(false);
+const [fundAmount, setFundAmount] = useState<string>('');
 
   useEffect(() => {
     if (portfolio && !session.isActive) {
@@ -77,12 +82,17 @@ const TradingDashboard: React.FC = () => {
     }
   }, [portfolio, session.isActive]);
 
-  useEffect(() => {
-    return () => {
-      if (intervalRef.current) clearInterval(intervalRef.current);
-      if (tradeUpdateRef.current) clearInterval(tradeUpdateRef.current);
-    };
-  }, []);
+useEffect(() => {
+  return () => {
+    if (intervalRef.current) clearInterval(intervalRef.current);
+    if (tradeUpdateRef.current) clearInterval(tradeUpdateRef.current);
+  };
+}, []);
+
+// Keep fund amount in sync with portfolio balance
+useEffect(() => {
+  if (portfolio) setFundAmount(String(portfolio.current_balance))
+}, [portfolio]);
 
   const tradingProps = useMemo(() => ({
     portfolio,
@@ -115,28 +125,36 @@ const TradingDashboard: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h2 className="text-3xl font-bold tracking-tight text-white">Trading Dashboard</h2>
-        <div className="flex items-center gap-3">
-          <Button 
-            variant="outline" 
-            size="sm" 
-            onClick={resetPortfolio}
-            className="text-white border-white hover:bg-white hover:text-black"
-          >
-            <RotateCcw className="h-4 w-4 mr-2" />
-            Reset Portfolio
-          </Button>
-          {session.isActive && (
-            <Badge variant="default" className="bg-green-600 text-white animate-pulse">
-              Live Trading Active
-            </Badge>
-          )}
-        </div>
-      </div>
+<div className="flex items-center justify-between">
+  <h2 className="text-3xl font-bold tracking-tight text-white">Trading Dashboard</h2>
+  <div className="flex items-center gap-3">
+    <Button 
+      variant="outline" 
+      size="sm" 
+      onClick={() => setFundDialogOpen(true)}
+      className="text-white border-white hover:bg-white hover:text-black"
+    >
+      Set Investment Amount
+    </Button>
+    <Button 
+      variant="outline" 
+      size="sm" 
+      onClick={resetPortfolio}
+      className="text-white border-white hover:bg-white hover:text-black"
+    >
+      <RotateCcw className="h-4 w-4 mr-2" />
+      Reset Portfolio
+    </Button>
+    {session.isActive && (
+      <Badge variant="default" className="bg-green-600 text-white animate-pulse">
+        Live Trading Active
+      </Badge>
+    )}
+  </div>
+</div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="grid w-full grid-cols-5">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="portfolio">Portfolio</TabsTrigger>
           <TabsTrigger value="trading">Manual Trading</TabsTrigger>
           <TabsTrigger value="analyzer">Stock Analysis</TabsTrigger>
@@ -146,7 +164,6 @@ const TradingDashboard: React.FC = () => {
               <div className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
             )}
           </TabsTrigger>
-          <TabsTrigger value="live-view">Market View</TabsTrigger>
         </TabsList>
 
         <TabsContent value="portfolio">
@@ -165,17 +182,43 @@ const TradingDashboard: React.FC = () => {
           <UnifiedAITrading {...tradingProps} />
         </TabsContent>
         
-        <TabsContent value="live-view">
-          <div className="grid grid-cols-1 lg:grid-cols-4 gap-6">
-            <div className="lg:col-span-3">
-              <LiveTradingView />
-            </div>
-            <div>
-              <MarketActivityFeed isActive={true} />
-            </div>
-          </div>
-        </TabsContent>
+        
       </Tabs>
+
+      {/* Fund Portfolio Dialog */}
+      <Dialog open={fundDialogOpen} onOpenChange={setFundDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Set Investment Amount</DialogTitle>
+            <DialogDescription>
+              Choose how much cash your portfolio should have available for trading.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-3">
+            <Label htmlFor="fund-amount">Amount (USD)</Label>
+            <Input
+              id="fund-amount"
+              type="number"
+              min="0"
+              step="100"
+              value={fundAmount}
+              onChange={(e) => setFundAmount(e.target.value)}
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              onClick={async () => {
+                const amount = parseFloat(fundAmount);
+                if (isNaN(amount) || amount < 0) return;
+                await updateInitialBalance(amount);
+                setFundDialogOpen(false);
+              }}
+            >
+              Save Amount
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 };
