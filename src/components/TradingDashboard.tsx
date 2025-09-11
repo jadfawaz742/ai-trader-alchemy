@@ -76,19 +76,23 @@ const [fundAmount, setFundAmount] = useState<string>('');
 
 // Capital.com credentials dialog state
 const [credentialsDialogOpen, setCredentialsDialogOpen] = useState(false);
+const [capitalEmail, setCapitalEmail] = useState<string>('');
 const [capitalApiKey, setCapitalApiKey] = useState<string>('');
 const [capitalPassword, setCapitalPassword] = useState<string>('');
 
 // Load Capital.com credentials on mount
 useEffect(() => {
+  const savedEmail = localStorage.getItem('capital_com_email');
   const savedApiKey = localStorage.getItem('capital_com_api_key');
   const savedPassword = localStorage.getItem('capital_com_password');
+  if (savedEmail) setCapitalEmail(savedEmail);
   if (savedApiKey) setCapitalApiKey(savedApiKey);
   if (savedPassword) setCapitalPassword(savedPassword);
 }, []);
 
 const saveCredentials = () => {
-  if (capitalApiKey && capitalPassword) {
+  if (capitalEmail && capitalApiKey && capitalPassword) {
+    localStorage.setItem('capital_com_email', capitalEmail);
     localStorage.setItem('capital_com_api_key', capitalApiKey);
     localStorage.setItem('capital_com_password', capitalPassword);
     setCredentialsDialogOpen(false);
@@ -270,6 +274,16 @@ useEffect(() => {
           </DialogHeader>
           <div className="space-y-4">
             <div>
+              <Label htmlFor="email">Login Email</Label>
+              <Input
+                id="email"
+                type="email"
+                placeholder="Enter your Capital.com login email"
+                value={capitalEmail}
+                onChange={(e) => setCapitalEmail(e.target.value)}
+              />
+            </div>
+            <div>
               <Label htmlFor="api-key">API Key</Label>
               <Input
                 id="api-key"
@@ -280,11 +294,11 @@ useEffect(() => {
               />
             </div>
             <div>
-              <Label htmlFor="password">Password</Label>
+              <Label htmlFor="password">Custom Password</Label>
               <Input
                 id="password"
                 type="password"
-                placeholder="Enter your Capital.com password"
+                placeholder="Enter the custom password set for this API key"
                 value={capitalPassword}
                 onChange={(e) => setCapitalPassword(e.target.value)}
               />
@@ -293,7 +307,7 @@ useEffect(() => {
           <DialogFooter>
             <Button
               onClick={saveCredentials}
-              disabled={!capitalApiKey || !capitalPassword}
+              disabled={!capitalEmail || !capitalApiKey || !capitalPassword}
             >
               Save Credentials
             </Button>

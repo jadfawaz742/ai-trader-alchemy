@@ -13,8 +13,9 @@ const CAPITAL_DEMO_API_BASE = 'https://demo-api-capital.backend-capital.com/api/
 
 interface CapitalComCredentials {
   apiKey: string;
-  apiSecret: string;
+  apiSecret: string; // custom password
   accountType: 'demo' | 'live';
+  identifier?: string; // login email
 }
 
 interface TradeRequest {
@@ -45,21 +46,23 @@ serve(async (req) => {
       throw new Error('Unauthorized');
     }
 
-    const { symbol, tradeType, quantity, currentPrice, portfolioId, credentials }: TradeRequest & { credentials?: { apiKey: string; password: string } } = await req.json();
+    const { symbol, tradeType, quantity, currentPrice, portfolioId, credentials }: TradeRequest & { credentials?: { apiKey: string; email?: string; password: string } } = await req.json();
 
-    // Get Capital.com API credentials from request or environment
+    // Build Capital.com API credentials
     const apiCredentials: CapitalComCredentials = credentials ? {
       apiKey: credentials.apiKey,
       apiSecret: credentials.password,
-      accountType: (Deno.env.get('CAPITAL_COM_ACCOUNT_TYPE') ?? 'demo') as 'demo' | 'live'
+      accountType: (Deno.env.get('CAPITAL_COM_ACCOUNT_TYPE') ?? 'demo') as 'demo' | 'live',
+      identifier: credentials.email || user.email || undefined
     } : {
       apiKey: Deno.env.get('CAPITAL_COM_API_KEY') ?? '',
       apiSecret: Deno.env.get('CAPITAL_COM_API_SECRET') ?? '',
-      accountType: (Deno.env.get('CAPITAL_COM_ACCOUNT_TYPE') ?? 'demo') as 'demo' | 'live'
+      accountType: (Deno.env.get('CAPITAL_COM_ACCOUNT_TYPE') ?? 'demo') as 'demo' | 'live',
+      identifier: Deno.env.get('CAPITAL_COM_IDENTIFIER') ?? user.email || undefined
     };
 
-    if (!apiCredentials.apiKey || !apiCredentials.apiSecret) {
-      throw new Error('Capital.com API credentials not configured');
+    if (!apiCredentials.apiKey || !apiCredentials.apiSecret || !apiCredentials.identifier) {
+      throw new Error('Capital.com API credentials not configured (email, api key, custom password)');
     }
 
     console.log(`Executing ${tradeType} trade for ${quantity} shares of ${symbol} at $${currentPrice}`);
@@ -161,12 +164,11 @@ async function getCapitalComAuthToken(credentials: CapitalComCredentials): Promi
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
-      'X-SECURITY-TOKEN': credentials.apiKey,
-      'CST': credentials.apiSecret
+      'X-CAP-API-KEY': credentials.apiKey,
     },
     body: JSON.stringify({
-      identifier: credentials.apiKey,
-      password: credentials.apiSecret
+      identifier: credentials.identifier,
+      password: credentials.apiSecret,
     })
   });
 

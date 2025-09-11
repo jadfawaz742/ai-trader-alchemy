@@ -189,11 +189,12 @@ export const TradingInterface: React.FC = () => {
         // Get Capital.com credentials from localStorage
         const apiKey = localStorage.getItem('capital_com_api_key');
         const password = localStorage.getItem('capital_com_password');
+        const email = localStorage.getItem('capital_com_email');
         
-        if (!apiKey || !password) {
+        if (!apiKey || !password || !email) {
           toast({
             title: "❌ Missing Credentials",
-            description: "Please set your Capital.com API credentials first",
+            description: "Please set your Capital.com email, API key and custom password",
             variant: "destructive"
           });
           return;
@@ -210,6 +211,7 @@ export const TradingInterface: React.FC = () => {
             platform: 'capital.com',
             credentials: {
               apiKey,
+              email,
               password
             }
           }
