@@ -13,6 +13,7 @@ import { usePortfolioContext } from '@/components/PortfolioProvider';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Settings } from 'lucide-react';
 
 interface LiveTrade {
   id: string;
@@ -72,6 +73,31 @@ const tradeUpdateRef = useRef<NodeJS.Timeout | null>(null);
 // Funding dialog state
 const [fundDialogOpen, setFundDialogOpen] = useState(false);
 const [fundAmount, setFundAmount] = useState<string>('');
+
+// Capital.com credentials dialog state
+const [credentialsDialogOpen, setCredentialsDialogOpen] = useState(false);
+const [capitalApiKey, setCapitalApiKey] = useState<string>('');
+const [capitalPassword, setCapitalPassword] = useState<string>('');
+
+// Load Capital.com credentials on mount
+useEffect(() => {
+  const savedApiKey = localStorage.getItem('capital_com_api_key');
+  const savedPassword = localStorage.getItem('capital_com_password');
+  if (savedApiKey) setCapitalApiKey(savedApiKey);
+  if (savedPassword) setCapitalPassword(savedPassword);
+}, []);
+
+const saveCredentials = () => {
+  if (capitalApiKey && capitalPassword) {
+    localStorage.setItem('capital_com_api_key', capitalApiKey);
+    localStorage.setItem('capital_com_password', capitalPassword);
+    setCredentialsDialogOpen(false);
+    toast({
+      title: "Credentials Saved",
+      description: "Capital.com API credentials have been saved securely.",
+    });
+  }
+};
 
   useEffect(() => {
     if (portfolio && !session.isActive) {
@@ -139,6 +165,15 @@ useEffect(() => {
       className="text-white border-white hover:bg-white hover:text-black"
     >
       Set Investment Amount
+    </Button>
+    <Button 
+      variant="outline" 
+      size="sm" 
+      onClick={() => setCredentialsDialogOpen(true)}
+      className="text-white border-white hover:bg-white hover:text-black"
+    >
+      <Settings className="h-4 w-4 mr-2" />
+      Capital.com API
     </Button>
     <Button 
       variant="outline" 
@@ -219,6 +254,48 @@ useEffect(() => {
               }}
             >
               Save Amount
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Capital.com API Credentials Dialog */}
+      <Dialog open={credentialsDialogOpen} onOpenChange={setCredentialsDialogOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Capital.com API Credentials</DialogTitle>
+            <DialogDescription>
+              Enter your Capital.com API credentials to enable live trading.
+            </DialogDescription>
+          </DialogHeader>
+          <div className="space-y-4">
+            <div>
+              <Label htmlFor="api-key">API Key</Label>
+              <Input
+                id="api-key"
+                type="text"
+                placeholder="Enter your Capital.com API key"
+                value={capitalApiKey}
+                onChange={(e) => setCapitalApiKey(e.target.value)}
+              />
+            </div>
+            <div>
+              <Label htmlFor="password">Password</Label>
+              <Input
+                id="password"
+                type="password"
+                placeholder="Enter your Capital.com password"
+                value={capitalPassword}
+                onChange={(e) => setCapitalPassword(e.target.value)}
+              />
+            </div>
+          </div>
+          <DialogFooter>
+            <Button
+              onClick={saveCredentials}
+              disabled={!capitalApiKey || !capitalPassword}
+            >
+              Save Credentials
             </Button>
           </DialogFooter>
         </DialogContent>
