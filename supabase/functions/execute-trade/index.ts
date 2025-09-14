@@ -308,6 +308,7 @@ async function executeTrade(portfolioId: string, symbol: string, tradeType: stri
   }
 }
 
+// Update position current values with proper calculations
 async function updatePosition(portfolioId: string, symbol: string, tradeType: string, quantity: number, price: number, userId: string) {
   // Get existing position (user-specific via RLS)
   const { data: existingPosition } = await supabase
@@ -327,10 +328,13 @@ async function updatePosition(portfolioId: string, symbol: string, tradeType: st
       newTotalCost += (quantity * price);
     } else {
       newQuantity -= quantity;
-      newTotalCost -= (quantity * existingPosition.average_price);
+      // When selling, reduce total cost proportionally
+      newTotalCost = newTotalCost * (newQuantity / existingPosition.quantity);
     }
     
     const newAveragePrice = newQuantity > 0 ? newTotalCost / newQuantity : 0;
+    const newCurrentValue = newQuantity * price; // Current market value
+    const newUnrealizedPnL = newCurrentValue - newTotalCost; // Profit/Loss
     
     if (newQuantity <= 0) {
       // Close position
@@ -341,21 +345,24 @@ async function updatePosition(portfolioId: string, symbol: string, tradeType: st
         .eq('symbol', symbol)
         .eq('user_id', userId);
     } else {
-      // Update position
+      // Update position with proper values
       await supabase
         .from('positions')
         .update({
           quantity: newQuantity,
           average_price: newAveragePrice,
           total_cost: newTotalCost,
-          current_price: price
+          current_price: price,
+          current_value: newCurrentValue,
+          unrealized_pnl: newUnrealizedPnL
         })
         .eq('portfolio_id', portfolioId)
         .eq('symbol', symbol)
         .eq('user_id', userId);
     }
   } else if (tradeType === 'BUY') {
-    // Create new position with user_id
+    // Create new position with proper calculations
+    const totalCost = quantity * price;
     await supabase
       .from('positions')
       .insert({
@@ -364,7 +371,9 @@ async function updatePosition(portfolioId: string, symbol: string, tradeType: st
         quantity,
         average_price: price,
         current_price: price,
-        total_cost: quantity * price,
+        total_cost: totalCost,
+        current_value: totalCost, // Initially same as cost
+        unrealized_pnl: 0, // No profit/loss initially
         user_id: userId
       });
   }

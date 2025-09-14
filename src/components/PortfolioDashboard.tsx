@@ -52,9 +52,11 @@ export const PortfolioDashboard: React.FC = () => {
   const { toast } = useToast();
 
 
+// Calculate portfolio values properly
 const positionsValue = positions.reduce((sum, pos) => sum + (pos.current_value || 0), 0);
 const totalPortfolioValue = portfolio ? portfolio.current_balance + positionsValue : 0;
 const totalUnrealizedPnl = positions.reduce((sum, pos) => sum + (pos.unrealized_pnl || 0), 0);
+// Total P&L should be: (current portfolio value) - (initial balance)
 const totalPnL = portfolio ? totalPortfolioValue - portfolio.initial_balance : 0;
 const totalReturnPercent = portfolio && portfolio.initial_balance > 0 ? (totalPnL / portfolio.initial_balance) * 100 : 0;
 

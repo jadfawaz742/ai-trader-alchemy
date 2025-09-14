@@ -105,6 +105,20 @@ serve(async (req) => {
     // Real trading mode - parallel processing for speed
     console.log('Running REAL trading mode with parallel processing...');
     
+    // Check if we have valid portfolio and funds
+    if (portfolio.current_balance < 100) {
+      console.log('Insufficient funds for trading:', portfolio.current_balance);
+      return new Response(JSON.stringify({ 
+        success: false,
+        tradesExecuted: 0,
+        trades: [],
+        message: `Insufficient funds for trading. Available: $${portfolio.current_balance}`,
+        takeProfitTriggered: false
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    
     const tradePromises = TRADEABLE_STOCKS.map(async (symbol) => {
       try {
         return await analyzeAndTrade(symbol, userId, portfolio, riskParams);
@@ -135,11 +149,30 @@ serve(async (req) => {
       }
     });
 
+    // Check for take profit trigger
+    const { data: updatedPortfolio } = await supabase
+      .from('portfolios')
+      .select('*')
+      .eq('user_id', userId)
+      .single();
+    
+    let takeProfitTriggered = false;
+    if (updatedPortfolio) {
+      const totalPnL = ((updatedPortfolio.current_balance - updatedPortfolio.initial_balance) / updatedPortfolio.initial_balance) * 100;
+      if (totalPnL >= riskParams.take_profit_percent) {
+        takeProfitTriggered = true;
+        console.log(`🎯 PORTFOLIO TAKE PROFIT TRIGGERED! P&L: ${totalPnL.toFixed(2)}%`);
+      }
+    }
+
     return new Response(JSON.stringify({ 
       success: true,
       tradesExecuted: executedTrades.length,
       trades: executedTrades,
-      message: `News-driven trading completed. Executed ${executedTrades.length} trades based on news sentiment.`
+      message: takeProfitTriggered ? 
+        `Take profit triggered! Portfolio gained ${((updatedPortfolio.current_balance - updatedPortfolio.initial_balance) / updatedPortfolio.initial_balance * 100).toFixed(2)}%` :
+        `News-driven trading completed. Executed ${executedTrades.length} trades based on news sentiment.`,
+      takeProfitTriggered
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
