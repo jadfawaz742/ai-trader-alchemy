@@ -52,12 +52,20 @@ serve(async (req) => {
 
     // Get user's portfolio and risk parameters
     const [portfolioResult, riskParamsResult] = await Promise.all([
-      supabase.from('portfolios').select('*').eq('user_id', userId).single(),
-      supabase.from('risk_parameters').select('*').eq('user_id', userId).single()
+      supabase.from('portfolios').select('*').eq('user_id', userId).maybeSingle(),
+      supabase.from('risk_parameters').select('*').eq('user_id', userId).maybeSingle()
     ]);
 
-    if (portfolioResult.error || riskParamsResult.error) {
-      return new Response(JSON.stringify({ error: 'Portfolio or risk parameters not found' }), {
+    if (portfolioResult.error || riskParamsResult.error || !portfolioResult.data || !riskParamsResult.data) {
+      console.error('Portfolio or risk parameters error:', { 
+        portfolioError: portfolioResult.error,
+        riskError: riskParamsResult.error,
+        userId 
+      });
+      return new Response(JSON.stringify({ 
+        error: 'Portfolio or risk parameters not found',
+        details: 'Please set up your portfolio and risk parameters first'
+      }), {
         status: 404,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -263,7 +271,7 @@ Focus on ACTIONABLE trading signals based on news momentum.
         'Content-Type': 'application/json',
       },
       body: JSON.stringify({
-        model: 'gpt-4o-mini',
+        model: 'gpt-5-mini-2025-08-07',
         messages: [
           { 
             role: 'system', 
@@ -271,8 +279,7 @@ Focus on ACTIONABLE trading signals based on news momentum.
           },
           { role: 'user', content: prompt }
         ],
-        max_tokens: 800,
-        temperature: 0.1,
+        max_completion_tokens: 800,
       }),
     });
 
