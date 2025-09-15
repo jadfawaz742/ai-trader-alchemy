@@ -426,12 +426,21 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
               const email = localStorage.getItem('capital_com_email');
               
               if (!apiKey || !password || !email) {
+                console.error('❌ Missing Capital.com credentials:', { 
+                  hasApiKey: !!apiKey, 
+                  hasPassword: !!password, 
+                  hasEmail: !!email 
+                });
+                
                 toast({
-                  title: "❌ Missing Capital.com Credentials",
-                  description: "Please set your Capital.com credentials in the header settings",
+                  title: "❌ Capital.com Credentials Required",
+                  description: "Please click 'Capital.com API' in the header to set up your credentials first",
                   variant: "destructive"
                 });
-                throw new Error('Missing Capital.com credentials');
+                
+                // Stop trading if credentials are missing
+                stopTrading();
+                throw new Error('Missing Capital.com credentials - please configure them first');
               }
 
               const { data: capitalResult, error: capitalError } = await supabase.functions.invoke('execute-trade', {
@@ -772,9 +781,12 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
                   {setUseCapitalCom && (
                     <div className="flex items-center justify-between p-4 border rounded-lg">
                       <div className="space-y-1">
-                        <div className="font-medium">Use Capital.com</div>
+                        <div className="font-medium">Use Capital.com Live Trading</div>
                         <div className="text-sm text-muted-foreground">
-                          {useCapitalCom ? 'Execute trades on Capital.com platform' : 'Use internal portfolio only'}
+                          {useCapitalCom ? 'Execute real trades on Capital.com platform' : 'Use internal portfolio simulation only'}
+                        </div>
+                        <div className="text-xs text-orange-600 font-medium">
+                          ⚠️ Requires Capital.com API credentials (click "Capital.com API" button above)
                         </div>
                       </div>
                       <Switch
