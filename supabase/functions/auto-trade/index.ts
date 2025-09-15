@@ -50,25 +50,53 @@ serve(async (req) => {
 
     console.log(`Starting NEWS-DRIVEN automated trading for user: ${userId}`);
 
-    // Get user's portfolio and risk parameters
-    const [portfolioResult, riskParamsResult] = await Promise.all([
-      supabase.from('portfolios').select('*').eq('user_id', userId).maybeSingle(),
-      supabase.from('risk_parameters').select('*').eq('user_id', userId).maybeSingle()
-    ]);
-
-    if (portfolioResult.error || riskParamsResult.error || !portfolioResult.data || !riskParamsResult.data) {
-      console.error('Portfolio or risk parameters error:', { 
-        portfolioError: portfolioResult.error,
-        riskError: riskParamsResult.error,
-        userId 
-      });
+    // Get user's portfolio
+    const portfolioResult = await supabase.from('portfolios').select('*').eq('user_id', userId).maybeSingle();
+    
+    if (portfolioResult.error || !portfolioResult.data) {
+      console.error('Portfolio error:', portfolioResult.error, 'userId:', userId);
       return new Response(JSON.stringify({ 
-        error: 'Portfolio or risk parameters not found',
-        details: 'Please set up your portfolio and risk parameters first'
+        error: 'Portfolio not found',
+        details: 'Please set up your portfolio first'
       }), {
         status: 404,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
+    }
+
+    // Get or create risk parameters
+    let riskParamsResult = await supabase.from('risk_parameters').select('*').eq('user_id', userId).maybeSingle();
+    
+    if (riskParamsResult.error || !riskParamsResult.data) {
+      console.log('Creating default risk parameters for user:', userId);
+      // Create default risk parameters
+      const { data: newRiskParams, error: createError } = await supabase
+        .from('risk_parameters')
+        .insert({
+          user_id: userId,
+          portfolio_id: portfolioResult.data.id,
+          max_position_size: 10.00,
+          stop_loss_percent: 5.00,
+          take_profit_percent: 15.00,
+          auto_trading_enabled: true,
+          min_confidence_score: 75.00,
+          max_daily_trades: 10
+        })
+        .select()
+        .single();
+        
+      if (createError) {
+        console.error('Error creating risk parameters:', createError);
+        return new Response(JSON.stringify({ 
+          error: 'Failed to create risk parameters',
+          details: createError.message
+        }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+        });
+      }
+      
+      riskParamsResult = { data: newRiskParams, error: null };
     }
 
     const portfolio = portfolioResult.data;

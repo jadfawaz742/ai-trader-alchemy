@@ -331,6 +331,15 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
       return;
     }
 
+    if (!tradingAmount || parseFloat(tradingAmount) <= 0) {
+      toast({
+        title: "Error",
+        description: "Please enter a valid trading amount",
+        variant: "destructive"
+      });
+      return;
+    }
+
     const startingBalance = parseFloat(tradingAmount);
     setSession({
       isActive: true,
@@ -348,17 +357,19 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
       description: `AI trading started with $${tradingAmount} at ${riskLevel[0]}% risk level`
     });
 
-    // Start executing trades
-    const tradingInterval = Math.max(5000, 20000 - (riskLevel[0] * 100));
+    // Start executing trades immediately, then at intervals
+    await executeSingleTrade();
+    
+    const tradingInterval = Math.max(10000, 30000 - (riskLevel[0] * 200));
     intervalRef.current = setInterval(async () => {
       await executeSingleTrade();
     }, tradingInterval);
-
-    setTimeout(executeSingleTrade, 1000);
   };
 
   const executeSingleTrade = async () => {
     try {
+      console.log('🤖 Executing AI trade analysis...');
+      
       const { data, error } = await supabase.functions.invoke('auto-trade', {
         body: {
           portfolioId: portfolio.id,
@@ -371,9 +382,20 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
         }
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('❌ Auto-trade function error:', error);
+        throw error;
+      }
 
-      if (data.success && data.trades && data.trades.length > 0) {
+      console.log('✅ Auto-trade response:', data);
+
+      if (data?.takeProfitTriggered) {
+        console.log('🎯 Take profit triggered, stopping trading');
+        stopTrading();
+        return;
+      }
+
+      if (data?.success && data.trades && data.trades.length > 0) {
         const newTrades = data.trades.map((trade: any) => ({
           id: Math.random().toString(36).substr(2, 9),
           symbol: trade.symbol,
@@ -381,73 +403,76 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
           quantity: trade.quantity,
           price: trade.price,
           timestamp: new Date().toISOString(),
-          confidence: trade.confidence,
+          confidence: trade.confidence || 75,
           profitLoss: 0,
           status: 'executed' as const,
           duration: tradeDuration[0],
           momentum: trade.momentum || 'neutral',
           volumeSpike: trade.volumeSpike || false,
-          simulation: simulationMode
+          simulation: simulationMode,
+          currentPrice: trade.price
         }));
 
-    // Save each trade immediately when executed
-    for (const trade of newTrades) {
-      if (useCapitalCom && !simulationMode) {
-        // Execute real trade on Capital.com with user credentials
-        try {
-          // Get Capital.com credentials from localStorage
-          const apiKey = localStorage.getItem('capital_com_api_key');
-          const password = localStorage.getItem('capital_com_password');
-          const email = localStorage.getItem('capital_com_email');
-          
-          if (!apiKey || !password || !email) {
-            toast({
-              title: "❌ Missing Capital.com Credentials",
-              description: "Please set your Capital.com credentials in the header settings",
-              variant: "destructive"
-            });
-            throw new Error('Missing Capital.com credentials');
-          }
+        console.log(`📈 Generated ${newTrades.length} new trades:`, newTrades.map(t => `${t.action} ${t.symbol}`));
 
-          const { data: capitalResult, error: capitalError } = await supabase.functions.invoke('execute-trade', {
-            body: {
-              portfolioId: portfolio.id,
-              symbol: trade.symbol,
-              tradeType: trade.action,
-              quantity: trade.quantity,
-              currentPrice: trade.price,
-              platform: 'capital.com',
-              credentials: {
-                apiKey,
-                email,
-                password
+        // Save each trade immediately when executed
+        for (const trade of newTrades) {
+          if (useCapitalCom && !simulationMode) {
+            // Execute real trade on Capital.com with user credentials
+            try {
+              // Get Capital.com credentials from localStorage
+              const apiKey = localStorage.getItem('capital_com_api_key');
+              const password = localStorage.getItem('capital_com_password');
+              const email = localStorage.getItem('capital_com_email');
+              
+              if (!apiKey || !password || !email) {
+                toast({
+                  title: "❌ Missing Capital.com Credentials",
+                  description: "Please set your Capital.com credentials in the header settings",
+                  variant: "destructive"
+                });
+                throw new Error('Missing Capital.com credentials');
               }
-            }
-          });
 
-          if (capitalError) throw capitalError;
-          
-          console.log('Capital.com AI trade executed:', capitalResult);
-          
-          toast({
-            title: "✅ Live Trade Executed!",
-            description: `${trade.action} ${trade.quantity} ${trade.symbol} at $${trade.price.toFixed(2)} on Capital.com`,
-          });
-        } catch (capitalError) {
-          console.error('Capital.com AI trade failed:', capitalError);
-          toast({
-            title: "❌ Capital.com Trade Failed",
-            description: "Falling back to simulation mode for this trade",
-            variant: "destructive"
-          });
-          // Fall back to saving simulation trade
-          await saveTrade(trade);
+              const { data: capitalResult, error: capitalError } = await supabase.functions.invoke('execute-trade', {
+                body: {
+                  portfolioId: portfolio.id,
+                  symbol: trade.symbol,
+                  tradeType: trade.action,
+                  quantity: trade.quantity,
+                  currentPrice: trade.price,
+                  platform: 'capital.com',
+                  credentials: {
+                    apiKey,
+                    email,
+                    password
+                  }
+                }
+              });
+
+              if (capitalError) throw capitalError;
+              
+              console.log('✅ Capital.com AI trade executed:', capitalResult);
+              
+              toast({
+                title: "✅ Live Trade Executed!",
+                description: `${trade.action} ${trade.quantity} ${trade.symbol} at $${trade.price.toFixed(2)} on Capital.com`,
+              });
+            } catch (capitalError) {
+              console.error('❌ Capital.com AI trade failed:', capitalError);
+              toast({
+                title: "❌ Capital.com Trade Failed",
+                description: "Falling back to simulation mode for this trade",
+                variant: "destructive"
+              });
+              // Fall back to saving simulation trade
+              await saveTrade(trade);
+            }
+          } else {
+            // Save simulation trade
+            await saveTrade(trade);
+          }
         }
-      } else {
-        // Save simulation trade
-        await saveTrade(trade);
-      }
-    }
 
         setSession(prev => ({
           ...prev,
@@ -463,14 +488,27 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
         });
 
         toast({
-          title: "New Trades Executed",
-          description: `AI executed ${newTrades.length} trades with ${stopLoss[0]}% stop loss`
+          title: "🤖 AI Trades Executed",
+          description: `Generated ${newTrades.length} trades based on market analysis`
         });
+      } else {
+        console.log('⏳ No trading opportunities found, waiting for next analysis...');
       }
     } catch (error) {
-      console.error('Error executing trade:', error);
-      // Generate mock trade for demo
-      generateMockTrade();
+      console.error('❌ Error executing trade:', error);
+      
+      // Show user-friendly error message
+      toast({
+        title: "❌ Trading Error",
+        description: error.message || "Failed to execute trade. Check console for details.",
+        variant: "destructive"
+      });
+      
+      // Generate mock trade for demo purposes if in simulation mode
+      if (simulationMode) {
+        console.log('🎭 Generating mock trade for demo...');
+        generateMockTrade();
+      }
     }
   };
 
