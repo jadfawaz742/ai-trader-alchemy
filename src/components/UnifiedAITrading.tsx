@@ -513,7 +513,22 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
   };
 
   const generateMockTrade = async () => {
-    const symbols = ['AAPL', 'GOOGL', 'MSFT', 'TSLA', 'NVDA', 'META', 'AMZN'];
+    const symbols = [
+      // Large Cap
+      'AAPL', 'GOOGL', 'MSFT', 'AMZN', 'META', 'NVDA', 'TSLA',
+      // Medium Cap
+      'SPOT', 'SQ', 'ROKU', 'TWLO', 'SNOW', 'NET', 'DDOG',
+      // Small Cap & Emerging
+      'PLTR', 'RBLX', 'COIN', 'HOOD', 'SOFI', 'RIVN', 'LCID',
+      // Traditional
+      'JPM', 'V', 'MA', 'DIS', 'KO', 'WMT', 'JNJ',
+      // Energy
+      'XOM', 'NEE', 'ENPH', 'FSLR',
+      // Biotech
+      'MRNA', 'BNTX', 'GILD', 'REGN',
+      // International
+      'BABA', 'NIO', 'TSM', 'ASML'
+    ];
     const actions: ("BUY" | "SELL")[] = ['BUY', 'SELL'];
     const mockTrade: LiveTrade = {
       id: Math.random().toString(36).substr(2, 9),

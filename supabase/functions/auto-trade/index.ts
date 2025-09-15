@@ -14,8 +14,32 @@ const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
-// Popular stocks for news-driven trading (reduced for faster processing)
-const TRADEABLE_STOCKS = ['AAPL', 'GOOGL', 'MSFT', 'TSLA', 'NVDA'];
+// Diverse stocks from Capital.com including large, medium, small, and upcoming companies
+const TRADEABLE_STOCKS = [
+  // Large Cap Tech
+  'AAPL', 'GOOGL', 'MSFT', 'AMZN', 'META', 'NVDA', 'TSLA',
+  
+  // Medium Cap Growth
+  'SPOT', 'SQ', 'ROKU', 'TWLO', 'OKTA', 'SNOW', 'NET', 'DDOG',
+  
+  // Small Cap & Emerging
+  'PLTR', 'RBLX', 'COIN', 'HOOD', 'SOFI', 'RIVN', 'LCID', 'NIU',
+  
+  // Traditional & Value
+  'JPM', 'V', 'MA', 'DIS', 'KO', 'PEP', 'WMT', 'JNJ',
+  
+  // Energy & Materials
+  'XOM', 'CVX', 'NEE', 'ENPH', 'FSLR', 'MP', 'ALB',
+  
+  // Financials & REITs
+  'BAC', 'WFC', 'GS', 'MS', 'AMT', 'CCI', 'EQIX',
+  
+  // Biotech & Healthcare
+  'MRNA', 'BNTX', 'NVAX', 'GILD', 'REGN', 'VRTX', 'BIIB',
+  
+  // Emerging Markets & International
+  'BABA', 'NIO', 'BIDU', 'PDD', 'TSM', 'ASML', 'SAP'
+];
 
 // Cache for market data to avoid repeated API calls
 const marketDataCache = new Map();
