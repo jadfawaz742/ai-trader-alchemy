@@ -13,6 +13,7 @@ import { usePortfolioContext } from '@/components/PortfolioProvider';
 import { TrendingUp, TrendingDown, AlertTriangle, DollarSign, Zap, Minimize2 } from 'lucide-react';
 import { StockChart } from '@/components/StockChart';
 import { Switch } from '@/components/ui/switch';
+import { Link } from 'react-router-dom';
 
 export const TradingInterface: React.FC = () => {
   const { portfolio, addTrade } = usePortfolioContext();
@@ -395,6 +396,11 @@ export const TradingInterface: React.FC = () => {
             />
             <Button variant="outline" onClick={getMarketPrice} disabled={loading || !symbol.trim()}>
               Get Price
+            </Button>
+            <Button variant="outline" size="sm" asChild>
+              <Link to="/stocks">
+                Browse
+              </Link>
             </Button>
           </div>
         </div>

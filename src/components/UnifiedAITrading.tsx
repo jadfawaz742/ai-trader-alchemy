@@ -12,6 +12,8 @@ import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
 import { Bot, Play, Square, TrendingUp, TrendingDown, DollarSign, Clock, Target, Zap, Activity, Settings, BarChart3 } from 'lucide-react';
 import { StockChart } from '@/components/StockChart';
+import { StockSelector } from '@/components/StockSelector';
+import { Link } from 'react-router-dom';
 
 interface LiveTrade {
   id: string;
@@ -88,6 +90,7 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
   loadPortfolio
 }) => {
   const [activeTab, setActiveTab] = useState('config');
+  const [selectedStocks, setSelectedStocks] = useState<string[]>(['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA']);
   const { toast } = useToast();
 
   // Auto-switch to live view when trading starts
@@ -665,6 +668,15 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
             </TabsList>
 
             <TabsContent value="config" className="space-y-6 mt-6">
+              {/* Stock Selection */}
+              <StockSelector
+                selectedStocks={selectedStocks}
+                onSelectionChange={setSelectedStocks}
+                maxSelection={8}
+                title="Select Stocks for AI Trading"
+                description="Choose which stocks the AI should analyze and trade"
+              />
+              
               {/* Trading Configuration */}
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div className="space-y-4">

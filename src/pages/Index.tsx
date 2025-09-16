@@ -4,7 +4,7 @@ import { PortfolioProvider } from "@/components/PortfolioProvider";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
-import { Loader2, LogOut, User, Settings } from "lucide-react";
+import { Loader2, LogOut, User, Settings, BarChart3 } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 
@@ -59,18 +59,25 @@ const Index = () => {
     <PortfolioProvider>
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
         <div className="container mx-auto px-4 py-8">
-          <div className="flex justify-between items-center mb-8">
-            <div className="text-center flex-1">
-              <h1 className="text-4xl md:text-6xl font-bold text-white mb-4">
-                AI Trading Bot
-              </h1>
-              <p className="text-xl text-gray-300 max-w-2xl mx-auto">
-                AI-powered stock analysis with PPO risk management and automated trading simulation
-              </p>
-            </div>
+        <div className="flex justify-between items-center mb-8">
+          <div className="text-center flex-1">
+            <h1 className="text-4xl md:text-6xl font-bold text-white mb-4">
+              AI Trading Bot
+            </h1>
+            <p className="text-xl text-gray-300 max-w-2xl mx-auto">
+              AI-powered stock analysis with PPO risk management and automated trading simulation
+            </p>
+          </div>
+          <div className="flex gap-2">
+            <Button variant="outline" asChild>
+              <Link to="/stocks">
+                <BarChart3 className="h-4 w-4 mr-2" />
+                Browse Stocks
+              </Link>
+            </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button variant="outline" className="ml-4">
+                <Button variant="outline">
                   <User className="h-4 w-4 mr-2" />
                   Account
                 </Button>
@@ -96,6 +103,7 @@ const Index = () => {
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
+        </div>
           
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
             <div className="space-y-6">
