@@ -52,9 +52,8 @@ const TradingDashboard: React.FC = () => {
   const [takeProfit, setTakeProfit] = useState([15]);
   const [tradeDuration, setTradeDuration] = useState([30]);
   const [simulationMode, setSimulationMode] = useState(true);
-  const [useCapitalCom, setUseCapitalCom] = useState(false);
   const { toast } = useToast();
-const { portfolio, resetPortfolio, updateInitialBalance } = usePortfolioContext();
+  const { portfolio, resetPortfolio } = usePortfolioContext();
 
   const [session, setSession] = useState<TradingSession>({
     isActive: false,
@@ -67,41 +66,8 @@ const { portfolio, resetPortfolio, updateInitialBalance } = usePortfolioContext(
     startingBalance: portfolio?.current_balance || 0
   });
 
-const intervalRef = useRef<NodeJS.Timeout | null>(null);
-const tradeUpdateRef = useRef<NodeJS.Timeout | null>(null);
-
-// Funding dialog state
-const [fundDialogOpen, setFundDialogOpen] = useState(false);
-const [fundAmount, setFundAmount] = useState<string>('');
-
-// Capital.com credentials dialog state
-const [credentialsDialogOpen, setCredentialsDialogOpen] = useState(false);
-const [capitalEmail, setCapitalEmail] = useState<string>('');
-const [capitalApiKey, setCapitalApiKey] = useState<string>('');
-const [capitalPassword, setCapitalPassword] = useState<string>('');
-
-// Load Capital.com credentials on mount
-useEffect(() => {
-  const savedEmail = localStorage.getItem('capital_com_email');
-  const savedApiKey = localStorage.getItem('capital_com_api_key');
-  const savedPassword = localStorage.getItem('capital_com_password');
-  if (savedEmail) setCapitalEmail(savedEmail);
-  if (savedApiKey) setCapitalApiKey(savedApiKey);
-  if (savedPassword) setCapitalPassword(savedPassword);
-}, []);
-
-const saveCredentials = () => {
-  if (capitalEmail && capitalApiKey && capitalPassword) {
-    localStorage.setItem('capital_com_email', capitalEmail);
-    localStorage.setItem('capital_com_api_key', capitalApiKey);
-    localStorage.setItem('capital_com_password', capitalPassword);
-    setCredentialsDialogOpen(false);
-    toast({
-      title: "Credentials Saved",
-      description: "Capital.com API credentials have been saved securely.",
-    });
-  }
-};
+  const intervalRef = useRef<NodeJS.Timeout | null>(null);
+  const tradeUpdateRef = useRef<NodeJS.Timeout | null>(null);
 
   useEffect(() => {
     if (portfolio && !session.isActive) {
@@ -122,7 +88,7 @@ useEffect(() => {
 
 // Keep fund amount in sync with portfolio balance
 useEffect(() => {
-  if (portfolio) setFundAmount(String(portfolio.current_balance))
+  // Removed funding functionality
 }, [portfolio]);
 
   const tradingProps = useMemo(() => ({
@@ -139,8 +105,6 @@ useEffect(() => {
     setTradeDuration,
     simulationMode,
     setSimulationMode,
-    useCapitalCom,
-    setUseCapitalCom,
     session,
     setSession,
     intervalRef,
@@ -153,48 +117,30 @@ useEffect(() => {
     takeProfit,
     tradeDuration,
     simulationMode,
-    useCapitalCom,
     session
   ]);
 
   return (
     <div className="space-y-6">
-<div className="flex items-center justify-between">
-  <h2 className="text-3xl font-bold tracking-tight text-white">Trading Dashboard</h2>
-  <div className="flex items-center gap-3">
-    <Button 
-      variant="outline" 
-      size="sm" 
-      onClick={() => setFundDialogOpen(true)}
-      className="text-white border-white hover:bg-white hover:text-black"
-    >
-      Set Investment Amount
-    </Button>
-    <Button 
-      variant="outline" 
-      size="sm" 
-      onClick={() => setCredentialsDialogOpen(true)}
-      className="text-white border-white hover:bg-white hover:text-black"
-    >
-      <Settings className="h-4 w-4 mr-2" />
-      Capital.com API
-    </Button>
-    <Button 
-      variant="outline" 
-      size="sm" 
-      onClick={resetPortfolio}
-      className="text-white border-white hover:bg-white hover:text-black"
-    >
-      <RotateCcw className="h-4 w-4 mr-2" />
-      Reset Portfolio
-    </Button>
-    {session.isActive && (
-      <Badge variant="default" className="bg-green-600 text-white animate-pulse">
-        Live Trading Active
-      </Badge>
-    )}
-  </div>
-</div>
+      <div className="flex items-center justify-between">
+        <h2 className="text-3xl font-bold tracking-tight text-white">Trading Dashboard</h2>
+        <div className="flex items-center gap-3">
+          <Button 
+            variant="outline" 
+            size="sm" 
+            onClick={resetPortfolio}
+            className="text-white border-white hover:bg-white hover:text-black"
+          >
+            <RotateCcw className="h-4 w-4 mr-2" />
+            Reset Portfolio
+          </Button>
+          {session.isActive && (
+            <Badge variant="default" className="bg-green-600 text-white animate-pulse">
+              Live Trading Active
+            </Badge>
+          )}
+        </div>
+      </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
         <TabsList className="grid w-full grid-cols-4">
@@ -224,96 +170,7 @@ useEffect(() => {
         <TabsContent value="ai-trading">
           <UnifiedAITrading {...tradingProps} />
         </TabsContent>
-        
-        
       </Tabs>
-
-      {/* Fund Portfolio Dialog */}
-      <Dialog open={fundDialogOpen} onOpenChange={setFundDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Set Investment Amount</DialogTitle>
-            <DialogDescription>
-              Choose how much cash your portfolio should have available for trading.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3">
-            <Label htmlFor="fund-amount">Amount (USD)</Label>
-            <Input
-              id="fund-amount"
-              type="number"
-              min="0"
-              step="100"
-              value={fundAmount}
-              onChange={(e) => setFundAmount(e.target.value)}
-            />
-          </div>
-          <DialogFooter>
-            <Button
-              onClick={async () => {
-                const amount = parseFloat(fundAmount);
-                if (isNaN(amount) || amount < 0) return;
-                await updateInitialBalance(amount);
-                setFundDialogOpen(false);
-              }}
-            >
-              Save Amount
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Capital.com API Credentials Dialog */}
-      <Dialog open={credentialsDialogOpen} onOpenChange={setCredentialsDialogOpen}>
-        <DialogContent>
-          <DialogHeader>
-            <DialogTitle>Capital.com API Credentials</DialogTitle>
-            <DialogDescription>
-              Enter your Capital.com API credentials to enable live trading.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-4">
-            <div>
-              <Label htmlFor="email">Login Email</Label>
-              <Input
-                id="email"
-                type="email"
-                placeholder="Enter your Capital.com login email"
-                value={capitalEmail}
-                onChange={(e) => setCapitalEmail(e.target.value)}
-              />
-            </div>
-            <div>
-              <Label htmlFor="api-key">API Key</Label>
-              <Input
-                id="api-key"
-                type="text"
-                placeholder="Enter your Capital.com API key"
-                value={capitalApiKey}
-                onChange={(e) => setCapitalApiKey(e.target.value)}
-              />
-            </div>
-            <div>
-              <Label htmlFor="password">Custom Password</Label>
-              <Input
-                id="password"
-                type="password"
-                placeholder="Enter the custom password set for this API key"
-                value={capitalPassword}
-                onChange={(e) => setCapitalPassword(e.target.value)}
-              />
-            </div>
-          </div>
-          <DialogFooter>
-            <Button
-              onClick={saveCredentials}
-              disabled={!capitalEmail || !capitalApiKey || !capitalPassword}
-            >
-              Save Credentials
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 };

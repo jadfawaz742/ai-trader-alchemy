@@ -27,7 +27,7 @@ export const TradingInterface: React.FC = () => {
   const [stopLoss, setStopLoss] = useState('5');
   const [takeProfit, setTakeProfit] = useState('10');
   const [showChart, setShowChart] = useState(false);
-  const [useCapitalCom, setUseCapitalCom] = useState(false);
+  
   const { toast } = useToast();
 
 
@@ -186,75 +186,31 @@ export const TradingInterface: React.FC = () => {
 
     setLoading(true);
     try {
-      if (useCapitalCom) {
-        // Get Capital.com credentials from localStorage
-        const apiKey = localStorage.getItem('capital_com_api_key');
-        const password = localStorage.getItem('capital_com_password');
-        const email = localStorage.getItem('capital_com_email');
-        
-        if (!apiKey || !password || !email) {
-          toast({
-            title: "❌ Missing Credentials",
-            description: "Please set your Capital.com email, API key and custom password",
-            variant: "destructive"
-          });
-          return;
-        }
-
-        // Execute real trade on Capital.com via execute-trade with platform routing
-        const { data, error } = await supabase.functions.invoke('execute-trade', {
-          body: {
-            portfolioId: portfolio.id,
-            symbol: symbol.toUpperCase(),
-            tradeType,
-            quantity: parseInt(quantity),
-            currentPrice: parseFloat(price),
-            platform: 'capital.com',
-            credentials: {
-              apiKey,
-              email,
-              password
-            }
-          }
+      // Use the portfolio context addTrade function for simulation
+      if (addTrade) {
+        await addTrade({
+          symbol: symbol.toUpperCase(),
+          trade_type: tradeType,
+          quantity: parseInt(quantity),
+          price: parseFloat(price),
+          total_amount: parseFloat(price) * parseInt(quantity),
+          risk_score: riskAssessment?.score || 50,
+          ppo_signal: ppoSignal ? {
+            ppo: ppoSignal.ppo,
+            signal: ppoSignal.signal,
+            strength: ppoSignal.strength,
+            histogram: ppoSignal.histogram,
+            confidence: ppoSignal.confidence,
+            platform: 'simulation'
+          } : { platform: 'simulation' }
         });
 
-        if (error) throw error;
-
-        if (data?.success) {
-          toast({
-            title: "Real Trade Executed!",
-            description: `${tradeType} ${quantity} shares of ${symbol.toUpperCase()} at $${price} on Capital.com`,
-          });
-        } else {
-          throw new Error(data?.error || 'Capital.com trade failed');
-        }
+        toast({
+          title: "Simulated Trade Executed!",
+          description: `${tradeType} ${quantity} shares of ${symbol.toUpperCase()} at $${price} (Simulation Mode)`
+        });
       } else {
-        // Use the portfolio context addTrade function for simulation
-        if (addTrade) {
-          await addTrade({
-            symbol: symbol.toUpperCase(),
-            trade_type: tradeType,
-            quantity: parseInt(quantity),
-            price: parseFloat(price),
-            total_amount: parseFloat(price) * parseInt(quantity),
-            risk_score: riskAssessment?.score || 50,
-            ppo_signal: ppoSignal ? {
-              ppo: ppoSignal.ppo,
-              signal: ppoSignal.signal,
-              strength: ppoSignal.strength,
-              histogram: ppoSignal.histogram,
-              confidence: ppoSignal.confidence,
-              platform: 'simulation'
-            } : { platform: 'simulation' }
-          });
-
-          toast({
-            title: "Simulated Trade Executed!",
-            description: `${tradeType} ${quantity} shares of ${symbol.toUpperCase()} at $${price} (Simulation Mode)`
-          });
-        } else {
-          throw new Error('Portfolio system not available');
-        }
+        throw new Error('Portfolio system not available');
       }
 
       // Reset form
@@ -347,16 +303,8 @@ export const TradingInterface: React.FC = () => {
               <div className="space-y-1">
                 <div className="text-sm font-medium">Trading Mode</div>
                 <div className="text-xs text-muted-foreground">
-                  {useCapitalCom ? 'Real trading with Capital.com' : 'Simulation mode'}
+                  Simulation mode
                 </div>
-              </div>
-              <div className="flex items-center space-x-2">
-                <Label htmlFor="capital-mode" className="text-sm">Capital.com</Label>
-                <Switch
-                  id="capital-mode"
-                  checked={useCapitalCom}
-                  onCheckedChange={setUseCapitalCom}
-                />
               </div>
             </div>
           </div>

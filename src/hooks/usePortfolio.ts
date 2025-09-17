@@ -42,7 +42,6 @@ export interface PortfolioData {
   loading: boolean;
   loadPortfolio: () => Promise<void>;
   updateBalance: (newBalance: number) => Promise<void>;
-  updateInitialBalance: (amount: number) => Promise<void>;
   addTrade: (trade: Partial<Trade>) => Promise<void>;
   resetPortfolio: () => Promise<void>;
 }
@@ -183,13 +182,13 @@ const updateInitialBalance = useCallback(async (amount: number) => {
     } : null);
 
     toast({
-      title: "Investment Amount Set",
-      description: `Portfolio funded with $${amount.toLocaleString()}`,
+      title: "Portfolio Reset",
+      description: `Portfolio balance updated to $${amount.toLocaleString()}`,
     });
 
     await loadPortfolio();
   } catch (error) {
-    console.error('Error setting investment amount:', error);
+    console.error('Error updating portfolio:', error);
   }
 }, [portfolio, loadPortfolio, toast]);
 
@@ -379,7 +378,7 @@ return {
   loading,
   loadPortfolio,
   updateBalance,
-  updateInitialBalance,
+  
   addTrade,
   resetPortfolio,
 };

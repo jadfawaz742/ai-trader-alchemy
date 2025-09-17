@@ -12,8 +12,5 @@ verify_jwt = true
 [functions.fetch-news]
 verify_jwt = true
 
-[functions.capital-com-trade]
-verify_jwt = true
-
 [functions.update-positions]
 verify_jwt = true

@@ -58,8 +58,6 @@ interface UnifiedAITradingProps {
   setTradeDuration: (value: number[]) => void;
   simulationMode: boolean;
   setSimulationMode: (value: boolean) => void;
-  useCapitalCom?: boolean;
-  setUseCapitalCom?: (value: boolean) => void;
   session: TradingSession;
   setSession: (value: TradingSession | ((prev: TradingSession) => TradingSession)) => void;
   intervalRef: React.MutableRefObject<NodeJS.Timeout | null>;
@@ -81,8 +79,6 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
   setTradeDuration,
   simulationMode,
   setSimulationMode,
-  useCapitalCom = false,
-  setUseCapitalCom,
   session,
   setSession,
   intervalRef,
@@ -356,7 +352,7 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
     });
 
     toast({
-      title: `${useCapitalCom && !simulationMode ? 'Live' : 'Simulation'} Trading Started`,
+      title: `${!simulationMode ? 'Live' : 'Simulation'} Trading Started`,
       description: `AI trading started with $${tradingAmount} at ${riskLevel[0]}% risk level`
     });
 
@@ -420,70 +416,8 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
 
         // Save each trade immediately when executed
         for (const trade of newTrades) {
-          if (useCapitalCom && !simulationMode) {
-            // Execute real trade on Capital.com with user credentials
-            try {
-              // Get Capital.com credentials from localStorage
-              const apiKey = localStorage.getItem('capital_com_api_key');
-              const password = localStorage.getItem('capital_com_password');
-              const email = localStorage.getItem('capital_com_email');
-              
-              if (!apiKey || !password || !email) {
-                console.error('❌ Missing Capital.com credentials:', { 
-                  hasApiKey: !!apiKey, 
-                  hasPassword: !!password, 
-                  hasEmail: !!email 
-                });
-                
-                toast({
-                  title: "❌ Capital.com Credentials Required",
-                  description: "Please click 'Capital.com API' in the header to set up your credentials first",
-                  variant: "destructive"
-                });
-                
-                // Stop trading if credentials are missing
-                stopTrading();
-                throw new Error('Missing Capital.com credentials - please configure them first');
-              }
-
-              const { data: capitalResult, error: capitalError } = await supabase.functions.invoke('execute-trade', {
-                body: {
-                  portfolioId: portfolio.id,
-                  symbol: trade.symbol,
-                  tradeType: trade.action,
-                  quantity: trade.quantity,
-                  currentPrice: trade.price,
-                  platform: 'capital.com',
-                  credentials: {
-                    apiKey,
-                    email,
-                    password
-                  }
-                }
-              });
-
-              if (capitalError) throw capitalError;
-              
-              console.log('✅ Capital.com AI trade executed:', capitalResult);
-              
-              toast({
-                title: "✅ Live Trade Executed!",
-                description: `${trade.action} ${trade.quantity} ${trade.symbol} at $${trade.price.toFixed(2)} on Capital.com`,
-              });
-            } catch (capitalError) {
-              console.error('❌ Capital.com AI trade failed:', capitalError);
-              toast({
-                title: "❌ Capital.com Trade Failed",
-                description: "Falling back to simulation mode for this trade",
-                variant: "destructive"
-              });
-              // Fall back to saving simulation trade
-              await saveTrade(trade);
-            }
-          } else {
-            // Save simulation trade
-            await saveTrade(trade);
-          }
+          // Save simulation trade
+          await saveTrade(trade);
         }
 
         setSession(prev => ({
@@ -789,25 +723,6 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
                     />
                   </div>
 
-                  {/* Capital.com Integration */}
-                  {setUseCapitalCom && (
-                    <div className="flex items-center justify-between p-4 border rounded-lg">
-                      <div className="space-y-1">
-                        <div className="font-medium">Use Capital.com Live Trading</div>
-                        <div className="text-sm text-muted-foreground">
-                          {useCapitalCom ? 'Execute real trades on Capital.com platform' : 'Use internal portfolio simulation only'}
-                        </div>
-                        <div className="text-xs text-orange-600 font-medium">
-                          ⚠️ Requires Capital.com API credentials (click "Capital.com API" button above)
-                        </div>
-                      </div>
-                      <Switch
-                        checked={useCapitalCom}
-                        onCheckedChange={setUseCapitalCom}
-                        disabled={session.isActive || simulationMode}
-                      />
-                    </div>
-                  )}
 
                   {/* Portfolio Info */}
                   {portfolio && (

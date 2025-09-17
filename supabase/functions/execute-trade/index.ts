@@ -47,35 +47,7 @@ serve(async (req) => {
       });
     }
 
-    // Route to Capital.com if platform is specified
-    if (platform === 'capital.com') {
-      if (!credentials || !credentials.apiKey || !credentials.password || !credentials.email) {
-        return new Response(JSON.stringify({ error: 'Capital.com credentials required (email, apiKey, custom password)' }), {
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
-
-      const { data, error } = await supabase.functions.invoke('capital-com-trade', {
-        body: {
-          symbol,
-          tradeType,
-          quantity,
-          currentPrice,
-          portfolioId,
-          credentials
-        },
-        headers: {
-          'Authorization': authHeader
-        }
-      });
-
-      if (error) {
-        console.error('Capital.com trade error:', error);
-        return new Response(JSON.stringify({ 
-          success: false, 
-          error: 'Capital.com trading failed: ' + (error.message || 'unknown'),
-          details: (error as any)?.context || null
+    // Only simulation trading is supported now
         }), {
           status: 400,
           headers: { ...corsHeaders, 'Content-Type': 'application/json' },
