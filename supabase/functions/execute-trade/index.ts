@@ -48,17 +48,6 @@ serve(async (req) => {
     }
 
     // Only simulation trading is supported now
-        }), {
-          status: 400,
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
-
-      return new Response(JSON.stringify(data), {
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
-
     console.log(`Executing ${tradeType} trade: ${quantity} shares of ${symbol} at $${currentPrice}`);
 
     // Fetch portfolio and risk parameters (user-specific via RLS)
