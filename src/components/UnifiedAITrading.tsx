@@ -13,7 +13,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { Bot, Play, Square, TrendingUp, TrendingDown, DollarSign, Clock, Target, Zap, Activity, Settings, BarChart3 } from 'lucide-react';
 import { StockChart } from '@/components/StockChart';
 import { StockSelector } from '@/components/StockSelector';
-import { Link } from 'react-router-dom';
+import { usePortfolioContext } from '@/components/PortfolioProvider';
 
 interface LiveTrade {
   id: string;
@@ -87,6 +87,7 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
 }) => {
   const [activeTab, setActiveTab] = useState('config');
   const [selectedStocks, setSelectedStocks] = useState<string[]>(['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA']);
+  const { addTrade } = usePortfolioContext(); // Get addTrade from context
   const { toast } = useToast();
 
   // Auto-switch to live view when trading starts
@@ -172,16 +173,11 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
   };
 
   const saveTrade = async (trade: LiveTrade) => {
-    if (!portfolio) return;
+    if (!portfolio || !addTrade) return;
     
     try {
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) return;
-
-      // Save trade to database
-      await supabase.from('trades').insert({
-        user_id: user.id,
-        portfolio_id: portfolio.id,
+      // Use the unified addTrade function from portfolio context
+      await addTrade({
         symbol: trade.symbol,
         trade_type: trade.action,
         quantity: trade.quantity,
@@ -191,7 +187,8 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
         ppo_signal: { 
           confidence: trade.confidence,
           momentum: trade.momentum,
-          simulation: simulationMode
+          simulation: simulationMode,
+          platform: 'ai_trading'
         }
       });
 

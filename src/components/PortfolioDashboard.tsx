@@ -44,7 +44,7 @@ interface Trade {
 }
 
 export const PortfolioDashboard: React.FC = () => {
-  const { portfolio, positions, recentTrades, loading } = usePortfolioContext();
+  const { portfolio, positions, recentTrades, loading, addTrade } = usePortfolioContext();
   const [selectedPosition, setSelectedPosition] = useState<Position | null>(null);
   const [tradeQuantity, setTradeQuantity] = useState('');
   const [tradePrice, setTradePrice] = useState('');
@@ -87,34 +87,29 @@ const totalReturnPercent = portfolio && portfolio.initial_balance > 0 ? (totalPn
   };
 
   const executeTrade = async (action: 'BUY' | 'SELL') => {
-    if (!selectedPosition || !portfolio || !tradeQuantity || !tradePrice) return;
+    if (!selectedPosition || !portfolio || !tradeQuantity || !tradePrice || !addTrade) return;
     
     setIsTrading(true);
     try {
-      const { data, error } = await supabase.functions.invoke('execute-trade', {
-        body: {
-          portfolioId: portfolio.id,
-          symbol: selectedPosition.symbol,
-          tradeType: action,
-          quantity: parseInt(tradeQuantity),
-          currentPrice: parseFloat(tradePrice)
-        }
+      // Use the unified addTrade function from portfolio context
+      await addTrade({
+        symbol: selectedPosition.symbol,
+        trade_type: action,
+        quantity: parseInt(tradeQuantity),
+        price: parseFloat(tradePrice),
+        total_amount: parseFloat(tradePrice) * parseInt(tradeQuantity),
+        risk_score: 30, // Low risk for manual portfolio trades
+        ppo_signal: { platform: 'manual_portfolio' }
       });
 
-      if (error) throw error;
-
-      if (data?.success) {
-        toast({
-          title: "Trade Executed!",
-          description: `${action} ${tradeQuantity} shares of ${selectedPosition.symbol} at $${tradePrice}`
-        });
-        
-        setSelectedPosition(null);
-        setTradeQuantity('');
-        setTradePrice('');
-      } else {
-        throw new Error(data?.error || 'Trade execution failed');
-      }
+      toast({
+        title: "Trade Executed!",
+        description: `${action} ${tradeQuantity} shares of ${selectedPosition.symbol} at $${tradePrice}`
+      });
+      
+      setSelectedPosition(null);
+      setTradeQuantity('');
+      setTradePrice('');
     } catch (error) {
       console.error('Error executing trade:', error);
       toast({
