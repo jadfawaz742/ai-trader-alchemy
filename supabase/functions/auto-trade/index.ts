@@ -101,36 +101,249 @@ serve(async (req) => {
 
 async function generateTrades(symbols: string[], riskLevel: number, maxAmount: number) {
   const trades = [];
-  const numTrades = Math.min(Math.floor(Math.random() * 3) + 1, symbols.length); // 1-3 trades max
   
-  console.log(`Generating ${numTrades} trades from ${symbols.length} symbols`);
+  console.log(`🔍 Analyzing ${symbols.length} symbols with advanced technical indicators`);
 
-  for (let i = 0; i < numTrades; i++) {
-    const symbol = symbols[Math.floor(Math.random() * symbols.length)];
-    const action = Math.random() > 0.5 ? 'BUY' : 'SELL';
-    const basePrice = Math.random() * 200 + 50; // $50-$250
-    const maxShares = Math.floor(maxAmount / basePrice);
-    const quantity = Math.max(1, Math.floor(Math.random() * Math.min(maxShares, 10)) + 1);
-    
-    // Higher risk level = higher confidence (more aggressive trading)
-    const confidence = Math.min(95, 60 + (riskLevel * 0.4) + Math.random() * 20);
-    
-    const trade = {
-      symbol,
-      action,
-      quantity,
-      price: Math.round(basePrice * 100) / 100,
-      confidence: Math.round(confidence),
-      momentum: confidence > 80 ? 'strong' : confidence > 60 ? 'moderate' : 'weak',
-      volumeSpike: Math.random() > 0.7,
-      timestamp: new Date().toISOString()
-    };
-    
-    trades.push(trade);
-    console.log(`Generated trade: ${action} ${quantity} ${symbol} @ $${trade.price} (${confidence}% confidence)`);
+  for (const symbol of symbols) {
+    try {
+      // Generate mock historical data for technical analysis
+      const historicalData = generateMockHistoricalData(symbol);
+      
+      // Apply technical analysis strategy
+      const analysis = await applyTechnicalStrategy(symbol, historicalData, riskLevel);
+      
+      if (analysis.signal !== 'HOLD' && analysis.confidence >= 70) {
+        const basePrice = analysis.currentPrice;
+        const maxShares = Math.floor(maxAmount / basePrice);
+        const quantity = Math.max(1, Math.floor(maxShares * (analysis.confidence / 100) * 0.3));
+        
+        const trade = {
+          symbol,
+          action: analysis.signal,
+          quantity,
+          price: Math.round(basePrice * 100) / 100,
+          confidence: Math.round(analysis.confidence),
+          momentum: analysis.momentum,
+          volumeSpike: analysis.volumeSpike,
+          rsi: analysis.rsi,
+          macd: analysis.macd,
+          fibLevel: analysis.fibLevel,
+          strategy: 'RSI+MACD+Volume+Fibonacci',
+          timestamp: new Date().toISOString()
+        };
+        
+        trades.push(trade);
+        console.log(`📊 ${analysis.signal} signal for ${symbol}: RSI=${analysis.rsi.toFixed(1)}, MACD=${analysis.macd.histogram.toFixed(3)}, Fib=${analysis.fibLevel}, Confidence=${analysis.confidence}%`);
+      }
+    } catch (error) {
+      console.error(`Error analyzing ${symbol}:`, error);
+    }
   }
 
-  return trades;
+  // Limit trades based on risk level
+  const maxTrades = Math.min(5, Math.max(1, Math.floor(riskLevel / 20)));
+  const sortedTrades = trades.sort((a, b) => b.confidence - a.confidence).slice(0, maxTrades);
+  
+  console.log(`✅ Generated ${sortedTrades.length} high-confidence trades`);
+  return sortedTrades;
+}
+
+function generateMockHistoricalData(symbol: string) {
+  const days = 50;
+  const data = [];
+  let basePrice = Math.random() * 150 + 50; // $50-$200
+  
+  for (let i = 0; i < days; i++) {
+    const change = (Math.random() - 0.5) * 0.1; // ±5% daily change
+    basePrice *= (1 + change);
+    
+    const high = basePrice * (1 + Math.random() * 0.03);
+    const low = basePrice * (1 - Math.random() * 0.03);
+    const volume = Math.floor(Math.random() * 2000000 + 500000);
+    
+    data.push({
+      date: new Date(Date.now() - (days - i) * 24 * 60 * 60 * 1000),
+      open: basePrice * (1 + (Math.random() - 0.5) * 0.01),
+      high,
+      low,
+      close: basePrice,
+      volume
+    });
+  }
+  
+  return data;
+}
+
+async function applyTechnicalStrategy(symbol: string, data: any[], riskLevel: number) {
+  const currentPrice = data[data.length - 1].close;
+  
+  // Calculate RSI (14-period)
+  const rsi = calculateRSI(data, 14);
+  
+  // Calculate MACD (12, 26, 9)
+  const macd = calculateMACD(data, 12, 26, 9);
+  
+  // Analyze volume
+  const volumeAnalysis = analyzeVolume(data);
+  
+  // Calculate Fibonacci levels
+  const fibLevels = calculateFibonacciLevels(data);
+  
+  // Determine signal based on combined indicators
+  let signal = 'HOLD';
+  let confidence = 50;
+  let momentum = 'neutral';
+  
+  // RSI Strategy
+  const rsiSignal = rsi < 30 ? 'BUY' : rsi > 70 ? 'SELL' : 'HOLD';
+  
+  // MACD Strategy
+  const macdSignal = macd.histogram > 0 && macd.macd > macd.signal ? 'BUY' : 
+                     macd.histogram < 0 && macd.macd < macd.signal ? 'SELL' : 'HOLD';
+  
+  // Volume confirmation
+  const volumeConfirmation = volumeAnalysis.spike && volumeAnalysis.trend === 'increasing';
+  
+  // Fibonacci support/resistance
+  const nearFibLevel = findNearestFibLevel(currentPrice, fibLevels);
+  const fibSignal = nearFibLevel.level < 0.382 ? 'BUY' : nearFibLevel.level > 0.618 ? 'SELL' : 'HOLD';
+  
+  // Combine signals
+  const signals = [rsiSignal, macdSignal, fibSignal];
+  const buySignals = signals.filter(s => s === 'BUY').length;
+  const sellSignals = signals.filter(s => s === 'SELL').length;
+  
+  if (buySignals >= 2) {
+    signal = 'BUY';
+    confidence = Math.min(95, 70 + (buySignals * 10) + (volumeConfirmation ? 10 : 0) + (riskLevel * 0.3));
+    momentum = buySignals === 3 ? 'strong' : 'moderate';
+  } else if (sellSignals >= 2) {
+    signal = 'SELL';
+    confidence = Math.min(95, 70 + (sellSignals * 10) + (volumeConfirmation ? 10 : 0) + (riskLevel * 0.3));
+    momentum = sellSignals === 3 ? 'strong' : 'moderate';
+  }
+  
+  return {
+    signal,
+    confidence,
+    momentum,
+    currentPrice,
+    rsi,
+    macd,
+    volumeSpike: volumeAnalysis.spike,
+    fibLevel: nearFibLevel.level,
+    strategy: 'Combined Technical Analysis'
+  };
+}
+
+function calculateRSI(data: any[], period: number) {
+  if (data.length < period + 1) return 50;
+  
+  let gains = 0;
+  let losses = 0;
+  
+  for (let i = data.length - period; i < data.length; i++) {
+    const change = data[i].close - data[i - 1].close;
+    if (change > 0) gains += change;
+    else losses += Math.abs(change);
+  }
+  
+  const avgGain = gains / period;
+  const avgLoss = losses / period;
+  
+  if (avgLoss === 0) return 100;
+  const rs = avgGain / avgLoss;
+  return 100 - (100 / (1 + rs));
+}
+
+function calculateMACD(data: any[], fastPeriod: number, slowPeriod: number, signalPeriod: number) {
+  if (data.length < slowPeriod) {
+    return { macd: 0, signal: 0, histogram: 0 };
+  }
+  
+  // Calculate EMAs
+  const fastEMA = calculateEMA(data.slice(-fastPeriod).map(d => d.close), fastPeriod);
+  const slowEMA = calculateEMA(data.slice(-slowPeriod).map(d => d.close), slowPeriod);
+  
+  const macd = fastEMA - slowEMA;
+  
+  // For simplicity, using SMA for signal line instead of EMA
+  const signalData = data.slice(-signalPeriod).map((_, i) => {
+    const fEMA = calculateEMA(data.slice(-(fastPeriod + i)).map(d => d.close), fastPeriod);
+    const sEMA = calculateEMA(data.slice(-(slowPeriod + i)).map(d => d.close), slowPeriod);
+    return fEMA - sEMA;
+  });
+  
+  const signal = signalData.reduce((a, b) => a + b, 0) / signalData.length;
+  const histogram = macd - signal;
+  
+  return { macd, signal, histogram };
+}
+
+function calculateEMA(prices: number[], period: number) {
+  if (prices.length === 0) return 0;
+  
+  const multiplier = 2 / (period + 1);
+  let ema = prices[0];
+  
+  for (let i = 1; i < prices.length; i++) {
+    ema = (prices[i] * multiplier) + (ema * (1 - multiplier));
+  }
+  
+  return ema;
+}
+
+function analyzeVolume(data: any[]) {
+  const recentVolume = data.slice(-5).map(d => d.volume);
+  const avgVolume = data.slice(-20, -5).map(d => d.volume).reduce((a, b) => a + b, 0) / 15;
+  const currentVolume = recentVolume[recentVolume.length - 1];
+  
+  const spike = currentVolume > avgVolume * 1.5;
+  const trend = recentVolume[recentVolume.length - 1] > recentVolume[0] ? 'increasing' : 'decreasing';
+  
+  return { spike, trend, ratio: currentVolume / avgVolume };
+}
+
+function calculateFibonacciLevels(data: any[]) {
+  const prices = data.map(d => d.close);
+  const high = Math.max(...prices);
+  const low = Math.min(...prices);
+  const range = high - low;
+  
+  return {
+    level_0: high,
+    level_236: high - (range * 0.236),
+    level_382: high - (range * 0.382),
+    level_500: high - (range * 0.500),
+    level_618: high - (range * 0.618),
+    level_786: high - (range * 0.786),
+    level_100: low
+  };
+}
+
+function findNearestFibLevel(price: number, fibLevels: any) {
+  const levels = [
+    { level: 0, price: fibLevels.level_0 },
+    { level: 0.236, price: fibLevels.level_236 },
+    { level: 0.382, price: fibLevels.level_382 },
+    { level: 0.500, price: fibLevels.level_500 },
+    { level: 0.618, price: fibLevels.level_618 },
+    { level: 0.786, price: fibLevels.level_786 },
+    { level: 1, price: fibLevels.level_100 }
+  ];
+  
+  let nearest = levels[0];
+  let minDistance = Math.abs(price - nearest.price);
+  
+  for (const level of levels) {
+    const distance = Math.abs(price - level.price);
+    if (distance < minDistance) {
+      minDistance = distance;
+      nearest = level;
+    }
+  }
+  
+  return nearest;
 }
 
 function analyzeSentiment(text: string): 'positive' | 'negative' | 'neutral' {
