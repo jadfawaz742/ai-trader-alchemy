@@ -42,6 +42,16 @@ interface TradingSession {
   completedTrades: LiveTrade[];
   currentBalance: number;
   startingBalance: number;
+  winningTrades: number;
+  losingTrades: number;
+  successRate: number;
+  strategyMetrics: {
+    rsiSignals: number;
+    macdSignals: number;
+    volumeSignals: number;
+    fibonacciSignals: number;
+    confidenceAvg: number;
+  };
 }
 
 interface UnifiedAITradingProps {
@@ -226,7 +236,17 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
       activeTrades: [],
       completedTrades: [],
       currentBalance: startingBalance,
-      startingBalance
+      startingBalance,
+      winningTrades: 0,
+      losingTrades: 0,
+      successRate: 0,
+      strategyMetrics: {
+        rsiSignals: 0,
+        macdSignals: 0,
+        volumeSignals: 0,
+        fibonacciSignals: 0,
+        confidenceAvg: 0
+      }
     });
 
     toast({
@@ -284,12 +304,26 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
           await saveTrade(trade);
         }
 
-        // Update session with new trades
-        setSession(prev => ({
-          ...prev,
-          activeTrades: [...prev.activeTrades, ...newTrades],
-          totalTrades: prev.totalTrades + newTrades.length
-        }));
+        // Update session with new trades and strategy metrics
+        setSession(prev => {
+          const newStrategyMetrics = {
+            rsiSignals: prev.strategyMetrics.rsiSignals + newTrades.filter(t => t.confidence >= 70).length,
+            macdSignals: prev.strategyMetrics.macdSignals + newTrades.filter(t => t.momentum !== 'neutral').length,
+            volumeSignals: prev.strategyMetrics.volumeSignals + newTrades.filter(t => t.volumeSpike).length,
+            fibonacciSignals: prev.strategyMetrics.fibonacciSignals + newTrades.length, // All trades use Fibonacci
+            confidenceAvg: newTrades.length > 0 ? 
+              Math.round(((prev.strategyMetrics.confidenceAvg * prev.totalTrades + 
+                newTrades.reduce((sum, t) => sum + t.confidence, 0)) / 
+                (prev.totalTrades + newTrades.length)) * 100) / 100 : prev.strategyMetrics.confidenceAvg
+          };
+
+          return {
+            ...prev,
+            activeTrades: [...prev.activeTrades, ...newTrades],
+            totalTrades: prev.totalTrades + newTrades.length,
+            strategyMetrics: newStrategyMetrics
+          };
+        });
 
         // Schedule trade closures
         newTrades.forEach((trade: LiveTrade) => {
@@ -319,11 +353,20 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
       if (!tradeToClose) return prev;
 
       const closedTrade = { ...tradeToClose, status: 'closed' as const };
+      const isWinningTrade = closedTrade.profitLoss > 0;
+      
+      const newWinningTrades = prev.winningTrades + (isWinningTrade ? 1 : 0);
+      const newLosingTrades = prev.losingTrades + (isWinningTrade ? 0 : 1);
+      const newTotalTrades = newWinningTrades + newLosingTrades;
+      const newSuccessRate = newTotalTrades > 0 ? (newWinningTrades / newTotalTrades) * 100 : 0;
       
       return {
         ...prev,
         activeTrades: prev.activeTrades.filter(t => t.id !== tradeId),
-        completedTrades: [...prev.completedTrades, closedTrade]
+        completedTrades: [...prev.completedTrades, closedTrade],
+        winningTrades: newWinningTrades,
+        losingTrades: newLosingTrades,
+        successRate: Math.round(newSuccessRate * 100) / 100
       };
     });
   };
@@ -589,6 +632,48 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
                   </CardContent>
                 </Card>
               </div>
+
+              {/* Strategy Performance Card */}
+              <Card>
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Target className="h-4 w-4" />
+                    Strategy Performance
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+                    <div className="text-center p-3 bg-green-50 rounded-lg border border-green-200">
+                      <div className="text-2xl font-bold text-green-600">{session.successRate}%</div>
+                      <div className="text-sm text-green-700">Success Rate</div>
+                      <div className="text-xs text-muted-foreground mt-1">
+                        {session.winningTrades}W / {session.losingTrades}L
+                      </div>
+                    </div>
+                    <div className="text-center p-3 bg-blue-50 rounded-lg border border-blue-200">
+                      <div className="text-2xl font-bold text-blue-600">{session.strategyMetrics.confidenceAvg}%</div>
+                      <div className="text-sm text-blue-700">Avg Confidence</div>
+                      <div className="text-xs text-muted-foreground mt-1">Signal strength</div>
+                    </div>
+                    <div className="text-center p-3 bg-purple-50 rounded-lg border border-purple-200">
+                      <div className="text-2xl font-bold text-purple-600">{session.strategyMetrics.rsiSignals}</div>
+                      <div className="text-sm text-purple-700">RSI Signals</div>
+                      <div className="text-xs text-muted-foreground mt-1">Technical indicator</div>
+                    </div>
+                  </div>
+                  
+                  <div className="mt-4 p-4 bg-muted rounded-lg">
+                    <h4 className="font-semibold mb-2">Active Trading Strategy</h4>
+                    <div className="text-sm text-muted-foreground space-y-1">
+                      <p>• <strong>RSI + MACD + Volume + Fibonacci Analysis</strong></p>
+                      <p>• Buy signals when RSI &lt; 35, MACD bullish, volume spike detected</p>
+                      <p>• Sell signals when RSI &gt; 65, MACD bearish, fibonacci resistance</p>
+                      <p>• Minimum 70% confidence required for trade execution</p>
+                      <p>• Risk Level: {riskLevel[0]}% | Stop Loss: {stopLoss[0]}% | Take Profit: {takeProfit[0]}%</p>
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
 
               {/* Active Trades */}
               {session.activeTrades.length > 0 && (

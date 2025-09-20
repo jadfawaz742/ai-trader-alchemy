@@ -43,6 +43,16 @@ interface TradingSession {
   completedTrades: LiveTrade[];
   currentBalance: number;
   startingBalance: number;
+  winningTrades: number;
+  losingTrades: number;
+  successRate: number;
+  strategyMetrics: {
+    rsiSignals: number;
+    macdSignals: number;
+    volumeSignals: number;
+    fibonacciSignals: number;
+    confidenceAvg: number;
+  };
 }
 
 const TradingDashboard: React.FC = () => {
@@ -64,7 +74,17 @@ const TradingDashboard: React.FC = () => {
     activeTrades: [],
     completedTrades: [],
     currentBalance: portfolio?.current_balance || 0,
-    startingBalance: portfolio?.current_balance || 0
+    startingBalance: portfolio?.current_balance || 0,
+    winningTrades: 0,
+    losingTrades: 0,
+    successRate: 0,
+    strategyMetrics: {
+      rsiSignals: 0,
+      macdSignals: 0,
+      volumeSignals: 0,
+      fibonacciSignals: 0,
+      confidenceAvg: 0
+    }
   });
 
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
