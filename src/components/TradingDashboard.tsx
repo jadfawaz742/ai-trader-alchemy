@@ -8,6 +8,7 @@ import { PortfolioDashboard } from './PortfolioDashboard';
 import { TradingInterface } from './TradingInterface';
 import StockAnalyzer from './StockAnalyzer';
 import { UnifiedAITrading } from './UnifiedAITrading';
+import BacktestAnalyzer from './BacktestAnalyzer';
 import { useToast } from '@/hooks/use-toast';
 import { usePortfolioContext } from '@/components/PortfolioProvider';
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui/dialog';
@@ -143,7 +144,7 @@ useEffect(() => {
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-4">
-        <TabsList className="grid w-full grid-cols-4">
+        <TabsList className="grid w-full grid-cols-5">
           <TabsTrigger value="portfolio">Portfolio</TabsTrigger>
           <TabsTrigger value="trading">Manual Trading</TabsTrigger>
           <TabsTrigger value="analyzer">Stock Analysis</TabsTrigger>
@@ -153,6 +154,7 @@ useEffect(() => {
               <div className="absolute -top-1 -right-1 w-2 h-2 bg-green-500 rounded-full animate-pulse"></div>
             )}
           </TabsTrigger>
+          <TabsTrigger value="backtest">Backtest</TabsTrigger>
         </TabsList>
 
         <TabsContent value="portfolio">
@@ -169,6 +171,10 @@ useEffect(() => {
 
         <TabsContent value="ai-trading">
           <UnifiedAITrading {...tradingProps} />
+        </TabsContent>
+
+        <TabsContent value="backtest">
+          <BacktestAnalyzer />
         </TabsContent>
       </Tabs>
     </div>
