@@ -20,7 +20,8 @@ const TRADEABLE_STOCKS = [
   'SPOT', 'SQ', 'ROKU', 'TWLO', 'SNOW', 'NET', 'DDOG',
   'PLTR', 'RBLX', 'COIN', 'HOOD', 'SOFI', 'RIVN', 'LCID',
   'JPM', 'V', 'MA', 'DIS', 'KO', 'WMT', 'JNJ',
-  'XOM', 'NEE', 'ENPH', 'FSLR', 'MRNA', 'BNTX', 'GILD'
+  'XOM', 'NEE', 'ENPH', 'FSLR', 'MRNA', 'BNTX', 'GILD',
+  'BTC', 'ETH' // Crypto currencies
 ];
 
 serve(async (req) => {

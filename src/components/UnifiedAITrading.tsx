@@ -96,7 +96,7 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
   loadPortfolio
 }) => {
   const [activeTab, setActiveTab] = useState('config');
-  const [selectedStocks, setSelectedStocks] = useState<string[]>(['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA']);
+  const [selectedStocks, setSelectedStocks] = useState<string[]>(['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'BTC']);
   const { addTrade } = usePortfolioContext(); // Get addTrade from context
   const { toast } = useToast();
 
