@@ -10,7 +10,7 @@ import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { Bot, Play, Square, TrendingUp, TrendingDown, DollarSign, Clock, Target, Zap, Activity, Settings, BarChart3 } from 'lucide-react';
+import { Bot, Play, Square, TrendingUp, TrendingDown, DollarSign, Clock, Target, Zap, Activity, Settings, BarChart3, Apple } from 'lucide-react';
 import { StockChart } from '@/components/StockChart';
 import { StockSelector } from '@/components/StockSelector';
 import { usePortfolioContext } from '@/components/PortfolioProvider';
@@ -99,6 +99,83 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
   const [selectedStocks, setSelectedStocks] = useState<string[]>(['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'BTC']);
   const { addTrade } = usePortfolioContext(); // Get addTrade from context
   const { toast } = useToast();
+
+  // Test function for Apple stock analysis
+  const testAppleAnalysis = async () => {
+    if (!portfolio) {
+      toast({
+        title: "Error",
+        description: "No portfolio found. Please ensure you're authenticated.",
+        variant: "destructive"
+      });
+      return;
+    }
+
+    toast({
+      title: "Testing Apple Analysis",
+      description: "Running AI analysis on AAPL stock...",
+    });
+
+    try {
+      const { data, error } = await supabase.functions.invoke('auto-trade', {
+        body: {
+          portfolioId: portfolio.id,
+          simulationMode: true,
+          riskLevel: 80,
+          maxAmount: 1000,
+          selectedStocks: ['AAPL'], // Test only Apple
+          stopLossPercent: 5,
+          takeProfitPercent: 10
+        }
+      });
+
+      if (error) {
+        console.error('Auto-trade error:', error);
+        throw error;
+      }
+
+      if (data.success && data.trades && data.trades.length > 0) {
+        const appleAnalysis = data.trades.find((trade: any) => trade.symbol === 'AAPL');
+        
+        if (appleAnalysis) {
+          toast({
+            title: `Apple Analysis Complete`,
+            description: `Signal: ${appleAnalysis.action} | Price: $${appleAnalysis.price} | Confidence: ${appleAnalysis.confidence}% | RSI: ${appleAnalysis.rsi?.toFixed(1)}`,
+          });
+
+          console.log('🍎 Apple Stock Analysis Results:', {
+            symbol: appleAnalysis.symbol,
+            signal: appleAnalysis.action,
+            price: appleAnalysis.price,
+            confidence: appleAnalysis.confidence,
+            rsi: appleAnalysis.rsi,
+            macd: appleAnalysis.macd,
+            fibLevel: appleAnalysis.fibLevel,
+            strategy: appleAnalysis.strategy,
+            momentum: appleAnalysis.momentum
+          });
+        } else {
+          toast({
+            title: "Apple Analysis",
+            description: "No trading signal generated for AAPL (HOLD recommended)",
+          });
+        }
+      } else {
+        toast({
+          title: "Apple Analysis",
+          description: "Analysis complete - No trades recommended at this time",
+        });
+      }
+
+    } catch (error) {
+      console.error('Error testing Apple analysis:', error);
+      toast({
+        title: "Error",
+        description: "Failed to analyze Apple stock. Check console for details.",
+        variant: "destructive"
+      });
+    }
+  };
 
   // Auto-switch to live view when trading starts
   useEffect(() => {
@@ -554,6 +631,17 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
                     </div>
                   </div>
                 )}
+
+                {/* Test Apple Analysis Button */}
+                <Button
+                  onClick={testAppleAnalysis}
+                  variant="outline"
+                  className="w-full bg-gradient-to-r from-blue-50 to-indigo-50 border-blue-200 hover:from-blue-100 hover:to-indigo-100"
+                  disabled={!portfolio}
+                >
+                  <Apple className="w-4 h-4 mr-2" />
+                  🍎 Test Apple (AAPL) Analysis
+                </Button>
 
                 {/* Start/Stop Button */}
                 <Button
