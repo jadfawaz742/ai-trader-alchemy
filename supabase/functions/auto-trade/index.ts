@@ -11,6 +11,7 @@ const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
 const newsApiKey = Deno.env.get('NEWS_API_KEY');
 const openAIApiKey = Deno.env.get('OPENAI_API_KEY');
+const bybitApiKey = Deno.env.get('8j5LzBaYWK7liqhBNn');
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
@@ -107,8 +108,13 @@ async function generateTrades(symbols: string[], riskLevel: number, maxAmount: n
 
   for (const symbol of symbols) {
     try {
-      // Generate mock historical data for technical analysis
-      const historicalData = generateMockHistoricalData(symbol);
+      // Try to fetch real market data from Bybit first
+      let historicalData = await fetchBybitMarketData(symbol);
+      
+      // Fall back to mock data if Bybit data not available
+      if (!historicalData) {
+        historicalData = generateMockHistoricalData(symbol);
+      }
       
       // Apply technical analysis strategy
       const analysis = await applyTechnicalStrategy(symbol, historicalData, riskLevel);
@@ -147,6 +153,101 @@ async function generateTrades(symbols: string[], riskLevel: number, maxAmount: n
   
   console.log(`✅ Generated ${sortedTrades.length} high-confidence trades`);
   return sortedTrades;
+}
+
+function generateMockHistoricalData(symbol: string) {
+  const days = 50;
+  const data = [];
+  let basePrice = Math.random() * 150 + 50; // $50-$200
+  
+  for (let i = 0; i < days; i++) {
+    const change = (Math.random() - 0.5) * 0.1; // ±5% daily change
+    basePrice *= (1 + change);
+    
+    const high = basePrice * (1 + Math.random() * 0.03);
+    const low = basePrice * (1 - Math.random() * 0.03);
+    const volume = Math.floor(Math.random() * 2000000 + 500000);
+    
+    data.push({
+      date: new Date(Date.now() - (days - i) * 24 * 60 * 60 * 1000),
+      open: basePrice * (1 + (Math.random() - 0.5) * 0.01),
+      high,
+      low,
+      close: basePrice,
+      volume
+    });
+  }
+  
+  return data;
+}
+
+// Test Bybit API connection and fetch real market data
+async function fetchBybitMarketData(symbol: string) {
+  if (!bybitApiKey) {
+    console.log(`⚠️ Bybit API key not found, using mock data for ${symbol}`);
+    return null;
+  }
+
+  try {
+    console.log(`🔌 Testing Bybit API connection for ${symbol}...`);
+    
+    // Convert symbol format (BTC -> BTCUSDT, ETH -> ETHUSDT, etc)
+    const bybitSymbol = symbol.includes('BTC') ? 'BTCUSDT' : 
+                        symbol.includes('ETH') ? 'ETHUSDT' : 
+                        symbol + 'USDT';
+    
+    // Fetch current price
+    const priceResponse = await fetch(`https://api.bybit.com/v5/market/tickers?category=spot&symbol=${bybitSymbol}`, {
+      method: 'GET',
+      headers: {
+        'X-BAPI-API-KEY': bybitApiKey,
+      },
+    });
+
+    if (!priceResponse.ok) {
+      throw new Error(`Bybit API error: ${priceResponse.status} ${priceResponse.statusText}`);
+    }
+
+    const priceData = await priceResponse.json();
+    console.log(`✅ Bybit API connected successfully for ${symbol}:`, priceData);
+
+    if (priceData.result && priceData.result.list && priceData.result.list.length > 0) {
+      const ticker = priceData.result.list[0];
+      
+      // Fetch recent klines for historical data
+      const klineResponse = await fetch(`https://api.bybit.com/v5/market/kline?category=spot&symbol=${bybitSymbol}&interval=240&limit=50`, {
+        method: 'GET',
+        headers: {
+          'X-BAPI-API-KEY': bybitApiKey,
+        },
+      });
+
+      if (klineResponse.ok) {
+        const klineData = await klineResponse.json();
+        
+        if (klineData.result && klineData.result.list) {
+          const historicalData = klineData.result.list.reverse().map((kline: any[]) => ({
+            date: new Date(parseInt(kline[0])),
+            open: parseFloat(kline[1]),
+            high: parseFloat(kline[2]),
+            low: parseFloat(kline[3]),
+            close: parseFloat(kline[4]),
+            volume: parseFloat(kline[5])
+          }));
+          
+          console.log(`📊 Fetched ${historicalData.length} data points for ${symbol} from Bybit`);
+          return historicalData;
+        }
+      }
+    }
+
+    console.log(`⚠️ No market data found for ${symbol} on Bybit, using mock data`);
+    return null;
+    
+  } catch (error) {
+    console.error(`❌ Bybit API error for ${symbol}:`, error);
+    return null;
+  }
 }
 
 function generateMockHistoricalData(symbol: string) {
