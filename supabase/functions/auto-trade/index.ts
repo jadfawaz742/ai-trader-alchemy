@@ -250,32 +250,6 @@ async function fetchBybitMarketData(symbol: string) {
   }
 }
 
-function generateMockHistoricalData(symbol: string) {
-  const days = 50;
-  const data = [];
-  let basePrice = Math.random() * 150 + 50; // $50-$200
-  
-  for (let i = 0; i < days; i++) {
-    const change = (Math.random() - 0.5) * 0.1; // ±5% daily change
-    basePrice *= (1 + change);
-    
-    const high = basePrice * (1 + Math.random() * 0.03);
-    const low = basePrice * (1 - Math.random() * 0.03);
-    const volume = Math.floor(Math.random() * 2000000 + 500000);
-    
-    data.push({
-      date: new Date(Date.now() - (days - i) * 24 * 60 * 60 * 1000),
-      open: basePrice * (1 + (Math.random() - 0.5) * 0.01),
-      high,
-      low,
-      close: basePrice,
-      volume
-    });
-  }
-  
-  return data;
-}
-
 async function applyTechnicalStrategy(symbol: string, data: any[], riskLevel: number) {
   const currentPrice = data[data.length - 1].close;
   
