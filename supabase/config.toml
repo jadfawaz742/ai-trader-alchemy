@@ -9,6 +9,9 @@ verify_jwt = true
 [functions.auto-trade]
 verify_jwt = true
 
+[functions.advanced-trading-bot]
+verify_jwt = true
+
 [functions.fetch-news]
 verify_jwt = true
 

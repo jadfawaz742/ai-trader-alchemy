@@ -10,9 +10,10 @@ import { Progress } from '@/components/ui/progress';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { useToast } from '@/hooks/use-toast';
 import { supabase } from '@/integrations/supabase/client';
-import { Bot, Play, Square, TrendingUp, TrendingDown, DollarSign, Clock, Target, Zap, Activity, Settings, BarChart3, Apple } from 'lucide-react';
-import { StockChart } from '@/components/StockChart';
-import { StockSelector } from '@/components/StockSelector';
+import { Bot, Play, Square, TrendingUp, TrendingDown, DollarSign, Clock, Target, Zap, Activity, Settings, BarChart3, Apple, Brain } from 'lucide-react';
+import { StockChart } from "./StockChart";
+import { StockSelector } from "./StockSelector";
+import AdvancedTradingBot from "./AdvancedTradingBot";
 import { usePortfolioContext } from '@/components/PortfolioProvider';
 
 interface LiveTrade {
@@ -494,7 +495,7 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
         </CardHeader>
         <CardContent>
           <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="grid w-full grid-cols-2">
+            <TabsList className="grid w-full grid-cols-3">
               <TabsTrigger value="config" className="flex items-center gap-2">
                 <Settings className="h-4 w-4" />
                 Configuration
@@ -505,6 +506,10 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
                 {session.isActive && (
                   <div className="w-2 h-2 bg-green-500 rounded-full animate-pulse ml-1"></div>
                 )}
+              </TabsTrigger>
+              <TabsTrigger value="advanced" className="flex items-center gap-2">
+                <Brain className="h-4 w-4" />
+                Advanced PPO Bot
               </TabsTrigger>
             </TabsList>
 
@@ -870,6 +875,10 @@ export const UnifiedAITrading: React.FC<UnifiedAITradingProps> = ({
                   ))}
                 </div>
               )}
+            </TabsContent>
+
+            <TabsContent value="advanced" className="space-y-4">
+              <AdvancedTradingBot />
             </TabsContent>
           </Tabs>
         </CardContent>
