@@ -149,7 +149,7 @@ serve(async (req) => {
     }
 
     const { 
-      symbols = ['BTC', 'ETH'], // Reduced default symbols
+      symbols = ['BTC', 'ETH', 'AAPL', 'GOOGL', 'MSFT', 'AMZN', 'META', 'NVDA', 'TSLA', 'AMD', 'NFLX', 'CRM'], // Expanded symbols
       mode = 'simulation', 
       risk = 'medium',
       portfolioBalance = 100000,
@@ -157,11 +157,11 @@ serve(async (req) => {
     } = await req.json();
 
     console.log(`🤖 Enhanced PPO Trading Bot Starting - Mode: ${mode}, Risk: ${risk}`);
-        console.log(`📊 Processing ${symbols.length} symbols with 2-year historical data`);
+    console.log(`📊 Processing ${symbols.length} symbols with 2-year historical data and online learning`);
 
         const tradingSignals = [];
-        const maxSymbols = 2; // Reduced to 2 for resource efficiency with 2-year data
-    const symbolsToProcess = symbols.slice(0, maxSymbols);
+        const maxSymbols = symbols.length; // Process all symbols
+        const symbolsToProcess = symbols.slice(0, maxSymbols);
 
     for (const symbol of symbolsToProcess) {
       try {
@@ -267,7 +267,7 @@ serve(async (req) => {
         }
         
         // Add small delay between symbols to prevent resource overload
-        await new Promise(resolve => setTimeout(resolve, 100));
+        await new Promise(resolve => setTimeout(resolve, 50)); // Reduced delay for more symbols
         
       } catch (error) {
         console.error(`❌ Error analyzing ${symbol}:`, error);
@@ -470,10 +470,353 @@ async function trainEnhancedPPOModel(
   let fibonacciTrades = 0, fibonacciWins = 0;
   let srTrades = 0, srWins = 0;
   
-  // Training Phase - Process all training data
+  // Training Phase - Process all training data with higher frequency
   console.log(`📚 Training Phase: Processing ${trainingData.length} periods...`);
-  for (let i = 200; i < trainingData.length - 1; i += 5) { // Process every 5th period for efficiency
-    if (trainingTrades.length >= 500) break; // Limit training trades
+  for (let i = 100; i < trainingData.length - 1; i += 3) { // Process every 3rd period for more trades
+    if (trainingTrades.length >= 1000) break; // Increased trade limit
+    
+    const historicalSlice = trainingData.slice(Math.max(0, i - 150), i);
+    const state = await analyzeMarketStateWithFibonacci(historicalSlice, symbol);
+    
+    // Calculate confluence score with enhanced fibonacci analysis
+    const confluenceScore = calculateEnhancedConfluenceScore(state, riskLevel);
+    state.confluenceScore = confluenceScore;
+    
+    // Lower threshold for more trades
+    const adaptiveThreshold = Math.max(0.4, riskLevel.minConfluence - 0.2);
+    
+    if (confluenceScore >= adaptiveThreshold) {
+      const action = await calculatePPOActionWithFibonacci([
+        state.price / 1000,
+        state.volume / 1000000,
+        state.indicators.ichimoku.signal,
+        (state.price - state.indicators.ema200) / state.indicators.ema200,
+        state.indicators.macd.histogram / 10,
+        state.indicators.atr / state.price,
+        state.volatility,
+        state.indicators.bollinger.position,
+        state.indicators.fibonacci.nearestLevel,
+        state.indicators.fibonacci.retracementLevel || 0.5,
+        confluenceScore
+      ], state, true);
+      
+      if (action.type !== 'HOLD') {
+        const entry = trainingData[i];
+        const exitIndex = Math.min(i + Math.floor(Math.random() * 15) + 5, trainingData.length - 1);
+        const exit = trainingData[exitIndex];
+        
+        // Calculate returns with fibonacci-based exits
+        let returnPct = 0;
+        const fibExtension = calculateFibonacciExtension(historicalSlice);
+        const fibRetracement = calculateFibonacciRetracement(historicalSlice);
+        
+        if (action.type === 'BUY') {
+          const target = entry.close * (1 + fibExtension.targetLevel * 0.08);
+          const actualExit = Math.min(exit.close, target);
+          returnPct = (actualExit - entry.close) / entry.close;
+        } else if (action.type === 'SELL') {
+          const target = entry.close * (1 - fibRetracement.correctionLevel * 0.08);
+          const actualExit = Math.max(exit.close, target);
+          returnPct = (entry.close - actualExit) / entry.close;
+        }
+        
+        totalReturns += returnPct;
+        currentValue *= (1 + returnPct * 0.1);
+        
+        if (returnPct > 0) wins++;
+        else losses++;
+        
+        // Update drawdown
+        peakValue = Math.max(peakValue, currentValue);
+        const drawdown = (peakValue - currentValue) / peakValue;
+        maxDrawdown = Math.max(maxDrawdown, drawdown);
+        
+        // Performance tracking for classification metrics
+        const isPositive = returnPct > 0;
+        const predicted = action.type === 'BUY' || (action.type === 'SELL' && returnPct > 0);
+        
+        if (predicted && isPositive) truePositives++;
+        else if (predicted && !isPositive) falsePositives++;
+        else if (!predicted && isPositive) falseNegatives++;
+        else trueNegatives++;
+        
+        // Track fibonacci and SR success
+        if (state.indicators.fibonacci.nearestLevel > 0.6) {
+          fibonacciTrades++;
+          if (returnPct > 0) fibonacciWins++;
+        }
+        
+        if (state.indicators.supportResistance.length > 0) {
+          srTrades++;
+          if (returnPct > 0) srWins++;
+        }
+
+        trainingTrades.push({
+          entry: entry.close,
+          exit: exit.close,
+          action: action.type,
+          return: returnPct,
+          confidence: action.confidence,
+          fibonacciLevel: state.indicators.fibonacci.nearestLevel,
+          confluenceScore
+        });
+      }
+    }
+  }
+  
+  // Testing Phase - More frequent testing for more trades
+  console.log(`🧪 Testing Phase: Processing ${testingData.length} periods...`);
+  for (let i = 30; i < testingData.length - 1; i += 2) { // Every 2nd period for more trades
+    if (testingTrades.length >= 300) break; // Increased test limit
+    
+    const historicalSlice = testingData.slice(Math.max(0, i - 100), i);
+    const state = await analyzeMarketStateWithFibonacci(historicalSlice, symbol);
+    
+    const confluenceScore = calculateEnhancedConfluenceScore(state, riskLevel);
+    state.confluenceScore = confluenceScore;
+    
+    const adaptiveThreshold = Math.max(0.45, riskLevel.minConfluence - 0.15);
+    
+    if (confluenceScore >= adaptiveThreshold) {
+      const action = await calculatePPOActionWithFibonacci([
+        state.price / 1000,
+        state.volume / 1000000,
+        state.indicators.ichimoku.signal,
+        (state.price - state.indicators.ema200) / state.indicators.ema200,
+        state.indicators.macd.histogram / 10,
+        state.indicators.atr / state.price,
+        state.volatility,
+        state.indicators.bollinger.position,
+        state.indicators.fibonacci.nearestLevel,
+        state.indicators.fibonacci.retracementLevel || 0.5,
+        confluenceScore
+      ], state, false); // Testing mode
+      
+      if (action.type !== 'HOLD') {
+        const entry = testingData[i];
+        const exitIndex = Math.min(i + Math.floor(Math.random() * 12) + 3, testingData.length - 1);
+        const exit = testingData[exitIndex];
+        
+        let returnPct = 0;
+        if (action.type === 'BUY') {
+          returnPct = (exit.close - entry.close) / entry.close;
+        } else if (action.type === 'SELL') {
+          returnPct = (entry.close - exit.close) / entry.close;
+        }
+        
+        testTotalReturns += returnPct;
+        
+        if (returnPct > 0) testWins++;
+        else testLosses++;
+        
+        // Performance tracking for test metrics
+        const isPositive = returnPct > 0;
+        const predicted = action.type === 'BUY' || (action.type === 'SELL' && returnPct > 0);
+        
+        if (predicted && isPositive) testTruePositives++;
+        else if (predicted && !isPositive) testFalsePositives++;
+        else if (!predicted && isPositive) testFalseNegatives++;
+        else testTrueNegatives++;
+        
+        testingTrades.push({
+          entry: entry.close,
+          exit: exit.close,
+          action: action.type,
+          return: returnPct,
+          confidence: action.confidence,
+          fibonacciLevel: state.indicators.fibonacci.nearestLevel,
+          confluenceScore
+        });
+      }
+    }
+  }
+  
+  // Online PPO Learning Variables
+  let ppoWeights = {
+    trend: 0.3,
+    momentum: 0.25,
+    fibonacci: 0.2,
+    support: 0.15,
+    volume: 0.1
+  };
+  
+  for (let i = 50; i < trainingData.length - 1; i += 2) { // More frequent trading (every 2 periods)
+    if (trainingTrades.length >= 1500) break; // Increased trade limit
+    
+    const historicalSlice = trainingData.slice(Math.max(0, i - 100), i);
+    const state = await analyzeMarketStateWithFibonacci(historicalSlice, symbol);
+    
+    // Calculate confluence score with enhanced fibonacci analysis
+    const confluenceScore = calculateEnhancedConfluenceScore(state, riskLevel);
+    state.confluenceScore = confluenceScore;
+    
+    // Adaptive confluence threshold - lower for more trades
+    const adaptiveThreshold = Math.max(0.3, riskLevel.minConfluence - (i / trainingData.length) * 0.2);
+    
+    if (confluenceScore >= adaptiveThreshold) {
+      const action = await calculateAdaptivePPOActionWithLearning([
+        state.price / 1000,
+        state.volume / 1000000,
+        state.indicators.ichimoku.signal,
+        (state.price - state.indicators.ema200) / state.indicators.ema200,
+        state.indicators.macd.histogram / 10,
+        state.indicators.atr / state.price,
+        state.volatility,
+        state.indicators.bollinger.position,
+        state.indicators.fibonacci.nearestLevel,
+        state.indicators.fibonacci.retracementLevel || 0.5,
+        confluenceScore
+      ], state, ppoWeights, true);
+      
+      if (action.type !== 'HOLD') {
+        const entry = trainingData[i];
+        const exitIndex = Math.min(i + Math.floor(Math.random() * 15) + 3, trainingData.length - 1);
+        const exit = trainingData[exitIndex];
+        
+        // Calculate returns with fibonacci-based exits
+        let returnPct = 0;
+        const fibExtension = calculateFibonacciExtension(historicalSlice);
+        const fibRetracement = calculateFibonacciRetracement(historicalSlice);
+        
+        if (action.type === 'BUY') {
+          const target = entry.close * (1 + fibExtension.targetLevel * 0.08);
+          const actualExit = Math.min(exit.close, target);
+          returnPct = (actualExit - entry.close) / entry.close;
+        } else if (action.type === 'SELL') {
+          const target = entry.close * (1 - fibRetracement.correctionLevel * 0.08);
+          const actualExit = Math.max(exit.close, target);
+          returnPct = (entry.close - actualExit) / entry.close;
+        }
+        
+        totalReturns += returnPct;
+        currentValue *= (1 + returnPct * 0.1);
+        
+        if (returnPct > 0) wins++;
+        else losses++;
+        
+        // Online Learning: Update PPO weights based on trade outcome
+        if (returnPct > 0) {
+          // Successful trade - reinforce the strategy
+          ppoWeights.fibonacci = Math.min(0.4, ppoWeights.fibonacci * 1.02);
+          ppoWeights.momentum = Math.min(0.4, ppoWeights.momentum * 1.01);
+        } else {
+          // Failed trade - reduce weights
+          ppoWeights.fibonacci *= 0.98;
+          ppoWeights.momentum *= 0.99;
+        }
+        
+        // Normalize weights
+        const totalWeight = Object.values(ppoWeights).reduce((a, b) => a + b, 0);
+        Object.keys(ppoWeights).forEach(key => {
+          ppoWeights[key] = ppoWeights[key] / totalWeight;
+        });
+        
+        // Update drawdown
+        peakValue = Math.max(peakValue, currentValue);
+        const drawdown = (peakValue - currentValue) / peakValue;
+        maxDrawdown = Math.max(maxDrawdown, drawdown);
+        
+        // Performance tracking for classification metrics
+        const isPositive = returnPct > 0;
+        const predicted = action.type === 'BUY' || (action.type === 'SELL' && returnPct > 0);
+        
+        if (predicted && isPositive) truePositives++;
+        else if (predicted && !isPositive) falsePositives++;
+        else if (!predicted && isPositive) falseNegatives++;
+        else trueNegatives++;
+        
+        // Track fibonacci and SR success
+        if (state.indicators.fibonacci.nearestLevel > 0.6) {
+          fibonacciTrades++;
+          if (returnPct > 0) fibonacciWins++;
+        }
+        
+        if (state.indicators.supportResistance.length > 0) {
+          srTrades++;
+          if (returnPct > 0) srWins++;
+        }
+
+        trainingTrades.push({
+          entry: entry.close,
+          exit: exit.close,
+          action: action.type,
+          return: returnPct,
+          confidence: action.confidence,
+          fibonacciLevel: state.indicators.fibonacci.nearestLevel,
+          confluenceScore,
+          adaptedWeights: {...ppoWeights} // Store learned weights
+        });
+      }
+    }
+  }
+  
+  // Testing Phase - More frequent testing (every 2 periods)
+  console.log(`🧪 Testing Phase: Processing ${testingData.length} periods with adapted model...`);
+  for (let i = 25; i < testingData.length - 1; i += 2) { // Every 2 periods for more trades
+    if (testingTrades.length >= 500) break; // Increased test limit
+    
+    const historicalSlice = testingData.slice(Math.max(0, i - 100), i);
+    const state = await analyzeMarketStateWithFibonacci(historicalSlice, symbol);
+    
+    const confluenceScore = calculateEnhancedConfluenceScore(state, riskLevel);
+    state.confluenceScore = confluenceScore;
+    
+    // Use adapted weights from training
+    const adaptiveThreshold = Math.max(0.35, riskLevel.minConfluence - 0.15);
+    
+    if (confluenceScore >= adaptiveThreshold) {
+      const action = await calculateAdaptivePPOActionWithLearning([
+        state.price / 1000,
+        state.volume / 1000000,
+        state.indicators.ichimoku.signal,
+        (state.price - state.indicators.ema200) / state.indicators.ema200,
+        state.indicators.macd.histogram / 10,
+        state.indicators.atr / state.price,
+        state.volatility,
+        state.indicators.bollinger.position,
+        state.indicators.fibonacci.nearestLevel,
+        state.indicators.fibonacci.retracementLevel || 0.5,
+        confluenceScore
+      ], state, ppoWeights, false); // Don't update weights in testing
+      
+      if (action.type !== 'HOLD') {
+        const entry = testingData[i];
+        const exitIndex = Math.min(i + Math.floor(Math.random() * 12) + 3, testingData.length - 1);
+        const exit = testingData[exitIndex];
+        
+        let returnPct = 0;
+        if (action.type === 'BUY') {
+          returnPct = (exit.close - entry.close) / entry.close;
+        } else if (action.type === 'SELL') {
+          returnPct = (entry.close - exit.close) / entry.close;
+        }
+        
+        testTotalReturns += returnPct;
+        
+        if (returnPct > 0) testWins++;
+        else testLosses++;
+        
+        // Performance tracking for test metrics
+        const isPositive = returnPct > 0;
+        const predicted = action.type === 'BUY' || (action.type === 'SELL' && returnPct > 0);
+        
+        if (predicted && isPositive) testTruePositives++;
+        else if (predicted && !isPositive) testFalsePositives++;
+        else if (!predicted && isPositive) testFalseNegatives++;
+        else testTrueNegatives++;
+        
+        testingTrades.push({
+          entry: entry.close,
+          exit: exit.close,
+          action: action.type,
+          return: returnPct,
+          confidence: action.confidence,
+          fibonacciLevel: state.indicators.fibonacci.nearestLevel,
+          confluenceScore
+        });
+      }
+    }
+  }
     
     const historicalSlice = trainingData.slice(Math.max(0, i - 200), i);
     const state = await analyzeMarketStateWithFibonacci(historicalSlice, symbol);
@@ -660,11 +1003,6 @@ async function trainEnhancedPPOModel(
     testingFScore: testFScore
   };
   
-  console.log(`✅ Enhanced training complete:`);
-  console.log(`   Training: ${trainingTrades.length} trades, Win Rate: ${(winRate * 100).toFixed(1)}%`);
-  console.log(`   Testing: ${testingTrades.length} trades, Win Rate: ${(testWinRate * 100).toFixed(1)}%`);
-  console.log(`   Combined Performance: ${(performance.accuracy * 100).toFixed(1)}% accuracy, ${performance.sharpeRatio.toFixed(2)} Sharpe`);
-  
   return {
     model: {
       config,
@@ -848,6 +1186,112 @@ async function calculatePPOActionWithFibonacci(
     takeProfit: 0, // Will be calculated separately
     confidence: Math.min(100, confidence),
     reasoning,
+    confluenceLevel: confidence > 80 ? 'STRONG' : confidence > 60 ? 'MODERATE' : 'WEAK'
+  };
+}
+
+// Adaptive PPO action calculation with online learning
+async function calculateAdaptivePPOActionWithLearning(
+  stateVector: number[], 
+  state: TradingState,
+  ppoWeights: any,
+  isTraining: boolean
+): Promise<TradingAction> {
+  let bullishScore = 0;
+  let bearishScore = 0;
+  const reasons = [];
+  
+  // Adaptive scoring based on learned weights
+  if (state.indicators.ichimoku.signal > 0) {
+    bullishScore += 20 * ppoWeights.trend;
+    reasons.push("Ichimoku bullish");
+  } else if (state.indicators.ichimoku.signal < 0) {
+    bearishScore += 20 * ppoWeights.trend;
+    reasons.push("Ichimoku bearish");
+  }
+  
+  if (state.price > state.indicators.ema200) {
+    bullishScore += 15 * ppoWeights.momentum;
+    reasons.push("Above 200 EMA");
+  } else {
+    bearishScore += 15 * ppoWeights.momentum;
+    reasons.push("Below 200 EMA");
+  }
+  
+  // MACD with adaptive weight
+  if (state.indicators.macd.histogram > 0) {
+    bullishScore += 12 * ppoWeights.momentum;
+    reasons.push("MACD bullish");
+  } else if (state.indicators.macd.histogram < 0) {
+    bearishScore += 12 * ppoWeights.momentum;
+    reasons.push("MACD bearish");
+  }
+  
+  // Fibonacci with adaptive weight
+  const fib = state.indicators.fibonacci as any;
+  if (fib.extensionPotential > 0.6) {
+    bullishScore += 18 * ppoWeights.fibonacci;
+    reasons.push("Fibonacci extension potential");
+  }
+  if (fib.correctionPotential > 0.6) {
+    bearishScore += 15 * ppoWeights.fibonacci;
+    reasons.push("Fibonacci correction potential");
+  }
+  
+  // Support/Resistance with adaptive weight
+  const srLevels = state.indicators.supportResistance;
+  const nearSupport = srLevels.some(sr => sr.type === 'support' && Math.abs(state.price - sr.price) / state.price < 0.02);
+  const nearResistance = srLevels.some(sr => sr.type === 'resistance' && Math.abs(state.price - sr.price) / state.price < 0.02);
+  
+  if (nearSupport) {
+    bullishScore += 16 * ppoWeights.support;
+    reasons.push("Near support level");
+  }
+  if (nearResistance) {
+    bearishScore += 16 * ppoWeights.support;
+    reasons.push("Near resistance level");
+  }
+  
+  // Volume confirmation with adaptive weight
+  if (state.volume > (stateVector[1] * 1000000 * 1.2)) {
+    if (bullishScore > bearishScore) {
+      bullishScore += 10 * ppoWeights.volume;
+      reasons.push("High volume confirmation");
+    } else {
+      bearishScore += 10 * ppoWeights.volume;
+      reasons.push("High volume confirmation");
+    }
+  }
+  
+  // Bollinger Bands
+  if (state.indicators.bollinger.position > 0.8) {
+    bearishScore += 8; // Near upper band - potential reversal
+    reasons.push("Near Bollinger upper band");
+  } else if (state.indicators.bollinger.position < 0.2) {
+    bullishScore += 8; // Near lower band - potential bounce
+    reasons.push("Near Bollinger lower band");
+  }
+  
+  // Determine action
+  const scoreDiff = Math.abs(bullishScore - bearishScore);
+  const totalScore = bullishScore + bearishScore;
+  const confidence = Math.min(95, (scoreDiff / totalScore) * 100 + 20);
+  
+  let action: 'BUY' | 'SELL' | 'HOLD' = 'HOLD';
+  
+  if (bullishScore > bearishScore && scoreDiff > 15) {
+    action = 'BUY';
+  } else if (bearishScore > bullishScore && scoreDiff > 15) {
+    action = 'SELL';
+  }
+  
+  return {
+    type: action,
+    quantity: 1,
+    stopLoss: 0,
+    takeProfit: 0,
+    confidence,
+    reasoning: reasons.join(", "),
     confluenceLevel: confidence > 80 ? 'STRONG' : confidence > 60 ? 'MODERATE' : 'WEAK'
   };
 }
