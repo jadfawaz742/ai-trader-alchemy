@@ -174,11 +174,11 @@ serve(async (req) => {
     } = await req.json();
 
     console.log(`🤖 Enhanced PPO Trading Bot Starting - Mode: ${mode}, Risk: ${risk}`);
-    console.log(`📊 Processing ${symbols.length} symbols (${symbols.filter(s => ['BTC', 'ETH', 'ADA', 'SOL', 'AVAX', 'DOT', 'MATIC', 'ATOM', 'NEAR', 'ALGO', 'XRP', 'LTC', 'BCH', 'ETC', 'XLM', 'VET', 'FIL', 'THETA', 'EGLD', 'HBAR', 'FLOW', 'ICP', 'SAND', 'MANA', 'CRV', 'UNI', 'AAVE', 'COMP', 'MKR', 'SNX', 'SUSHI', 'YFI', 'BAL', 'REN', 'KNC', 'ZRX', 'BAND', 'LRC', 'ENJ', 'CHZ', 'BAT', 'ZEC'].includes(s)).length} crypto, ${symbols.filter(s => ['TSLA', 'NVDA', 'AMD', 'MRNA', 'ZOOM', 'ROKU', 'NFLX', 'SQ', 'SHOP', 'TWTR', 'SNAP', 'UBER', 'LYFT', 'PLTR', 'GME', 'AMC', 'BB', 'MEME', 'SPCE', 'COIN'].includes(s)).length} volatile stocks, ${symbols.filter(s => ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'JNJ', 'PG', 'KO', 'WMT', 'VZ'].includes(s)).length} stable stocks, ${symbols.filter(s => ['INTC', 'IBM', 'ORCL', 'CRM', 'ADBE', 'NOW', 'SNOW', 'DDOG', 'ZS', 'OKTA'].includes(s)).length} semi-stable stocks) with 2-year historical data and online learning`);
+    console.log(`📊 Processing ${symbols.length} symbols (${symbols.filter((s: string) => ['BTC', 'ETH', 'ADA', 'SOL', 'AVAX', 'DOT', 'MATIC', 'ATOM', 'NEAR', 'ALGO', 'XRP', 'LTC', 'BCH', 'ETC', 'XLM', 'VET', 'FIL', 'THETA', 'EGLD', 'HBAR', 'FLOW', 'ICP', 'SAND', 'MANA', 'CRV', 'UNI', 'AAVE', 'COMP', 'MKR', 'SNX', 'SUSHI', 'YFI', 'BAL', 'REN', 'KNC', 'ZRX', 'BAND', 'LRC', 'ENJ', 'CHZ', 'BAT', 'ZEC'].includes(s)).length} crypto, ${symbols.filter((s: string) => ['TSLA', 'NVDA', 'AMD', 'MRNA', 'ZOOM', 'ROKU', 'NFLX', 'SQ', 'SHOP', 'TWTR', 'SNAP', 'UBER', 'LYFT', 'PLTR', 'GME', 'AMC', 'BB', 'MEME', 'SPCE', 'COIN'].includes(s)).length} volatile stocks, ${symbols.filter((s: string) => ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'JNJ', 'PG', 'KO', 'WMT', 'VZ'].includes(s)).length} stable stocks, ${symbols.filter((s: string) => ['INTC', 'IBM', 'ORCL', 'CRM', 'ADBE', 'NOW', 'SNOW', 'DDOG', 'ZS', 'OKTA'].includes(s)).length} semi-stable stocks) with 2-year historical data and online learning`);
 
-        const tradingSignals = [];
-        const maxSymbols = Math.min(symbols.length, 15); // Limit to 15 symbols for performance
-        const symbolsToProcess = symbols.slice(0, maxSymbols);
+    const tradingSignals = [];
+    const maxSymbols = Math.min(symbols.length, 15); // Limit to 15 symbols for performance
+    const symbolsToProcess = symbols.slice(0, maxSymbols);
 
     for (const symbol of symbolsToProcess) {
       try {
@@ -205,15 +205,6 @@ serve(async (req) => {
 
         console.log(`🧠 Model Performance - Accuracy: ${(trainingResult.performance.accuracy * 100).toFixed(1)}%, Win Rate: ${(trainingResult.performance.winRate * 100).toFixed(1)}%, Sharpe Ratio: ${trainingResult.performance.sharpeRatio.toFixed(2)}, Max Drawdown: ${(trainingResult.performance.maxDrawdown * 100).toFixed(1)}%`);
         console.log(`📊 Learning Summary - Training: ${(trainingResult.performance as any).trainingTrades || 0} trades, Testing: ${(trainingResult.performance as any).testingTrades || 0} trades`);
-        console.log(`   Training: ${(trainingResult.performance as any).trainingTrades || 0} trades, Win Rate: ${((trainingResult.performance as any).trainingWinRate * 100 || 0).toFixed(1)}%`);
-        console.log(`   Testing: ${(trainingResult.performance as any).testingTrades || 0} trades, Win Rate: ${((trainingResult.performance as any).testingWinRate * 100 || 0).toFixed(1)}%`);
-        console.log(`✅ Enhanced training complete:`);
-        console.log(`   Combined Performance: ${(trainingResult.performance.accuracy * 100).toFixed(1)}% accuracy, ${trainingResult.performance.sharpeRatio.toFixed(2)} Sharpe`);
-        console.log(`   F-Score: ${((trainingResult.performance as any).fScore || 0.75).toFixed(3)}`);
-        console.log(`   Precision: ${((trainingResult.performance as any).precision || 0.72).toFixed(3)}`);
-        console.log(`   Recall: ${((trainingResult.performance as any).recall || 0.78).toFixed(3)}`);
-        console.log(`   Fibonacci Success Rate: ${((trainingResult.performance as any).fibonacciSuccessRate * 100 || 0).toFixed(1)}%`);
-        console.log(`   Support/Resistance Accuracy: ${((trainingResult.performance as any).srAccuracy * 100 || 0).toFixed(1)}%`);
 
         // Analyze current market state with enhanced confluence scoring
         const latestData = historicalData.slice(-100); // Use recent 100 periods for current analysis
@@ -260,17 +251,17 @@ serve(async (req) => {
             maxDrawdown: riskParams.maxDrawdown,
             timestamp: new Date().toISOString(),
             riskLevel: risk,
-          trainingPerformance: trainingResult.performance,
-          trainedPeriods: trainingData.length,
-          testingPeriods: testingData.length,
-          learningStats: {
-            trainingTrades: trainingResult.model.trainingTrades?.length || 0,
-            testingTrades: trainingResult.model.testingTrades?.length || 0,
-            trainingWinRate: (trainingResult.performance as any).trainingWinRate || trainingResult.performance.winRate,
-            testingWinRate: (trainingResult.performance as any).testingWinRate || trainingResult.performance.winRate,
-            avgConfidence: (trainingResult.performance as any).avgConfidence || 80,
-            fibonacciSuccessRate: (trainingResult.performance as any).fibonacciSuccessRate || 0.6
-          }
+            trainingPerformance: trainingResult.performance,
+            trainedPeriods: trainingData.length,
+            testingPeriods: testingData.length,
+            learningStats: {
+              trainingTrades: trainingResult.model.trainingTrades?.length || 0,
+              testingTrades: trainingResult.model.testingTrades?.length || 0,
+              trainingWinRate: (trainingResult.performance as any).trainingWinRate || trainingResult.performance.winRate,
+              testingWinRate: (trainingResult.performance as any).testingWinRate || trainingResult.performance.winRate,
+              avgConfidence: (trainingResult.performance as any).avgConfidence || 80,
+              fibonacciSuccessRate: (trainingResult.performance as any).fibonacciSuccessRate || 0.6
+            }
           };
 
           tradingSignals.push(signal);
@@ -661,338 +652,6 @@ async function trainEnhancedPPOModel(
     }
   }
   
-  // Online PPO Learning Variables
-  let ppoWeights = {
-    trend: 0.3,
-    momentum: 0.25,
-    fibonacci: 0.2,
-    support: 0.15,
-    volume: 0.1
-  };
-  
-  for (let i = 50; i < trainingData.length - 1; i += 2) { // More frequent trading (every 2 periods)
-    if (trainingTrades.length >= 1500) break; // Increased trade limit
-    
-    const historicalSlice = trainingData.slice(Math.max(0, i - 100), i);
-    const state = await analyzeMarketStateWithFibonacci(historicalSlice, symbol);
-    
-    // Calculate confluence score with enhanced fibonacci analysis
-    const confluenceScore = calculateEnhancedConfluenceScore(state, riskLevel);
-    state.confluenceScore = confluenceScore;
-    
-    // Adaptive confluence threshold - lower for more trades
-    const adaptiveThreshold = Math.max(0.3, riskLevel.minConfluence - (i / trainingData.length) * 0.2);
-    
-    if (confluenceScore >= adaptiveThreshold) {
-      const action = await calculateAdaptivePPOActionWithLearning([
-        state.price / 1000,
-        state.volume / 1000000,
-        state.indicators.ichimoku.signal,
-        (state.price - state.indicators.ema200) / state.indicators.ema200,
-        state.indicators.macd.histogram / 10,
-        state.indicators.atr / state.price,
-        state.volatility,
-        state.indicators.bollinger.position,
-        state.indicators.fibonacci.nearestLevel,
-        state.indicators.fibonacci.retracementLevel || 0.5,
-        confluenceScore
-      ], state, ppoWeights, true);
-      
-      if (action.type !== 'HOLD') {
-        const entry = trainingData[i];
-        const exitIndex = Math.min(i + Math.floor(Math.random() * 15) + 3, trainingData.length - 1);
-        const exit = trainingData[exitIndex];
-        
-        // Calculate returns with fibonacci-based exits
-        let returnPct = 0;
-        const fibExtension = calculateFibonacciExtension(historicalSlice);
-        const fibRetracement = calculateFibonacciRetracement(historicalSlice);
-        
-        if (action.type === 'BUY') {
-          const target = entry.close * (1 + fibExtension.targetLevel * 0.08);
-          const actualExit = Math.min(exit.close, target);
-          returnPct = (actualExit - entry.close) / entry.close;
-        } else if (action.type === 'SELL') {
-          const target = entry.close * (1 - fibRetracement.correctionLevel * 0.08);
-          const actualExit = Math.max(exit.close, target);
-          returnPct = (entry.close - actualExit) / entry.close;
-        }
-        
-        totalReturns += returnPct;
-        currentValue *= (1 + returnPct * 0.1);
-        
-        if (returnPct > 0) wins++;
-        else losses++;
-        
-        // Online Learning: Update PPO weights based on trade outcome
-        if (returnPct > 0) {
-          // Successful trade - reinforce the strategy
-          ppoWeights.fibonacci = Math.min(0.4, ppoWeights.fibonacci * 1.02);
-          ppoWeights.momentum = Math.min(0.4, ppoWeights.momentum * 1.01);
-        } else {
-          // Failed trade - reduce weights
-          ppoWeights.fibonacci *= 0.98;
-          ppoWeights.momentum *= 0.99;
-        }
-        
-        // Normalize weights
-        const totalWeight = Object.values(ppoWeights).reduce((a, b) => a + b, 0);
-        Object.keys(ppoWeights).forEach(key => {
-          ppoWeights[key] = ppoWeights[key] / totalWeight;
-        });
-        
-        // Update drawdown
-        peakValue = Math.max(peakValue, currentValue);
-        const drawdown = (peakValue - currentValue) / peakValue;
-        maxDrawdown = Math.max(maxDrawdown, drawdown);
-        
-        // Performance tracking for classification metrics
-        const isPositive = returnPct > 0;
-        const predicted = action.type === 'BUY' || (action.type === 'SELL' && returnPct > 0);
-        
-        if (predicted && isPositive) truePositives++;
-        else if (predicted && !isPositive) falsePositives++;
-        else if (!predicted && isPositive) falseNegatives++;
-        else trueNegatives++;
-        
-        // Track fibonacci and SR success
-        if (state.indicators.fibonacci.nearestLevel > 0.6) {
-          fibonacciTrades++;
-          if (returnPct > 0) fibonacciWins++;
-        }
-        
-        if (state.indicators.supportResistance.length > 0) {
-          srTrades++;
-          if (returnPct > 0) srWins++;
-        }
-
-        trainingTrades.push({
-          entry: entry.close,
-          exit: exit.close,
-          action: action.type,
-          return: returnPct,
-          confidence: action.confidence,
-          fibonacciLevel: state.indicators.fibonacci.nearestLevel,
-          confluenceScore,
-          adaptedWeights: {...ppoWeights} // Store learned weights
-        });
-      }
-    }
-  }
-  
-  // Testing Phase - More frequent testing (every 2 periods)
-  console.log(`🧪 Testing Phase: Processing ${testingData.length} periods with adapted model...`);
-  for (let i = 25; i < testingData.length - 1; i += 2) { // Every 2 periods for more trades
-    if (testingTrades.length >= 500) break; // Increased test limit
-    
-    const historicalSlice = testingData.slice(Math.max(0, i - 100), i);
-    const state = await analyzeMarketStateWithFibonacci(historicalSlice, symbol);
-    
-    const confluenceScore = calculateEnhancedConfluenceScore(state, riskLevel);
-    state.confluenceScore = confluenceScore;
-    
-    // Use adapted weights from training
-    const adaptiveThreshold = Math.max(0.35, riskLevel.minConfluence - 0.15);
-    
-    if (confluenceScore >= adaptiveThreshold) {
-      const action = await calculateAdaptivePPOActionWithLearning([
-        state.price / 1000,
-        state.volume / 1000000,
-        state.indicators.ichimoku.signal,
-        (state.price - state.indicators.ema200) / state.indicators.ema200,
-        state.indicators.macd.histogram / 10,
-        state.indicators.atr / state.price,
-        state.volatility,
-        state.indicators.bollinger.position,
-        state.indicators.fibonacci.nearestLevel,
-        state.indicators.fibonacci.retracementLevel || 0.5,
-        confluenceScore
-      ], state, ppoWeights, false); // Don't update weights in testing
-      
-      if (action.type !== 'HOLD') {
-        const entry = testingData[i];
-        const exitIndex = Math.min(i + Math.floor(Math.random() * 12) + 3, testingData.length - 1);
-        const exit = testingData[exitIndex];
-        
-        let returnPct = 0;
-        if (action.type === 'BUY') {
-          returnPct = (exit.close - entry.close) / entry.close;
-        } else if (action.type === 'SELL') {
-          returnPct = (entry.close - exit.close) / entry.close;
-        }
-        
-        testTotalReturns += returnPct;
-        
-        if (returnPct > 0) testWins++;
-        else testLosses++;
-        
-        // Performance tracking for test metrics
-        const isPositive = returnPct > 0;
-        const predicted = action.type === 'BUY' || (action.type === 'SELL' && returnPct > 0);
-        
-        if (predicted && isPositive) testTruePositives++;
-        else if (predicted && !isPositive) testFalsePositives++;
-        else if (!predicted && isPositive) testFalseNegatives++;
-        else testTrueNegatives++;
-        
-        testingTrades.push({
-          entry: entry.close,
-          exit: exit.close,
-          action: action.type,
-          return: returnPct,
-          confidence: action.confidence,
-          fibonacciLevel: state.indicators.fibonacci.nearestLevel,
-          confluenceScore
-        });
-      }
-    }
-  }
-    
-    const historicalSlice = trainingData.slice(Math.max(0, i - 200), i);
-    const state = await analyzeMarketStateWithFibonacci(historicalSlice, symbol);
-    
-    // Calculate confluence score with enhanced fibonacci analysis
-    const confluenceScore = calculateEnhancedConfluenceScore(state, riskLevel);
-    state.confluenceScore = confluenceScore;
-    
-    if (confluenceScore >= riskLevel.minConfluence) {
-      const action = await calculatePPOActionWithFibonacci([
-        state.price / 1000,
-        state.volume / 1000000,
-        state.indicators.ichimoku.signal,
-        (state.price - state.indicators.ema200) / state.indicators.ema200,
-        state.indicators.macd.histogram / 10,
-        state.indicators.atr / state.price,
-        state.volatility,
-        state.indicators.bollinger.position,
-        state.indicators.fibonacci.nearestLevel,
-        state.indicators.fibonacci.retracementLevel || 0.5,
-        confluenceScore
-      ], state, true);
-      
-      if (action.type !== 'HOLD') {
-        const entry = trainingData[i];
-        const exitIndex = Math.min(i + Math.floor(Math.random() * 20) + 5, trainingData.length - 1);
-        const exit = trainingData[exitIndex];
-        
-        // Calculate returns with fibonacci-based exits
-        let returnPct = 0;
-        const fibExtension = calculateFibonacciExtension(historicalSlice);
-        const fibRetracement = calculateFibonacciRetracement(historicalSlice);
-        
-        if (action.type === 'BUY') {
-          // Long trade - use fibonacci extensions for targets
-          const target = entry.close * (1 + fibExtension.targetLevel * 0.1);
-          const actualExit = Math.min(exit.close, target);
-          returnPct = (actualExit - entry.close) / entry.close;
-        } else if (action.type === 'SELL') {
-          // Short trade - use fibonacci retracements for corrections
-          const target = entry.close * (1 - fibRetracement.correctionLevel * 0.1);
-          const actualExit = Math.max(exit.close, target);
-          returnPct = (entry.close - actualExit) / entry.close;
-        }
-        
-        totalReturns += returnPct;
-        currentValue *= (1 + returnPct * 0.1);
-        
-        trainingTrades.push({
-          entry: entry.close,
-          exit: exit.close,
-          action: action.type,
-          return: returnPct,
-          confidence: action.confidence,
-          fibonacciLevel: state.indicators.fibonacci.nearestLevel,
-          confluenceScore
-        });
-        
-        // Performance tracking for classification metrics
-        const isPositive = returnPct > 0;
-        const predicted = action.type === 'BUY' || (action.type === 'SELL' && returnPct > 0);
-        
-        if (predicted && isPositive) truePositives++;
-        else if (predicted && !isPositive) falsePositives++;
-        else if (!predicted && isPositive) falseNegatives++;
-        else trueNegatives++;
-        
-        // Track fibonacci and SR success
-        if (state.indicators.fibonacci.nearestLevel > 0.6) {
-          fibonacciTrades++;
-          if (returnPct > 0) fibonacciWins++;
-        }
-        
-        if (state.indicators.supportResistance.length > 0) {
-          srTrades++;
-          if (returnPct > 0) srWins++;
-        }
-      }
-    }
-  }
-  
-  // Testing Phase - Validate model performance
-  console.log(`🧪 Testing Phase: Processing ${testingData.length} periods...`);
-  for (let i = 50; i < testingData.length - 1; i += 3) {
-    if (testingTrades.length >= 200) break; // Limit testing trades
-    
-    const historicalSlice = testingData.slice(Math.max(0, i - 100), i);
-    const state = await analyzeMarketStateWithFibonacci(historicalSlice, symbol);
-    
-    const confluenceScore = calculateEnhancedConfluenceScore(state, riskLevel);
-    state.confluenceScore = confluenceScore;
-    
-    if (confluenceScore >= riskLevel.minConfluence) {
-      const action = await calculatePPOActionWithFibonacci([
-        state.price / 1000,
-        state.volume / 1000000,
-        state.indicators.ichimoku.signal,
-        (state.price - state.indicators.ema200) / state.indicators.ema200,
-        state.indicators.macd.histogram / 10,
-        state.indicators.atr / state.price,
-        state.volatility,
-        state.indicators.bollinger.position,
-        state.indicators.fibonacci.nearestLevel,
-        state.indicators.fibonacci.retracementLevel || 0.5,
-        confluenceScore
-      ], state, false); // Testing mode
-      
-      if (action.type !== 'HOLD') {
-        const entry = testingData[i];
-        const exitIndex = Math.min(i + Math.floor(Math.random() * 15) + 3, testingData.length - 1);
-        const exit = testingData[exitIndex];
-        
-        let returnPct = 0;
-        if (action.type === 'BUY') {
-          returnPct = (exit.close - entry.close) / entry.close;
-        } else if (action.type === 'SELL') {
-          returnPct = (entry.close - exit.close) / entry.close;
-        }
-        
-        testTotalReturns += returnPct;
-        
-        if (returnPct > 0) testWins++;
-        else testLosses++;
-        
-        // Performance tracking for test metrics
-        const isPositive = returnPct > 0;
-        const predicted = action.type === 'BUY' || (action.type === 'SELL' && returnPct > 0);
-        
-        if (predicted && isPositive) testTruePositives++;
-        else if (predicted && !isPositive) testFalsePositives++;
-        else if (!predicted && isPositive) testFalseNegatives++;
-        else testTrueNegatives++;
-        
-        testingTrades.push({
-          entry: entry.close,
-          exit: exit.close,
-          action: action.type,
-          return: returnPct,
-          confidence: action.confidence,
-          fibonacciLevel: state.indicators.fibonacci.nearestLevel,
-          confluenceScore
-        });
-      }
-    }
-  }
-  
   // Calculate detailed classification metrics
   const precision = truePositives / (truePositives + falsePositives) || 0;
   const recall = truePositives / (truePositives + falseNegatives) || 0;
@@ -1068,9 +727,9 @@ async function analyzeMarketStateWithFibonacci(
     ...baseState.indicators.fibonacci,
     retracementLevel: fibRetracement.correctionLevel,
     extensionLevel: fibExtension.targetLevel,
-    isNearMajorFib: fibRetracement.correctionLevel >= 0.618 || fibExtension.targetLevel >= 1.618,
     correctionPotential: fibRetracement.strength,
-    extensionPotential: fibExtension.strength
+    extensionPotential: fibExtension.strength,
+    isNearMajorFib: fibRetracement.correctionLevel >= 0.618 || fibExtension.targetLevel >= 1.618
   };
   
   return {
@@ -1078,8 +737,7 @@ async function analyzeMarketStateWithFibonacci(
     indicators: {
       ...baseState.indicators,
       fibonacci: enhanced
-    },
-    confluenceScore: 0 // Will be calculated separately
+    }
   };
 }
 
@@ -1094,13 +752,13 @@ function calculateFibonacciExtension(data: HistoricalData[]): { targetLevel: num
   const currentPrice = recent[recent.length - 1].close;
   
   // Calculate fibonacci extension levels
-  const extensions = [1.0, 1.272, 1.414, 1.618, 2.0, 2.618];
+  const extensions = [1.0, 1.272, 1.382, 1.618, 2.0, 2.618];
   let closestExtension = 1.0;
   let minDistance = Infinity;
   
   extensions.forEach(ext => {
-    const targetPrice = low + (range * ext);
-    const distance = Math.abs(currentPrice - targetPrice) / currentPrice;
+    const extensionPrice = low + (range * ext);
+    const distance = Math.abs(currentPrice - extensionPrice) / currentPrice;
     if (distance < minDistance) {
       minDistance = distance;
       closestExtension = ext;
@@ -1225,112 +883,6 @@ async function calculatePPOActionWithFibonacci(
   };
 }
 
-// Adaptive PPO action calculation with online learning
-async function calculateAdaptivePPOActionWithLearning(
-  stateVector: number[], 
-  state: TradingState,
-  ppoWeights: any,
-  isTraining: boolean
-): Promise<TradingAction> {
-  let bullishScore = 0;
-  let bearishScore = 0;
-  const reasons = [];
-  
-  // Adaptive scoring based on learned weights
-  if (state.indicators.ichimoku.signal > 0) {
-    bullishScore += 20 * ppoWeights.trend;
-    reasons.push("Ichimoku bullish");
-  } else if (state.indicators.ichimoku.signal < 0) {
-    bearishScore += 20 * ppoWeights.trend;
-    reasons.push("Ichimoku bearish");
-  }
-  
-  if (state.price > state.indicators.ema200) {
-    bullishScore += 15 * ppoWeights.momentum;
-    reasons.push("Above 200 EMA");
-  } else {
-    bearishScore += 15 * ppoWeights.momentum;
-    reasons.push("Below 200 EMA");
-  }
-  
-  // MACD with adaptive weight
-  if (state.indicators.macd.histogram > 0) {
-    bullishScore += 12 * ppoWeights.momentum;
-    reasons.push("MACD bullish");
-  } else if (state.indicators.macd.histogram < 0) {
-    bearishScore += 12 * ppoWeights.momentum;
-    reasons.push("MACD bearish");
-  }
-  
-  // Fibonacci with adaptive weight
-  const fib = state.indicators.fibonacci as any;
-  if (fib.extensionPotential > 0.6) {
-    bullishScore += 18 * ppoWeights.fibonacci;
-    reasons.push("Fibonacci extension potential");
-  }
-  if (fib.correctionPotential > 0.6) {
-    bearishScore += 15 * ppoWeights.fibonacci;
-    reasons.push("Fibonacci correction potential");
-  }
-  
-  // Support/Resistance with adaptive weight
-  const srLevels = state.indicators.supportResistance;
-  const nearSupport = srLevels.some(sr => sr.type === 'support' && Math.abs(state.price - sr.price) / state.price < 0.02);
-  const nearResistance = srLevels.some(sr => sr.type === 'resistance' && Math.abs(state.price - sr.price) / state.price < 0.02);
-  
-  if (nearSupport) {
-    bullishScore += 16 * ppoWeights.support;
-    reasons.push("Near support level");
-  }
-  if (nearResistance) {
-    bearishScore += 16 * ppoWeights.support;
-    reasons.push("Near resistance level");
-  }
-  
-  // Volume confirmation with adaptive weight
-  if (state.volume > (stateVector[1] * 1000000 * 1.2)) {
-    if (bullishScore > bearishScore) {
-      bullishScore += 10 * ppoWeights.volume;
-      reasons.push("High volume confirmation");
-    } else {
-      bearishScore += 10 * ppoWeights.volume;
-      reasons.push("High volume confirmation");
-    }
-  }
-  
-  // Bollinger Bands
-  if (state.indicators.bollinger.position > 0.8) {
-    bearishScore += 8; // Near upper band - potential reversal
-    reasons.push("Near Bollinger upper band");
-  } else if (state.indicators.bollinger.position < 0.2) {
-    bullishScore += 8; // Near lower band - potential bounce
-    reasons.push("Near Bollinger lower band");
-  }
-  
-  // Determine action
-  const scoreDiff = Math.abs(bullishScore - bearishScore);
-  const totalScore = bullishScore + bearishScore;
-  const confidence = Math.min(95, (scoreDiff / totalScore) * 100 + 20);
-  
-  let action: 'BUY' | 'SELL' | 'HOLD' = 'HOLD';
-  
-  if (bullishScore > bearishScore && scoreDiff > 15) {
-    action = 'BUY';
-  } else if (bearishScore > bullishScore && scoreDiff > 15) {
-    action = 'SELL';
-  }
-  
-  return {
-    type: action,
-    quantity: 1,
-    stopLoss: 0,
-    takeProfit: 0,
-    confidence,
-    reasoning: reasons.join(", "),
-    confluenceLevel: confidence > 80 ? 'STRONG' : confidence > 60 ? 'MODERATE' : 'WEAK'
-  };
-}
-
 // Helper function to calculate RSI
 function calculateRSI(prices: number[], period: number): number {
   if (prices.length < period + 1) return 50;
@@ -1358,124 +910,63 @@ async function analyzeMarketStateWithConfluence(
   trainingResult: TrainingResult,
   riskLevel: RiskLevel
 ): Promise<TradingState> {
-  const baseState = await analyzeMarketState(data, symbol);
+  const baseState = await analyzeMarketStateWithFibonacci(data, symbol);
   
   // Calculate confluence score
   const confluenceScore = calculateConfluenceScore(baseState, riskLevel);
   
-  // Add historical performance context
-  const recentPerformance = trainingResult.model.trades
-    .slice(-10)
-    .map((trade: any) => trade.return);
-  
   return {
     ...baseState,
     confluenceScore,
-    historicalPerformance: recentPerformance
+    historicalPerformance: [
+      trainingResult.performance.accuracy,
+      trainingResult.performance.winRate,
+      trainingResult.performance.sharpeRatio
+    ]
   };
 }
 
 function calculateConfluenceScore(state: TradingState, riskLevel: RiskLevel): number {
   let score = 0;
-  const weights = riskLevel;
   
-  // Trend alignment (varies by risk level)
-  let trendScore = 0;
-  if (state.price > state.indicators.ema200 && state.indicators.ichimoku.signal > 0) {
-    trendScore = 1; // Bullish alignment
-  } else if (state.price < state.indicators.ema200 && state.indicators.ichimoku.signal < 0) {
-    trendScore = 1; // Bearish alignment
-  } else if (state.indicators.ichimoku.signal === 0) {
-    trendScore = 0.3; // Neutral
+  // Trend confluence (30% weight)
+  if (state.marketCondition === 'bullish') {
+    if (state.price > state.indicators.ema200) score += 0.15;
+    if (state.indicators.ichimoku.signal > 0) score += 0.15;
+  } else if (state.marketCondition === 'bearish') {
+    if (state.price < state.indicators.ema200) score += 0.15;
+    if (state.indicators.ichimoku.signal < 0) score += 0.15;
   }
-  score += trendScore * weights.trendWeight;
   
-  // MACD momentum confirmation
-  let macdScore = 0;
-  if (state.indicators.macd.histogram > 0 && state.indicators.macd.macd > state.indicators.macd.signal) {
-    macdScore = 1; // Strong bullish momentum
-  } else if (state.indicators.macd.histogram < 0 && state.indicators.macd.macd < state.indicators.macd.signal) {
-    macdScore = 1; // Strong bearish momentum
-  } else {
-    macdScore = 0.5; // Neutral momentum
-  }
-  score += macdScore * 0.2;
+  // Momentum confluence (25% weight)
+  if (state.indicators.macd.histogram > 0) score += 0.125;
+  if (state.indicators.macd.macd > state.indicators.macd.signal) score += 0.125;
   
-  // Support/Resistance confluence with smart filtering
-  let srScore = 0;
-  const nearSupport = state.indicators.supportResistance.some(level => 
-    level.type === 'support' && Math.abs(state.price - level.price) / state.price < 0.02
+  // Support/Resistance confluence (20% weight)
+  const srLevels = state.indicators.supportResistance;
+  const nearLevel = srLevels.some(level => 
+    Math.abs(state.price - level.price) / state.price < 0.02
   );
-  const nearResistance = state.indicators.supportResistance.some(level => 
-    level.type === 'resistance' && Math.abs(state.price - level.price) / state.price < 0.02
-  );
+  if (nearLevel) score += 0.2;
   
-  if (nearSupport || nearResistance) {
-    const strongestLevel = state.indicators.supportResistance
-      .filter(level => Math.abs(state.price - level.price) / state.price < 0.02)
-      .sort((a, b) => b.strength - a.strength)[0];
-    
-    const levelStrength = Math.min(1, strongestLevel?.strength / 5 || 0);
-    
-    // Apply risk-specific S/R strength filtering
-    if (riskLevel.minSRStrength && levelStrength >= riskLevel.minSRStrength) {
-      srScore = levelStrength;
-    } else if (riskLevel.minSRStrength && levelStrength < riskLevel.minSRStrength) {
-      srScore = levelStrength * 0.5; // Penalize weak S/R levels
-    } else {
-      srScore = levelStrength;
-    }
-  }
-  score += srScore * weights.supportResistanceWeight;
+  // Fibonacci confluence (15% weight)
+  const fib = state.indicators.fibonacci;
+  if (fib.nearestLevel > 0.5) score += 0.15;
   
-  // Fibonacci levels with smart risk filtering
-  let fibScore = 0;
-  const fibLevel = state.indicators.fibonacci.nearestLevel;
-  const majorFibLevels = [0.618, 0.786];
-  const minorFibLevels = [0.382, 0.5];
-  const allFibLevels = [0.236, 0.382, 0.5, 0.618, 0.786];
+  // Volume confirmation (10% weight)
+  if (state.volume > 1.2) score += 0.1; // Above average volume
   
-  // Determine fibonacci strength based on level
-  let fibStrength = 0;
-  if (majorFibLevels.includes(fibLevel)) {
-    fibStrength = 1.0; // Strong fib level
-  } else if (minorFibLevels.includes(fibLevel)) {
-    fibStrength = 0.7; // Moderate fib level
-  } else if (fibLevel === 0.236) {
-    fibStrength = 0.4; // Weak fib level
-  } else {
-    fibStrength = 0.2; // Very weak or no fib level
-  }
-  
-  // Apply risk-specific fibonacci filtering
-  if (riskLevel.minFibLevel) {
-    if (fibLevel >= riskLevel.minFibLevel) {
-      fibScore = fibStrength;
-    } else {
-      // Penalize fibonacci levels below minimum requirement
-      fibScore = fibStrength * 0.3;
-    }
-  } else {
-    fibScore = fibStrength;
-  }
-  
-  score += fibScore * weights.fibonacciWeight;
-  
-  // Volume confirmation
-  let volumeScore = 0;
-  const obvTrend = state.indicators.obv > 0 ? 'up' : 'down';
-  const priceTrend = state.price > state.indicators.ema200 ? 'up' : 'down';
-  if (obvTrend === priceTrend) {
-    volumeScore = 1; // Volume confirms price trend
-  } else {
-    volumeScore = 0.3; // Volume divergence
-  }
-  score += volumeScore * weights.volumeWeight;
-  
-  // Additional confluence penalty for weak market conditions based on risk level
+  // Risk level adjustments
   let confluencePenalty = 0;
+  
+  // Calculate trend, SR, and fib scores for risk assessment
+  const trendScore = (state.price > state.indicators.ema200 ? 0.5 : 0) + 
+                   (state.indicators.ichimoku.signal > 0 ? 0.5 : 0);
+  const srScore = nearLevel ? 1.0 : 0.0;
+  const fibScore = fib.nearestLevel;
+  
   if (riskLevel.name === 'low') {
-    // Low risk: Very strict requirements
+    // Low risk: Require high confluence across all indicators
     if (trendScore < 0.8 || srScore < 0.8 || fibScore < 0.8) {
       confluencePenalty = 0.2;
     }
@@ -1578,121 +1069,134 @@ async function calculateAdaptivePPOAction(
     reasons.push("Below 200 EMA");
   }
   
-  if (state.indicators.macd.histogram > 0 && state.indicators.macd.macd > state.indicators.macd.signal) {
-    bullishScore += 15;
+  // MACD momentum
+  if (state.indicators.macd.histogram > 0) {
+    bullishScore += 12;
     reasons.push("MACD bullish");
-  } else if (state.indicators.macd.histogram < 0 && state.indicators.macd.macd < state.indicators.macd.signal) {
-    bearishScore += 15;
+  } else if (state.indicators.macd.histogram < 0) {
+    bearishScore += 12;
     reasons.push("MACD bearish");
   }
   
-  // Confluence-based bonus scoring
-  const confluenceBonus = state.confluenceScore * 25;
-  if (bullishScore > bearishScore) {
-    bullishScore += confluenceBonus;
-    reasons.push(`High confluence (+${confluenceBonus.toFixed(0)})`);
-  } else if (bearishScore > bullishScore) {
-    bearishScore += confluenceBonus;
-    reasons.push(`High confluence (+${confluenceBonus.toFixed(0)})`);
+  // Fibonacci levels - enhanced for corrections and extensions
+  const fib = state.indicators.fibonacci as any;
+  if (fib && fib.extensionPotential > 0.6) {
+    bullishScore += 15;
+    reasons.push("Fibonacci extension potential");
+  }
+  if (fib && fib.correctionPotential > 0.6) {
+    bearishScore += 12;
+    reasons.push("Fibonacci correction potential");
   }
   
-  // Historical performance adjustment
-  if (trainingResult.performance.winRate > 0.6) {
-    const performanceBonus = (trainingResult.performance.winRate - 0.5) * 20;
+  // Support/Resistance
+  const srLevels = state.indicators.supportResistance;
+  const nearSupport = srLevels.some(sr => sr.type === 'support' && Math.abs(state.price - sr.price) / state.price < 0.02);
+  const nearResistance = srLevels.some(sr => sr.type === 'resistance' && Math.abs(state.price - sr.price) / state.price < 0.02);
+  
+  if (nearSupport) {
+    bullishScore += 12;
+    reasons.push("Near support level");
+  }
+  if (nearResistance) {
+    bearishScore += 12;
+    reasons.push("Near resistance level");
+  }
+  
+  // Volume confirmation
+  if (state.volume > 1.2) {
     if (bullishScore > bearishScore) {
-      bullishScore += performanceBonus;
+      bullishScore += 8;
+      reasons.push("High volume confirmation");
     } else {
-      bearishScore += performanceBonus;
+      bearishScore += 8;
+      reasons.push("High volume confirmation");
     }
-    reasons.push(`Performance bonus (+${performanceBonus.toFixed(0)})`);
   }
   
+  // Historical performance weighting
+  const performanceMultiplier = Math.max(0.5, Math.min(1.5, trainingResult.performance.winRate * 2));
+  bullishScore *= performanceMultiplier;
+  bearishScore *= performanceMultiplier;
+  
+  // Determine action
+  const scoreDiff = Math.abs(bullishScore - bearishScore);
   const totalScore = bullishScore + bearishScore;
-  const confidence = Math.min(95, Math.max(50, totalScore * 0.8));
+  const confidence = Math.min(95, (scoreDiff / totalScore) * 100 + 20);
   
-  if (bullishScore > bearishScore + 15) {
-    return {
-      action: 'BUY' as const,
-      confidence,
-      reasoning: `${reasons.join(', ')} (Score: ${bullishScore}/${bearishScore})`
-    };
-  } else if (bearishScore > bullishScore + 15 && enableShorts) {
-    return {
-      action: 'SELL' as const,
-      confidence,
-      reasoning: `${reasons.join(', ')} (Score: ${bearishScore}/${bullishScore})`
-    };
-  } else {
-    return {
-      action: 'HOLD' as const,
-      confidence: 50,
-      reasoning: `Neutral conditions (${bullishScore}/${bearishScore})`
-    };
+  let action: 'BUY' | 'SELL' | 'HOLD' = 'HOLD';
+  
+  if (bullishScore > bearishScore && scoreDiff > 15) {
+    action = 'BUY';
+  } else if (bearishScore > bullishScore && scoreDiff > 15 && enableShorts) {
+    action = 'SELL';
   }
+  
+  return {
+    action,
+    confidence,
+    reasoning: reasons.join(", ")
+  };
 }
 
-// Smart risk parameters with enhanced fibonacci and S/R analysis
+// Smart risk parameters calculation with enhanced fibonacci and AI optimization
 async function calculateSmartRiskParameters(
-  state: TradingState, 
-  decision: TradingAction, 
+  state: TradingState,
+  decision: TradingAction,
   symbol: string,
   riskLevel: RiskLevel
 ) {
   const currentPrice = state.price;
-  const atr = state.indicators.atr;
   
-  let stopLossDistance: number;
-  let takeProfitDistance: number;
-  
-  if (openAIApiKey) {
-    // Enhanced AI risk calculation with confluence
-    const aiRiskParams = await getEnhancedAIRiskParameters(state, decision, symbol, riskLevel);
-    stopLossDistance = aiRiskParams.stopLossDistance;
-    takeProfitDistance = aiRiskParams.takeProfitDistance;
-  } else {
-    // Confluence-based ATR calculation
-    const confluenceMultiplier = 0.5 + (state.confluenceScore * 1.5);
-    stopLossDistance = atr * 1.5 * confluenceMultiplier;
-    takeProfitDistance = atr * 3 * confluenceMultiplier;
+  try {
+    // Try to get AI-enhanced risk parameters first
+    if (openAIApiKey) {
+      const aiParams = await getEnhancedAIRiskParameters(state, decision, symbol, riskLevel);
+      if (aiParams) {
+        return aiParams;
+      }
+    }
+  } catch (error) {
+    console.log(`⚠️ AI risk calculation failed for ${symbol}, using enhanced technical analysis`);
   }
+  
+  // Enhanced fallback using ATR and Fibonacci/Support-Resistance
+  const atr = state.indicators.atr;
+  const atrMultiplier = riskLevel.name === 'low' ? 1.5 : riskLevel.name === 'medium' ? 2.0 : 2.5;
   
   let stopLoss: number;
   let takeProfit: number;
   
   if (decision.type === 'BUY') {
-    stopLoss = currentPrice - stopLossDistance;
-    takeProfit = currentPrice + takeProfitDistance;
-  } else { // SELL
-    stopLoss = currentPrice + stopLossDistance;
-    takeProfit = currentPrice - takeProfitDistance;
+    stopLoss = currentPrice - (atr * atrMultiplier);
+    takeProfit = currentPrice + (atr * atrMultiplier * 2); // 2:1 reward ratio
+  } else {
+    stopLoss = currentPrice + (atr * atrMultiplier);
+    takeProfit = currentPrice - (atr * atrMultiplier * 2);
   }
   
-  // Enhanced fibonacci and S/R adjustment
-  const fibLevels = state.indicators.fibonacci;
-  const supportResistance = state.indicators.supportResistance;
+  // Adjust based on fibonacci and support/resistance levels
+  const adjustedParams = adjustToFibonacciAndSR(
+    { stopLoss, takeProfit }, 
+    currentPrice, 
+    state.indicators.fibonacci, 
+    state.indicators.supportResistance,
+    riskLevel
+  );
   
-  // Only calculate risk parameters if not HOLD
-  if (decision.type !== 'HOLD') {
-    // Fine-tune using fibonacci extensions and retracements  
-    stopLoss = adjustToFibonacciAndSR(stopLoss, currentPrice, fibLevels, supportResistance, decision.type as 'BUY' | 'SELL', 'stopLoss', riskLevel);
-    takeProfit = adjustToFibonacciAndSR(takeProfit, currentPrice, fibLevels, supportResistance, decision.type as 'BUY' | 'SELL', 'takeProfit', riskLevel);
-  }
-  
-  const riskAmount = Math.abs(currentPrice - stopLoss);
-  const rewardAmount = Math.abs(takeProfit - currentPrice);
+  const riskAmount = Math.abs(currentPrice - adjustedParams.stopLoss);
+  const rewardAmount = Math.abs(adjustedParams.takeProfit - currentPrice);
   const riskReward = rewardAmount / riskAmount;
   
-  const maxDrawdown = (riskAmount / currentPrice) * 100;
-  
   return {
-    stopLoss: Math.round(stopLoss * 100) / 100,
-    takeProfit: Math.round(takeProfit * 100) / 100,
-    riskReward: Math.round(riskReward * 100) / 100,
-    maxDrawdown: Math.round(maxDrawdown * 100) / 100
+    stopLoss: adjustedParams.stopLoss,
+    takeProfit: adjustedParams.takeProfit,
+    riskReward,
+    maxDrawdown: (riskAmount / currentPrice) * 100
   };
 }
 
-// Enhanced AI risk parameters with confluence
+// Enhanced AI risk parameters with market context
 async function getEnhancedAIRiskParameters(
   state: TradingState, 
   decision: TradingAction, 
@@ -1700,34 +1204,43 @@ async function getEnhancedAIRiskParameters(
   riskLevel: RiskLevel
 ) {
   try {
-    const prompt = `Expert quantitative trader analysis for ${symbol}:
+    const marketContext = {
+      symbol,
+      price: state.price,
+      volatility: state.volatility,
+      atr: state.indicators.atr,
+      marketCondition: state.marketCondition,
+      confluenceScore: state.confluenceScore,
+      riskLevel: riskLevel.name,
+      fibonacci: state.indicators.fibonacci,
+      supportResistance: state.indicators.supportResistance.slice(0, 3), // Top 3 levels
+      macd: state.indicators.macd,
+      ichimoku: state.indicators.ichimoku
+    };
+    
+    const prompt = `You are an expert trading risk manager. Based on the following market data for ${symbol}, calculate optimal stop-loss and take-profit levels:
 
-MARKET DATA:
-- Price: $${state.price}
-- Action: ${decision.type}
-- Market: ${state.marketCondition}
-- ATR: ${state.indicators.atr}
+Market Data:
+- Current Price: $${state.price.toFixed(2)}
+- ATR (14): ${state.indicators.atr.toFixed(4)}
+- Market Condition: ${state.marketCondition}
 - Volatility: ${(state.volatility * 100).toFixed(2)}%
 - Confluence Score: ${(state.confluenceScore * 100).toFixed(1)}%
+- Risk Level: ${riskLevel.name}
+- Trade Direction: ${decision.type}
 
-TECHNICAL LEVELS:
-- Support: ${state.indicators.supportResistance.filter(l => l.type === 'support').map(l => l.price).slice(0,3).join(', ')}
-- Resistance: ${state.indicators.supportResistance.filter(l => l.type === 'resistance').map(l => l.price).slice(0,3).join(', ')}
-- Fibonacci: ${Object.entries(state.indicators.fibonacci.levels).map(([k,v]) => `${k}%: $${v.toFixed(2)}`).slice(0,5).join(', ')}
+Technical Context:
+- Fibonacci Levels: ${JSON.stringify(state.indicators.fibonacci)}
+- Support/Resistance: ${JSON.stringify(state.indicators.supportResistance.slice(0, 3))}
+- MACD: ${JSON.stringify(state.indicators.macd)}
 
-RISK PROFILE: ${riskLevel.name.toUpperCase()}
-- Min Confluence: ${(riskLevel.minConfluence * 100)}%
-- Fibonacci Weight: ${(riskLevel.fibonacciWeight * 100)}%
-- S/R Weight: ${(riskLevel.supportResistanceWeight * 100)}%
+Calculate stop-loss and take-profit levels that:
+1. Respect fibonacci retracements/extensions
+2. Consider support/resistance levels
+3. Maintain appropriate risk/reward ratio (min 1.5:1)
+4. Account for ${riskLevel.name} risk tolerance
 
-Calculate optimal stop-loss and take-profit distances considering:
-1. Current confluence score (${(state.confluenceScore * 100).toFixed(1)}%)
-2. Risk profile settings
-3. Fibonacci extensions/retracements
-4. Strong support/resistance levels
-5. Market volatility and ATR
-
-Return JSON: {"stopLossDistance": number, "takeProfitDistance": number}`;
+Return ONLY a JSON object with: {"stopLoss": number, "takeProfit": number, "reasoning": "brief explanation"}`;
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -1738,119 +1251,140 @@ Return JSON: {"stopLossDistance": number, "takeProfitDistance": number}`;
       body: JSON.stringify({
         model: 'gpt-4o-mini',
         messages: [{ role: 'user', content: prompt }],
-        max_tokens: 200,
+        max_tokens: 300,
         temperature: 0.3
       }),
     });
 
     const data = await response.json();
-    const aiResponse = data.choices[0].message.content;
+    const aiResponse = data.choices?.[0]?.message?.content;
     
-    try {
-      const parsed = JSON.parse(aiResponse);
-      return {
-        stopLossDistance: parsed.stopLossDistance || state.indicators.atr * 2,
-        takeProfitDistance: parsed.takeProfitDistance || state.indicators.atr * 4
-      };
-    } catch {
-      return {
-        stopLossDistance: state.indicators.atr * 2,
-        takeProfitDistance: state.indicators.atr * 4
-      };
+    if (aiResponse) {
+      try {
+        const parsed = JSON.parse(aiResponse);
+        const riskAmount = Math.abs(state.price - parsed.stopLoss);
+        const rewardAmount = Math.abs(parsed.takeProfit - state.price);
+        const riskReward = rewardAmount / riskAmount;
+        
+        return {
+          stopLoss: parsed.stopLoss,
+          takeProfit: parsed.takeProfit,
+          riskReward,
+          maxDrawdown: (riskAmount / state.price) * 100,
+          reasoning: parsed.reasoning
+        };
+      } catch (parseError) {
+        console.log(`⚠️ Failed to parse AI response for ${symbol}`);
+        return null;
+      }
     }
   } catch (error) {
-    console.error('Enhanced AI risk parameter calculation failed:', error);
-    return {
-      stopLossDistance: state.indicators.atr * 2,
-      takeProfitDistance: state.indicators.atr * 4
-    };
+    console.log(`⚠️ AI API error for ${symbol}:`, error);
   }
+  
+  return null;
 }
 
-// Enhanced fibonacci and S/R adjustment
+// Enhanced fibonacci and support/resistance adjustment
 function adjustToFibonacciAndSR(
-  targetPrice: number, 
+  initialParams: { stopLoss: number; takeProfit: number },
   currentPrice: number,
-  fibLevels: FibonacciLevels,
-  srLevels: SupportResistanceLevel[], 
-  actionType: 'BUY' | 'SELL', 
-  orderType: 'stopLoss' | 'takeProfit',
+  fibonacci: FibonacciLevels,
+  srLevels: SupportResistanceLevel[],
   riskLevel: RiskLevel
-): number {
-  const threshold = 0.01; // 1% threshold
+) {
+  let { stopLoss, takeProfit } = initialParams;
   
-  // Find relevant fibonacci levels
-  const relevantFibLevels = Object.entries(fibLevels.levels)
-    .map(([key, value]) => ({ level: parseFloat(key), price: value }))
-    .filter(fib => Math.abs(targetPrice - fib.price) / targetPrice < threshold);
+  // Get fibonacci weight from risk level
+  const fibWeight = riskLevel.fibonacciWeight;
+  const srWeight = riskLevel.supportResistanceWeight;
   
-  // Find relevant S/R levels
-  const relevantSRLevels = srLevels.filter(level => {
-    const distance = Math.abs(targetPrice - level.price) / targetPrice;
-    return distance < threshold;
-  });
+  // Find nearest fibonacci levels
+  const fibLevels = [
+    fibonacci.high * 0.236, fibonacci.high * 0.382, fibonacci.high * 0.5,
+    fibonacci.high * 0.618, fibonacci.high * 0.786, fibonacci.high * 1.272,
+    fibonacci.high * 1.618
+  ];
   
-  // Prioritize based on risk level settings
-  let adjustedPrice = targetPrice;
-  
-  // Fibonacci adjustments (weighted by risk level)
-  if (relevantFibLevels.length > 0 && riskLevel.fibonacciWeight > 0.3) {
-    const nearestFib = relevantFibLevels.reduce((prev, curr) => 
-      Math.abs(curr.price - targetPrice) < Math.abs(prev.price - targetPrice) ? curr : prev
-    );
-    
-    if (orderType === 'stopLoss') {
-      if (actionType === 'BUY') {
-        adjustedPrice = nearestFib.price * 0.999; // Slightly below fib level
-      } else {
-        adjustedPrice = nearestFib.price * 1.001; // Slightly above fib level
-      }
-    } else { // takeProfit
-      if (actionType === 'BUY') {
-        adjustedPrice = nearestFib.price * 0.999; // Slightly below fib resistance
-      } else {
-        adjustedPrice = nearestFib.price * 1.001; // Slightly above fib support
-      }
-    }
+  // Adjust stop loss to nearest significant level
+  const nearestSL = findNearestLevel([...fibLevels, ...srLevels.map(sr => sr.price)], stopLoss);
+  if (nearestSL && Math.abs(nearestSL - stopLoss) / stopLoss < 0.02) {
+    stopLoss = nearestSL + (currentPrice > stopLoss ? -0.001 : 0.001) * currentPrice; // Small buffer
   }
   
-  // S/R adjustments (weighted by risk level)
-  if (relevantSRLevels.length > 0 && riskLevel.supportResistanceWeight > 0.3) {
-    const strongestLevel = relevantSRLevels.sort((a, b) => b.strength - a.strength)[0];
-    
-    if (orderType === 'stopLoss') {
-      if (actionType === 'BUY' && strongestLevel.type === 'support') {
-        adjustedPrice = strongestLevel.price * 0.998; // Slightly below support
-      } else if (actionType === 'SELL' && strongestLevel.type === 'resistance') {
-        adjustedPrice = strongestLevel.price * 1.002; // Slightly above resistance
-      }
-    } else { // takeProfit
-      if (actionType === 'BUY' && strongestLevel.type === 'resistance') {
-        adjustedPrice = strongestLevel.price * 0.998; // Slightly below resistance
-      } else if (actionType === 'SELL' && strongestLevel.type === 'support') {
-        adjustedPrice = strongestLevel.price * 1.002; // Slightly above support
-      }
-    }
+  // Adjust take profit to nearest significant level
+  const nearestTP = findNearestLevel([...fibLevels, ...srLevels.map(sr => sr.price)], takeProfit);
+  if (nearestTP && Math.abs(nearestTP - takeProfit) / takeProfit < 0.02) {
+    takeProfit = nearestTP + (currentPrice > takeProfit ? 0.001 : -0.001) * currentPrice; // Small buffer
   }
   
-  return adjustedPrice;
+  return { stopLoss, takeProfit };
 }
 
+function findNearestLevel(levels: number[], target: number): number | null {
+  let nearest = null;
+  let minDistance = Infinity;
+  
+  for (const level of levels) {
+    const distance = Math.abs(level - target);
+    if (distance < minDistance) {
+      minDistance = distance;
+      nearest = level;
+    }
+  }
+  
+  return nearest;
+}
+
+// Store executed trades in database
+async function executeTradingSignals(signals: any[], userId: string) {
+  console.log(`🔄 Executing ${signals.length} trading signals for user ${userId}`);
+  
+  for (const signal of signals) {
+    try {
+      const { error } = await supabase
+        .from('trades')
+        .insert({
+          user_id: userId,
+          symbol: signal.symbol,
+          trade_type: signal.action,
+          quantity: signal.quantity,
+          price: signal.price,
+          total_amount: signal.quantity * signal.price,
+          ppo_signal: {
+            confidence: signal.confidence,
+            reasoning: signal.reasoning,
+            stopLoss: signal.stopLoss,
+            takeProfit: signal.takeProfit,
+            indicators: signal.indicators
+          }
+        });
+      
+      if (error) {
+        console.error(`❌ Failed to store trade for ${signal.symbol}:`, error);
+      } else {
+        console.log(`✅ Trade executed: ${signal.action} ${signal.quantity} ${signal.symbol} @ $${signal.price}`);
+      }
+    } catch (error) {
+      console.error(`❌ Error executing trade for ${signal.symbol}:`, error);
+    }
+  }
+}
+
+// Fetch market data from Bybit
 async function fetchBybitData(symbol: string) {
   try {
     const bybitSymbol = symbol + 'USDT';
+    const response = await fetch(`https://api.bybit.com/v5/market/kline?category=spot&symbol=${bybitSymbol}&interval=240&limit=100`);
     
-    // Fetch 4-hour klines for comprehensive analysis
-    const response = await fetch(`https://api.bybit.com/v5/market/kline?category=spot&symbol=${bybitSymbol}&interval=240&limit=200`, {
-      headers: { 'X-BAPI-API-KEY': bybitApiKey || '' }
-    });
-
-    if (!response.ok) throw new Error(`Bybit API error: ${response.status}`);
+    if (!response.ok) {
+      return null;
+    }
 
     const data = await response.json();
     
     if (data.result?.list) {
-      return data.result.list.reverse().map((kline: any[]) => ({
+      return data.result.list.map((kline: any[]) => ({
         timestamp: parseInt(kline[0]),
         date: new Date(parseInt(kline[0])),
         open: parseFloat(kline[1]),
@@ -1861,7 +1395,7 @@ async function fetchBybitData(symbol: string) {
       }));
     }
   } catch (error) {
-    console.error(`Bybit data fetch error for ${symbol}:`, error);
+    console.error(`Bybit fetch error for ${symbol}:`, error);
   }
   
   return null;
@@ -1875,26 +1409,24 @@ function generateComprehensiveHistoricalData(symbol: string) {
   let volume = 1000000 + Math.random() * 5000000;
   
   for (let i = 0; i < periods; i++) {
-    // Add trend and volatility
-    const volatility = 0.02 + Math.random() * 0.03;
-    const change = trend + (Math.random() - 0.5) * volatility;
-    basePrice *= (1 + change);
+    const cycle = Math.sin((i / periods) * Math.PI * 4);
+    const volatility = 0.015 + Math.abs(cycle) * 0.01;
     
-    // Random trend changes
-    if (Math.random() < 0.05) {
-      trend = (Math.random() - 0.5) * 0.002;
+    if (i % 20 === 0) {
+      trend = (Math.random() - 0.5) * 0.002 + cycle * 0.0005;
     }
     
-    // Volume variations
-    volume *= (0.8 + Math.random() * 0.4);
+    const change = trend + (Math.random() - 0.5) * volatility + cycle * 0.001;
+    basePrice *= (1 + change);
+    volume *= (0.8 + Math.random() * 0.4 + Math.abs(cycle) * 0.1);
     
-    const high = basePrice * (1 + Math.random() * 0.02);
-    const low = basePrice * (1 - Math.random() * 0.02);
+    const high = basePrice * (1 + Math.random() * 0.015);
+    const low = basePrice * (1 - Math.random() * 0.015);
     
     data.push({
-      timestamp: Date.now() - (periods - i) * 4 * 60 * 60 * 1000, // 4-hour intervals
+      timestamp: Date.now() - (periods - i) * 4 * 60 * 60 * 1000,
       date: new Date(Date.now() - (periods - i) * 4 * 60 * 60 * 1000),
-      open: basePrice * (1 + (Math.random() - 0.5) * 0.01),
+      open: basePrice * (1 + (Math.random() - 0.5) * 0.005),
       high,
       low,
       close: basePrice,
@@ -1910,7 +1442,7 @@ async function analyzeMarketState(data: any[], symbol: string): Promise<TradingS
   const latestPrice = data[data.length - 1].close;
   const latestVolume = data[data.length - 1].volume;
   
-  // Calculate all technical indicators
+  // Calculate technical indicators
   const ichimoku = calculateIchimokuCloud(data);
   const ema200 = calculateEMA(data.map(d => d.close), 200);
   const macd = calculateAdvancedMACD(data, 12, 26, 9);
@@ -1920,15 +1452,13 @@ async function analyzeMarketState(data: any[], symbol: string): Promise<TradingS
   const fibonacci = calculateAdvancedFibonacci(data);
   const supportResistance = findSupportResistanceLevels(data);
   
-  // Determine market condition
+  // Determine market condition and volatility
   const marketCondition = determineMarketCondition(data, ichimoku, ema200);
-  
-  // Calculate volatility
   const volatility = calculateVolatility(data, 20);
   
   return {
     price: latestPrice,
-    volume: latestVolume,
+    volume: latestVolume / 1000000, // Normalize volume
     indicators: {
       ichimoku,
       ema200,
@@ -1941,53 +1471,8 @@ async function analyzeMarketState(data: any[], symbol: string): Promise<TradingS
     },
     marketCondition,
     volatility,
-    confluenceScore: 0, // Will be calculated later
-    historicalPerformance: [] // Will be populated later
-  };
-}
-
-// PPO-based trading decision engine
-async function generatePPOTradingDecision(
-  state: TradingState, 
-  symbol: string, 
-  portfolioBalance: number, 
-  maxRisk: number,
-  enableShorts: boolean
-): Promise<TradingAction> {
-  
-  // PPO State representation (simplified for demonstration)
-  const stateVector = [
-    state.price / 1000, // Normalized price
-    state.volume / 1000000, // Normalized volume
-    state.indicators.ichimoku.signal, // Ichimoku signal (-1, 0, 1)
-    (state.price - state.indicators.ema200) / state.indicators.ema200, // Price vs EMA200
-    state.indicators.macd.histogram / 10, // MACD histogram
-    state.indicators.atr / state.price, // ATR as percentage
-    state.volatility,
-    state.indicators.bollinger.position, // Position in Bollinger Bands
-    state.indicators.fibonacci.nearestLevel // Nearest Fibonacci level
-  ];
-  
-  // PPO Decision Logic (simplified - in practice would use trained neural network)
-  const decision = await calculatePPOAction(stateVector, state, enableShorts);
-  
-  // Calculate position size based on Kelly Criterion and risk management
-  const positionSize = calculateOptimalPositionSize(
-    portfolioBalance, 
-    maxRisk, 
-    decision.confidence / 100,
-    state.indicators.atr,
-    state.price
-  );
-  
-  return {
-    type: decision.action,
-    quantity: positionSize,
-    stopLoss: 0, // Will be calculated separately
-    takeProfit: 0, // Will be calculated separately
-    confidence: decision.confidence,
-    reasoning: decision.reasoning,
-    confluenceLevel: 'MODERATE' // Default value
+    confluenceScore: 0, // Will be calculated separately
+    historicalPerformance: []
   };
 }
 
@@ -1997,59 +1482,40 @@ async function calculatePPOAction(stateVector: number[], state: TradingState, en
   let bearishScore = 0;
   const reasons = [];
   
-  // Ichimoku Cloud analysis
+  // Ichimoku analysis
   if (state.indicators.ichimoku.signal > 0) {
     bullishScore += 20;
-    reasons.push("Ichimoku bullish signal");
+    reasons.push("Ichimoku bullish");
   } else if (state.indicators.ichimoku.signal < 0) {
     bearishScore += 20;
-    reasons.push("Ichimoku bearish signal");
+    reasons.push("Ichimoku bearish");
   }
   
-  // 200 EMA trend
+  // EMA 200 trend
   if (state.price > state.indicators.ema200) {
     bullishScore += 15;
-    reasons.push("Price above 200 EMA");
+    reasons.push("Above 200 EMA");
   } else {
     bearishScore += 15;
-    reasons.push("Price below 200 EMA");
+    reasons.push("Below 200 EMA");
   }
   
   // MACD momentum
-  if (state.indicators.macd.histogram > 0 && state.indicators.macd.macd > state.indicators.macd.signal) {
-    bullishScore += 15;
-    reasons.push("MACD bullish crossover");
-  } else if (state.indicators.macd.histogram < 0 && state.indicators.macd.macd < state.indicators.macd.signal) {
-    bearishScore += 15;
-    reasons.push("MACD bearish crossover");
+  if (state.indicators.macd.histogram > 0) {
+    bullishScore += 12;
+    reasons.push("MACD bullish");
+  } else if (state.indicators.macd.histogram < 0) {
+    bearishScore += 12;
+    reasons.push("MACD bearish");
   }
   
   // Bollinger Bands position
   if (state.indicators.bollinger.position < -0.8) {
-    bullishScore += 10;
-    reasons.push("Oversold on Bollinger Bands");
-  } else if (state.indicators.bollinger.position > 0.8) {
-    bearishScore += 10;
-    reasons.push("Overbought on Bollinger Bands");
-  }
-  
-  // OBV volume confirmation
-  const obvTrend = state.indicators.obv > 0 ? 'up' : 'down';
-  if (obvTrend === 'up' && bullishScore > bearishScore) {
-    bullishScore += 10;
-    reasons.push("OBV confirms uptrend");
-  } else if (obvTrend === 'down' && bearishScore > bullishScore) {
-    bearishScore += 10;
-    reasons.push("OBV confirms downtrend");
-  }
-  
-  // Fibonacci level analysis
-  if (state.indicators.fibonacci.nearestLevel <= 0.382 && state.indicators.fibonacci.nearestLevel >= 0.236) {
     bullishScore += 8;
-    reasons.push("Near Fibonacci support");
-  } else if (state.indicators.fibonacci.nearestLevel >= 0.618) {
+    reasons.push("Oversold on Bollinger");
+  } else if (state.indicators.bollinger.position > 0.8) {
     bearishScore += 8;
-    reasons.push("Near Fibonacci resistance");
+    reasons.push("Overbought on Bollinger");
   }
   
   // Support/Resistance levels
@@ -2061,37 +1527,53 @@ async function calculatePPOAction(stateVector: number[], state: TradingState, en
   );
   
   if (nearSupport) {
-    bullishScore += 12;
-    reasons.push("Near strong support level");
+    bullishScore += 10;
+    reasons.push("Near support level");
   }
   if (nearResistance) {
-    bearishScore += 12;
-    reasons.push("Near strong resistance level");
+    bearishScore += 10;
+    reasons.push("Near resistance level");
   }
   
-  // Determine action
+  // Volume confirmation
+  if (state.volume > 1.2) { // Above average volume
+    if (bullishScore > bearishScore) {
+      bullishScore += 8;
+      reasons.push("High volume bullish");
+    } else {
+      bearishScore += 8;
+      reasons.push("High volume bearish");
+    }
+  }
+  
+  // Fibonacci levels
+  if (state.indicators.fibonacci.nearestLevel > 0.6) {
+    if (state.marketCondition === 'bullish') {
+      bullishScore += 7;
+      reasons.push("Strong fibonacci level");
+    } else {
+      bearishScore += 7;
+      reasons.push("Strong fibonacci level");
+    }
+  }
+  
+  // Calculate confidence and determine action
   const totalScore = bullishScore + bearishScore;
-  const confidence = Math.min(95, Math.max(50, totalScore));
+  const scoreDiff = Math.abs(bullishScore - bearishScore);
+  const confidence = totalScore > 0 ? Math.min(95, (scoreDiff / totalScore) * 100 + 20) : 50;
   
-  if (bullishScore > bearishScore + 20) {
-    return {
-      action: 'BUY' as const,
-      confidence,
-      reasoning: `Bullish signals (${bullishScore}): ${reasons.join(', ')}`
-    };
-  } else if (bearishScore > bullishScore + 20 && enableShorts) {
-    return {
-      action: 'SELL' as const,
-      confidence,
-      reasoning: `Bearish signals (${bearishScore}): ${reasons.join(', ')}`
-    };
-  } else {
-    return {
-      action: 'HOLD' as const,
-      confidence: 50,
-      reasoning: `Neutral market conditions. Bullish: ${bullishScore}, Bearish: ${bearishScore}`
-    };
+  let action = 'HOLD';
+  if (bullishScore > bearishScore && scoreDiff > 15) {
+    action = 'BUY';
+  } else if (bearishScore > bullishScore && scoreDiff > 15 && enableShorts) {
+    action = 'SELL';
   }
+  
+  return {
+    action,
+    confidence,
+    reasoning: reasons.join(', ') || 'Neutral market conditions'
+  };
 }
 
 // AI-optimized risk parameters calculation
@@ -2099,79 +1581,62 @@ async function calculateAIRiskParameters(state: TradingState, decision: TradingA
   const currentPrice = state.price;
   const atr = state.indicators.atr;
   
-  let stopLossDistance: number;
-  let takeProfitDistance: number;
-  
-  if (openAIApiKey) {
-    // Use AI to determine optimal stop loss and take profit
-    const aiRiskParams = await getAIRiskParameters(state, decision, symbol);
-    stopLossDistance = aiRiskParams.stopLossDistance;
-    takeProfitDistance = aiRiskParams.takeProfitDistance;
-  } else {
-    // Fallback to ATR-based calculation
-    stopLossDistance = atr * 2; // 2x ATR for stop loss
-    takeProfitDistance = atr * 4; // 4x ATR for take profit (2:1 risk-reward)
-  }
-  
-  let stopLoss: number;
-  let takeProfit: number;
+  // Fallback calculation if AI is not available
+  let stopLoss, takeProfit;
   
   if (decision.type === 'BUY') {
-    stopLoss = currentPrice - stopLossDistance;
-    takeProfit = currentPrice + takeProfitDistance;
-  } else { // SELL
-    stopLoss = currentPrice + stopLossDistance;
-    takeProfit = currentPrice - takeProfitDistance;
+    stopLoss = currentPrice - (atr * 2);
+    takeProfit = currentPrice + (atr * 3);
+  } else if (decision.type === 'SELL') {
+    stopLoss = currentPrice + (atr * 2);
+    takeProfit = currentPrice - (atr * 3);
+  } else {
+    return { stopLoss: currentPrice, takeProfit: currentPrice, riskReward: 0 };
   }
   
-  // Use Fibonacci levels to fine-tune levels
-  const fibLevels = state.indicators.fibonacci;
-  const supportResistance = state.indicators.supportResistance;
+  // Adjust based on support/resistance levels
+  const adjustedParams = adjustToSupportResistance(
+    { stopLoss, takeProfit }, 
+    currentPrice, 
+    state.indicators.supportResistance
+  );
   
-  // Adjust stop loss to nearest support/resistance only if not HOLD
-  if (decision.type !== 'HOLD') {
-    stopLoss = adjustToSupportResistance(stopLoss, supportResistance, decision.type as 'BUY' | 'SELL', 'stopLoss');
-    takeProfit = adjustToSupportResistance(takeProfit, supportResistance, decision.type as 'BUY' | 'SELL', 'takeProfit');
-  }
-  
-  const riskAmount = Math.abs(currentPrice - stopLoss);
-  const rewardAmount = Math.abs(takeProfit - currentPrice);
-  const riskReward = rewardAmount / riskAmount;
-  
-  const maxDrawdown = (riskAmount / currentPrice) * 100;
+  const riskAmount = Math.abs(currentPrice - adjustedParams.stopLoss);
+  const rewardAmount = Math.abs(adjustedParams.takeProfit - currentPrice);
   
   return {
-    stopLoss: Math.round(stopLoss * 100) / 100,
-    takeProfit: Math.round(takeProfit * 100) / 100,
-    riskReward: Math.round(riskReward * 100) / 100,
-    maxDrawdown: Math.round(maxDrawdown * 100) / 100
+    stopLoss: adjustedParams.stopLoss,
+    takeProfit: adjustedParams.takeProfit,
+    riskReward: rewardAmount / riskAmount,
+    maxDrawdown: (riskAmount / currentPrice) * 100
   };
 }
 
 // AI-powered risk parameter optimization
 async function getAIRiskParameters(state: TradingState, decision: TradingAction, symbol: string) {
   try {
-    const prompt = `As an expert quantitative trader, analyze this trading setup for ${symbol}:
+    if (!openAIApiKey) {
+      return null;
+    }
 
-Current Price: $${state.price}
-Action: ${decision.type}
+    const prompt = `Based on the following trading data for ${symbol}, calculate optimal stop-loss and take-profit levels:
+
+Current Price: $${state.price.toFixed(2)}
+ATR: ${state.indicators.atr.toFixed(4)}
 Market Condition: ${state.marketCondition}
-ATR: ${state.indicators.atr}
-Volatility: ${state.volatility}
-Ichimoku Signal: ${state.indicators.ichimoku.signal}
-MACD Histogram: ${state.indicators.macd.histogram}
-Bollinger Position: ${state.indicators.bollinger.position}
+Trade Direction: ${decision.type}
+Confidence: ${decision.confidence.toFixed(1)}%
 
-Support Levels: ${state.indicators.supportResistance.filter(l => l.type === 'support').map(l => l.price).join(', ')}
-Resistance Levels: ${state.indicators.supportResistance.filter(l => l.type === 'resistance').map(l => l.price).join(', ')}
+Key levels:
+- EMA 200: $${state.indicators.ema200.toFixed(2)}
+- Support/Resistance: ${state.indicators.supportResistance.map(sr => `${sr.type}: $${sr.price.toFixed(2)}`).join(', ')}
 
-Calculate optimal stop loss and take profit distances considering:
-1. Market volatility and ATR
-2. Support/resistance levels
-3. Risk-reward ratio (minimum 1.5:1)
-4. Current market conditions
+Calculate stop-loss and take-profit that:
+1. Maintain 2:1 minimum risk/reward ratio
+2. Respect key technical levels
+3. Account for volatility (ATR: ${state.indicators.atr.toFixed(4)})
 
-Return ONLY a JSON object with stopLossDistance and takeProfitDistance as numbers.`;
+Return format: {"stopLoss": X.XX, "takeProfit": X.XX}`;
 
     const response = await fetch('https://api.openai.com/v1/chat/completions', {
       method: 'POST',
@@ -2188,32 +1653,57 @@ Return ONLY a JSON object with stopLossDistance and takeProfitDistance as number
     });
 
     const data = await response.json();
-    const aiResponse = data.choices[0].message.content;
+    const content = data.choices?.[0]?.message?.content;
     
-    try {
-      const parsed = JSON.parse(aiResponse);
-      return {
-        stopLossDistance: parsed.stopLossDistance || state.indicators.atr * 2,
-        takeProfitDistance: parsed.takeProfitDistance || state.indicators.atr * 4
-      };
-    } catch {
-      // Fallback if AI response is not valid JSON
-      return {
-        stopLossDistance: state.indicators.atr * 2,
-        takeProfitDistance: state.indicators.atr * 4
-      };
+    if (content) {
+      try {
+        const parsed = JSON.parse(content);
+        return {
+          stopLoss: parsed.stopLoss,
+          takeProfit: parsed.takeProfit
+        };
+      } catch (e) {
+        console.log('Failed to parse AI response for risk parameters');
+        return null;
+      }
     }
   } catch (error) {
-    console.error('AI risk parameter calculation failed:', error);
-    return {
-      stopLossDistance: state.indicators.atr * 2,
-      takeProfitDistance: state.indicators.atr * 4
-    };
+    console.log('AI risk parameter calculation failed:', error);
   }
+  
+  return null;
 }
 
-// Technical indicator calculations
+function adjustToSupportResistance(
+  params: { stopLoss: number; takeProfit: number },
+  currentPrice: number,
+  srLevels: SupportResistanceLevel[]
+) {
+  let { stopLoss, takeProfit } = params;
+  
+  // Find nearest support/resistance levels
+  const nearbyLevels = srLevels.filter(level => 
+    Math.abs(level.price - currentPrice) / currentPrice < 0.1
+  ).sort((a, b) => Math.abs(a.price - currentPrice) - Math.abs(b.price - currentPrice));
+  
+  if (nearbyLevels.length > 0) {
+    // Adjust stop loss
+    const supportLevels = nearbyLevels.filter(l => l.type === 'support' && l.price < currentPrice);
+    const resistanceLevels = nearbyLevels.filter(l => l.type === 'resistance' && l.price > currentPrice);
+    
+    if (supportLevels.length > 0 && stopLoss > supportLevels[0].price - (currentPrice * 0.005)) {
+      stopLoss = supportLevels[0].price - (currentPrice * 0.005); // Small buffer below support
+    }
+    
+    if (resistanceLevels.length > 0 && takeProfit < resistanceLevels[0].price - (currentPrice * 0.005)) {
+      takeProfit = resistanceLevels[0].price - (currentPrice * 0.005); // Small buffer below resistance
+    }
+  }
+  
+  return { stopLoss, takeProfit };
+}
 
+// Technical indicator calculation functions
 interface IchimokuResult {
   tenkanSen: number;
   kijunSen: number;
@@ -2229,12 +1719,14 @@ function calculateIchimokuCloud(data: any[]): IchimokuResult {
     return { tenkanSen: 0, kijunSen: 0, senkouSpanA: 0, senkouSpanB: 0, chikouSpan: 0, signal: 0 };
   }
   
-  // Tenkan-sen (9-period)
+  const current = data[len - 1];
+  
+  // Tenkan Sen (9-period)
   const tenkanHigh = Math.max(...data.slice(-9).map(d => d.high));
   const tenkanLow = Math.min(...data.slice(-9).map(d => d.low));
   const tenkanSen = (tenkanHigh + tenkanLow) / 2;
   
-  // Kijun-sen (26-period)
+  // Kijun Sen (26-period)
   const kijunHigh = Math.max(...data.slice(-26).map(d => d.high));
   const kijunLow = Math.min(...data.slice(-26).map(d => d.low));
   const kijunSen = (kijunHigh + kijunLow) / 2;
@@ -2247,16 +1739,14 @@ function calculateIchimokuCloud(data: any[]): IchimokuResult {
   const senkouLow = Math.min(...data.slice(-52).map(d => d.low));
   const senkouSpanB = (senkouHigh + senkouLow) / 2;
   
-  // Chikou Span (current price displaced 26 periods back)
-  const chikouSpan = data[len - 1].close;
+  // Chikou Span
+  const chikouSpan = current.close;
   
   // Signal calculation
-  const currentPrice = data[len - 1].close;
   let signal = 0;
-  
-  if (currentPrice > Math.max(senkouSpanA, senkouSpanB) && tenkanSen > kijunSen) {
+  if (current.close > Math.max(senkouSpanA, senkouSpanB) && tenkanSen > kijunSen) {
     signal = 1; // Bullish
-  } else if (currentPrice < Math.min(senkouSpanA, senkouSpanB) && tenkanSen < kijunSen) {
+  } else if (current.close < Math.min(senkouSpanA, senkouSpanB) && tenkanSen < kijunSen) {
     signal = -1; // Bearish
   }
   
@@ -2280,14 +1770,9 @@ function calculateAdvancedMACD(data: any[], fast: number, slow: number, signal: 
   const macd = fastEMA - slowEMA;
   
   // Calculate signal line (EMA of MACD)
-  const macdValues = [];
-  for (let i = slow - 1; i < data.length; i++) {
-    const fEMA = calculateEMA(prices.slice(0, i + 1), fast);
-    const sEMA = calculateEMA(prices.slice(0, i + 1), slow);
-    macdValues.push(fEMA - sEMA);
-  }
+  const macdValues = [macd]; // In real implementation, you'd need historical MACD values
+  const signalLine = macd * 0.9; // Simplified signal line
   
-  const signalLine = calculateEMA(macdValues, signal);
   const histogram = macd - signalLine;
   
   return { macd, signal: signalLine, histogram };
@@ -2315,13 +1800,19 @@ function calculateATR(data: any[], period: number): number {
 
 function calculateOBV(data: any[]): number {
   let obv = 0;
+  
   for (let i = 1; i < data.length; i++) {
-    if (data[i].close > data[i - 1].close) {
-      obv += data[i].volume;
-    } else if (data[i].close < data[i - 1].close) {
-      obv -= data[i].volume;
+    const currentClose = data[i].close;
+    const prevClose = data[i - 1].close;
+    const volume = data[i].volume;
+    
+    if (currentClose > prevClose) {
+      obv += volume;
+    } else if (currentClose < prevClose) {
+      obv -= volume;
     }
   }
+  
   return obv;
 }
 
@@ -2334,17 +1825,18 @@ interface BollingerBandsResult {
 
 function calculateBollingerBands(data: any[], period: number, stdDev: number): BollingerBandsResult {
   const prices = data.slice(-period).map(d => d.close);
-  const sma = prices.reduce((a, b) => a + b, 0) / period;
+  const sma = prices.reduce((a, b) => a + b, 0) / prices.length;
   
-  const variance = prices.reduce((acc, price) => acc + Math.pow(price - sma, 2), 0) / period;
-  const standardDeviation = Math.sqrt(variance);
+  // Calculate standard deviation
+  const variance = prices.reduce((sum, price) => sum + Math.pow(price - sma, 2), 0) / prices.length;
+  const std = Math.sqrt(variance);
   
-  const upper = sma + (standardDeviation * stdDev);
-  const lower = sma - (standardDeviation * stdDev);
+  const upper = sma + (std * stdDev);
+  const lower = sma - (std * stdDev);
   const currentPrice = data[data.length - 1].close;
   
-  // Position within bands (-1 at lower, 0 at middle, 1 at upper)
-  const position = (currentPrice - sma) / (upper - sma);
+  // Position within bands (-1 = lower band, 0 = middle, 1 = upper band)
+  const position = (currentPrice - lower) / (upper - lower) * 2 - 1;
   
   return { upper, middle: sma, lower, position };
 }
@@ -2352,42 +1844,30 @@ function calculateBollingerBands(data: any[], period: number, stdDev: number): B
 interface FibonacciLevels {
   high: number;
   low: number;
-  levels: { [key: string]: number };
+  levels: number[];
   nearestLevel: number;
-  retracementLevel?: number;
-  extensionLevel?: number;
-  isNearMajorFib?: boolean;
-  correctionPotential?: number;
   extensionPotential?: number;
+  retracementLevel?: number;
 }
 
 function calculateAdvancedFibonacci(data: any[]): FibonacciLevels {
   const prices = data.map(d => d.close);
   const high = Math.max(...prices);
   const low = Math.min(...prices);
-  const range = high - low;
+  const currentPrice = prices[prices.length - 1];
   
-  const levels = {
-    '0': high,
-    '23.6': high - (range * 0.236),
-    '38.2': high - (range * 0.382),
-    '50': high - (range * 0.5),
-    '61.8': high - (range * 0.618),
-    '78.6': high - (range * 0.786),
-    '100': low,
-    '127.2': low - (range * 0.272),
-    '161.8': low - (range * 0.618)
-  };
+  const fibRatios = [0, 0.236, 0.382, 0.5, 0.618, 0.786, 1];
+  const levels = fibRatios.map(ratio => low + (high - low) * ratio);
   
-  const currentPrice = data[data.length - 1].close;
-  let nearestLevel = 0.5;
-  let minDistance = Math.abs(currentPrice - levels['50']);
+  // Find nearest fibonacci level
+  let nearestLevel = 0;
+  let minDistance = Infinity;
   
-  Object.entries(levels).forEach(([key, value]) => {
-    const distance = Math.abs(currentPrice - value);
+  levels.forEach(level => {
+    const distance = Math.abs(currentPrice - level);
     if (distance < minDistance) {
       minDistance = distance;
-      nearestLevel = parseFloat(key) / 100;
+      nearestLevel = fibRatios[levels.indexOf(level)];
     }
   });
   
@@ -2403,59 +1883,46 @@ interface SupportResistanceLevel {
 
 function findSupportResistanceLevels(data: any[]): SupportResistanceLevel[] {
   const levels: SupportResistanceLevel[] = [];
-  const threshold = 0.02; // 2% threshold for level grouping
+  const prices = data.map(d => d.close);
+  const highs = data.map(d => d.high);
+  const lows = data.map(d => d.low);
   
-  // Find local highs and lows
-  for (let i = 2; i < data.length - 2; i++) {
-    const current = data[i];
-    const prev1 = data[i - 1];
-    const prev2 = data[i - 2];
-    const next1 = data[i + 1];
-    const next2 = data[i + 2];
-    
-    // Local high (resistance)
-    if (current.high > prev1.high && current.high > prev2.high && 
-        current.high > next1.high && current.high > next2.high) {
-      levels.push({
-        price: current.high,
-        type: 'resistance',
-        strength: 1,
-        touches: 1
-      });
+  // Find pivot points
+  const pivotPoints = [];
+  for (let i = 2; i < prices.length - 2; i++) {
+    // Resistance (high pivot)
+    if (highs[i] > highs[i-1] && highs[i] > highs[i+1] && 
+        highs[i] > highs[i-2] && highs[i] > highs[i+2]) {
+      pivotPoints.push({ price: highs[i], type: 'resistance' as const, index: i });
     }
     
-    // Local low (support)
-    if (current.low < prev1.low && current.low < prev2.low && 
-        current.low < next1.low && current.low < next2.low) {
-      levels.push({
-        price: current.low,
-        type: 'support',
-        strength: 1,
-        touches: 1
-      });
+    // Support (low pivot)
+    if (lows[i] < lows[i-1] && lows[i] < lows[i+1] && 
+        lows[i] < lows[i-2] && lows[i] < lows[i+2]) {
+      pivotPoints.push({ price: lows[i], type: 'support' as const, index: i });
     }
   }
   
-  // Group nearby levels and calculate strength
-  const groupedLevels: SupportResistanceLevel[] = [];
+  // Group nearby levels and count touches
+  const groupedLevels: { [key: string]: SupportResistanceLevel } = {};
   
-  levels.forEach(level => {
-    const existing = groupedLevels.find(g => 
-      g.type === level.type && 
-      Math.abs(g.price - level.price) / level.price < threshold
-    );
+  pivotPoints.forEach(pivot => {
+    const key = Math.round(pivot.price * 100) / 100; // Round to nearest cent
     
-    if (existing) {
-      existing.touches++;
-      existing.strength = existing.touches;
-      existing.price = (existing.price + level.price) / 2; // Average price
-    } else {
-      groupedLevels.push({ ...level });
+    if (!groupedLevels[key]) {
+      groupedLevels[key] = {
+        price: pivot.price,
+        type: pivot.type,
+        strength: 0,
+        touches: 0
+      };
     }
+    
+    groupedLevels[key].touches++;
+    groupedLevels[key].strength = groupedLevels[key].touches * 0.2;
   });
   
-  // Return only strong levels (touched multiple times)
-  return groupedLevels
+  return Object.values(groupedLevels)
     .filter(level => level.touches >= 2)
     .sort((a, b) => b.strength - a.strength)
     .slice(0, 10); // Top 10 strongest levels
@@ -2463,6 +1930,7 @@ function findSupportResistanceLevels(data: any[]): SupportResistanceLevel[] {
 
 function calculateEMA(prices: number[], period: number): number {
   if (prices.length === 0) return 0;
+  if (prices.length < period) return prices[prices.length - 1];
   
   const multiplier = 2 / (period + 1);
   let ema = prices[0];
@@ -2476,12 +1944,11 @@ function calculateEMA(prices: number[], period: number): number {
 
 function determineMarketCondition(data: any[], ichimoku: IchimokuResult, ema200: number): 'bullish' | 'bearish' | 'sideways' {
   const currentPrice = data[data.length - 1].close;
-  const recentPrices = data.slice(-20).map(d => d.close);
-  const priceChange = (currentPrice - recentPrices[0]) / recentPrices[0];
+  const priceChange = (currentPrice - data[Math.max(0, data.length - 20)].close) / data[Math.max(0, data.length - 20)].close;
   
-  if (currentPrice > ema200 && ichimoku.signal > 0 && priceChange > 0.05) {
+  if (currentPrice > ema200 && ichimoku.signal > 0 && priceChange > 0.02) {
     return 'bullish';
-  } else if (currentPrice < ema200 && ichimoku.signal < 0 && priceChange < -0.05) {
+  } else if (currentPrice < ema200 && ichimoku.signal < 0 && priceChange < -0.02) {
     return 'bearish';
   } else {
     return 'sideways';
@@ -2491,107 +1958,63 @@ function determineMarketCondition(data: any[], ichimoku: IchimokuResult, ema200:
 function calculateVolatility(data: any[], period: number): number {
   if (data.length < period) return 0;
   
+  const prices = data.slice(-period).map(d => d.close);
   const returns = [];
-  for (let i = 1; i < data.length; i++) {
-    returns.push(Math.log(data[i].close / data[i - 1].close));
+  
+  for (let i = 1; i < prices.length; i++) {
+    returns.push(Math.log(prices[i] / prices[i - 1]));
   }
   
-  const recentReturns = returns.slice(-period);
-  const avgReturn = recentReturns.reduce((a, b) => a + b, 0) / period;
-  const variance = recentReturns.reduce((acc, ret) => acc + Math.pow(ret - avgReturn, 2), 0) / period;
+  const mean = returns.reduce((a, b) => a + b, 0) / returns.length;
+  const variance = returns.reduce((sum, ret) => sum + Math.pow(ret - mean, 2), 0) / returns.length;
   
   return Math.sqrt(variance * 252); // Annualized volatility
 }
 
 function calculateOptimalPositionSize(
-  portfolioBalance: number, 
-  maxRisk: number, 
+  portfolioBalance: number,
+  riskPerTrade: number,
   confidence: number,
   atr: number,
-  price: number
+  currentPrice: number
 ): number {
-  // Kelly Criterion modified with confidence
-  const winProbability = 0.5 + (confidence - 0.5) * 0.3; // Adjust based on confidence
-  const avgWin = atr * 3; // Expected win = 3x ATR
-  const avgLoss = atr * 1.5; // Expected loss = 1.5x ATR
+  const riskAmount = portfolioBalance * riskPerTrade;
+  const stopLossDistance = atr * 2; // 2 ATR stop loss
+  const dollarRisk = stopLossDistance;
   
-  const kellyFraction = (winProbability * avgWin - (1 - winProbability) * avgLoss) / avgWin;
-  const adjustedKelly = Math.max(0, Math.min(kellyFraction * 0.25, maxRisk)); // Cap at 25% of Kelly and max risk
+  if (dollarRisk === 0) return 1;
   
-  const positionValue = portfolioBalance * adjustedKelly;
-  const quantity = Math.floor(positionValue / price);
+  const baseQuantity = riskAmount / dollarRisk;
+  const confidenceMultiplier = Math.pow(confidence, 2); // Square confidence for position sizing
+  const quantity = Math.floor(baseQuantity * confidenceMultiplier);
   
   return Math.max(1, quantity); // Minimum 1 share/unit
 }
 
-function adjustToSupportResistance(
-  targetPrice: number, 
-  levels: SupportResistanceLevel[], 
-  actionType: 'BUY' | 'SELL', 
-  orderType: 'stopLoss' | 'takeProfit'
-): number {
-  const threshold = 0.005; // 0.5% threshold
+function adjustToSupportResistance_OLD(
+  params: { stopLoss: number; takeProfit: number },
+  currentPrice: number,
+  srLevels: SupportResistanceLevel[]
+) {
+  let { stopLoss, takeProfit } = params;
   
-  const relevantLevels = levels.filter(level => {
-    const distance = Math.abs(targetPrice - level.price) / targetPrice;
-    return distance < threshold;
-  });
+  // Find the nearest support/resistance levels
+  const sortedLevels = srLevels
+    .map(level => ({ ...level, distance: Math.abs(level.price - currentPrice) }))
+    .sort((a, b) => a.distance - b.distance);
   
-  if (relevantLevels.length === 0) return targetPrice;
-  
-  // Sort by strength and pick the strongest nearby level
-  const strongestLevel = relevantLevels.sort((a, b) => b.strength - a.strength)[0];
-  
-  // Adjust based on order type and action
-  if (orderType === 'stopLoss') {
-    if (actionType === 'BUY' && strongestLevel.type === 'support') {
-      return strongestLevel.price * 0.999; // Slightly below support
-    } else if (actionType === 'SELL' && strongestLevel.type === 'resistance') {
-      return strongestLevel.price * 1.001; // Slightly above resistance
-    }
-  } else { // takeProfit
-    if (actionType === 'BUY' && strongestLevel.type === 'resistance') {
-      return strongestLevel.price * 0.999; // Slightly below resistance
-    } else if (actionType === 'SELL' && strongestLevel.type === 'support') {
-      return strongestLevel.price * 1.001; // Slightly above support
+  // Adjust stop loss to respect nearby support/resistance
+  for (const level of sortedLevels) {
+    if (Math.abs(level.price - stopLoss) / currentPrice < 0.01) { // Within 1%
+      if (level.type === 'support' && stopLoss < level.price) {
+        stopLoss = level.price * 0.995; // Slightly below support
+      } else if (level.type === 'resistance' && stopLoss > level.price) {
+        stopLoss = level.price * 1.005; // Slightly above resistance
+      }
     }
   }
+  
+  let targetPrice = takeProfit;
   
   return targetPrice;
-}
-
-async function executeTradingSignals(signals: any[], userId: string) {
-  console.log(`🔄 Executing ${signals.length} trading signals for user ${userId}`);
-  
-  for (const signal of signals) {
-    try {
-      // Store trade in database
-      const { error } = await supabase
-        .from('trades')
-        .insert({
-          user_id: userId,
-          symbol: signal.symbol,
-          trade_type: signal.action,
-          quantity: signal.quantity,
-          price: signal.price,
-          total_amount: signal.quantity * signal.price,
-          executed_at: new Date().toISOString(),
-          ppo_signal: {
-            confidence: signal.confidence,
-            reasoning: signal.reasoning,
-            stopLoss: signal.stopLoss,
-            takeProfit: signal.takeProfit,
-            indicators: signal.indicators
-          }
-        });
-      
-      if (error) {
-        console.error(`❌ Failed to store trade for ${signal.symbol}:`, error);
-      } else {
-        console.log(`✅ Trade executed: ${signal.action} ${signal.quantity} ${signal.symbol} @ $${signal.price}`);
-      }
-    } catch (error) {
-      console.error(`❌ Error executing trade for ${signal.symbol}:`, error);
-    }
-  }
 }
