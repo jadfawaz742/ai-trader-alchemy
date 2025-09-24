@@ -109,7 +109,9 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('Error in execute-trade function:', error);
-    return new Response(JSON.stringify({ error: error.message }), {
+    return new Response(JSON.stringify({ 
+      error: error instanceof Error ? error.message : 'Unknown error occurred' 
+    }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
@@ -265,7 +267,10 @@ async function executeTrade(portfolioId: string, symbol: string, tradeType: stri
     return { success: true, trade };
   } catch (error) {
     console.error('Error executing trade:', error);
-    return { success: false, error: error.message };
+    return { 
+      success: false, 
+      error: error instanceof Error ? error.message : 'Unknown error occurred' 
+    };
   }
 }
 

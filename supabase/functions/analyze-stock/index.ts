@@ -94,22 +94,24 @@ serve(async (req) => {
       });
     }
 
-    // Update market data cache
-    await supabase
-      .from('market_data')
-      .upsert({
-        symbol: symbol.toUpperCase(),
-        current_price: marketData.currentPrice,
-        price_change: marketData.priceChange,
-        price_change_percent: marketData.priceChangePercent,
-        volume: marketData.volume,
-        market_cap: marketData.marketCap,
-        pe_ratio: marketData.peRatio,
-        raw_data: marketData,
-        last_updated: new Date().toISOString(),
-      }, {
-        onConflict: 'symbol'
-      });
+    // Update market data cache only if marketData exists
+    if (marketData) {
+      await supabase
+        .from('market_data')
+        .upsert({
+          symbol: symbol.toUpperCase(),
+          current_price: marketData.currentPrice,
+          price_change: marketData.priceChange,
+          price_change_percent: marketData.priceChangePercent,
+          volume: marketData.volume,
+          market_cap: marketData.marketCap,
+          pe_ratio: marketData.peRatio,
+          raw_data: marketData,
+          last_updated: new Date().toISOString(),
+        }, {
+          onConflict: 'symbol'
+        });
+    }
 
     return new Response(JSON.stringify({ 
       success: true, 
@@ -121,7 +123,9 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('Error in analyze-stock function:', error);
-    return new Response(JSON.stringify({ error: error.message }), {
+    return new Response(JSON.stringify({ 
+      error: error instanceof Error ? error.message : 'Unknown error occurred' 
+    }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
