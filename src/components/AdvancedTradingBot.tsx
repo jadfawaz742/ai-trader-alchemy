@@ -40,7 +40,7 @@ export default function AdvancedTradingBot() {
   const [isRunning, setIsRunning] = useState(false);
   const [signals, setSignals] = useState<TradingSignal[]>([]);
   const [botConfig, setBotConfig] = useState<BotConfig>({
-    symbols: ['BTC', 'ETH', 'AAPL', 'GOOGL', 'MSFT'],
+    symbols: ['BTC', 'ETH'], // Reduced for better performance
     mode: 'simulation',
     maxRisk: 0.02,
     portfolioBalance: 100000,
@@ -73,7 +73,7 @@ export default function AdvancedTradingBot() {
         body: {
           symbols: botConfig.symbols,
           mode: botConfig.mode,
-          maxRisk: botConfig.maxRisk,
+          risk: 'medium', // Use risk level instead of maxRisk
           portfolioBalance: botConfig.portfolioBalance,
           enableShorts: botConfig.enableShorts
         }

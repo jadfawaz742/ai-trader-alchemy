@@ -141,7 +141,7 @@ serve(async (req) => {
     }
 
     const { 
-      symbols = ['BTC', 'ETH', 'AAPL', 'GOOGL', 'MSFT'], 
+      symbols = ['BTC', 'ETH'], // Reduced default symbols
       mode = 'simulation', 
       risk = 'medium',
       portfolioBalance = 100000,
@@ -149,37 +149,39 @@ serve(async (req) => {
     } = await req.json();
 
     console.log(`🤖 Enhanced PPO Trading Bot Starting - Mode: ${mode}, Risk: ${risk}`);
-    console.log(`📊 Training with 2-year historical data (80/20 split)`);
+    console.log(`📊 Processing ${symbols.length} symbols with optimized historical data`);
 
     const tradingSignals = [];
+    const maxSymbols = 3; // Limit concurrent processing
+    const symbolsToProcess = symbols.slice(0, maxSymbols);
 
-    for (const symbol of symbols) {
+    for (const symbol of symbolsToProcess) {
       try {
-        console.log(`📈 Fetching 2-year historical data for ${symbol}...`);
+        console.log(`📈 Processing ${symbol}...`);
         
-        // Fetch comprehensive 2-year historical data
-        const historicalData = await fetch2YearHistoricalData(symbol);
-        if (!historicalData || historicalData.length < 100) {
+        // Fetch optimized historical data (1 year instead of 2 for resource efficiency)
+        const historicalData = await fetchOptimizedHistoricalData(symbol);
+        if (!historicalData || historicalData.length < 50) {
           console.log(`⚠️ Insufficient historical data for ${symbol}, skipping`);
           continue;
         }
 
         console.log(`📊 Retrieved ${historicalData.length} data points for ${symbol}`);
 
-        // Split data 80/20 for training/testing
+        // Split data 80/20 for training/testing (use smaller dataset)
         const splitIndex = Math.floor(historicalData.length * 0.8);
         const trainingData = historicalData.slice(0, splitIndex);
         const testingData = historicalData.slice(splitIndex);
 
         console.log(`🎓 Training: ${trainingData.length} periods, Testing: ${testingData.length} periods`);
 
-        // Train adaptive PPO model on historical data
-        const trainingResult = await trainAdaptivePPOModel(trainingData, symbol, RISK_LEVELS[risk]);
+        // Train lightweight PPO model
+        const trainingResult = await trainLightweightPPOModel(trainingData, symbol, RISK_LEVELS[risk]);
 
         console.log(`🧠 Model trained - Accuracy: ${(trainingResult.performance.accuracy * 100).toFixed(1)}%, Win Rate: ${(trainingResult.performance.winRate * 100).toFixed(1)}%`);
 
         // Analyze current market state with enhanced confluence scoring
-        const latestData = historicalData.slice(-200); // Use recent 200 periods for current analysis
+        const latestData = historicalData.slice(-100); // Use recent 100 periods for current analysis
         const currentState = await analyzeMarketStateWithConfluence(latestData, symbol, trainingResult, RISK_LEVELS[risk]);
         
         console.log(`📊 Confluence Score: ${(currentState.confluenceScore * 100).toFixed(1)}% (Required: ${(RISK_LEVELS[risk].minConfluence * 100).toFixed(1)}%)`);
@@ -236,8 +238,14 @@ serve(async (req) => {
                         `Low confidence (${tradingDecision.confidence.toFixed(1)}%)`;
           console.log(`⏸️ HOLD ${symbol} - ${reason}`);
         }
+        
+        // Add small delay between symbols to prevent resource overload
+        await new Promise(resolve => setTimeout(resolve, 100));
+        
       } catch (error) {
         console.error(`❌ Error analyzing ${symbol}:`, error);
+        // Continue with next symbol instead of failing completely
+        continue;
       }
     }
 
@@ -270,32 +278,32 @@ serve(async (req) => {
   }
 });
 
-// Enhanced market data fetching for 2-year historical data
-async function fetch2YearHistoricalData(symbol: string): Promise<HistoricalData[] | null> {
+// Optimized historical data fetching (1 year instead of 2 for resource efficiency)
+async function fetchOptimizedHistoricalData(symbol: string): Promise<HistoricalData[] | null> {
   const isCrypto = ['BTC', 'ETH', 'ADA', 'DOT', 'SOL'].includes(symbol);
   
   if (isCrypto && bybitApiKey) {
-    return await fetchBybit2YearData(symbol);
+    return await fetchBybit1YearData(symbol);
   } else {
-    // Generate comprehensive 2-year historical data for stocks
-    return generateComprehensive2YearData(symbol);
+    // Generate optimized historical data for stocks
+    return generateOptimized1YearData(symbol);
   }
 }
 
-async function fetchBybit2YearData(symbol: string): Promise<HistoricalData[] | null> {
+async function fetchBybit1YearData(symbol: string): Promise<HistoricalData[] | null> {
   try {
     const bybitSymbol = symbol + 'USDT';
     const allData: HistoricalData[] = [];
     
-    // Fetch data in chunks (maximum 1000 per request)
+    // Fetch 1 year of data in smaller chunks to avoid memory issues
     const now = Date.now();
-    const twoYearsAgo = now - (2 * 365 * 24 * 60 * 60 * 1000);
-    const chunkSize = 1000;
+    const oneYearAgo = now - (365 * 24 * 60 * 60 * 1000);
+    const chunkSize = 500; // Reduced chunk size
     let currentTime = now;
     
-    console.log(`📊 Fetching 2-year Bybit data for ${bybitSymbol}...`);
+    console.log(`📊 Fetching optimized 1-year Bybit data for ${bybitSymbol}...`);
     
-    while (currentTime > twoYearsAgo && allData.length < 4000) {
+    while (currentTime > oneYearAgo && allData.length < 1000) {
       const response = await fetch(`https://api.bybit.com/v5/market/kline?category=spot&symbol=${bybitSymbol}&interval=240&limit=${chunkSize}&end=${currentTime}`, {
         headers: { 'X-BAPI-API-KEY': bybitApiKey || '' }
       });
@@ -321,53 +329,53 @@ async function fetchBybit2YearData(symbol: string): Promise<HistoricalData[] | n
         allData.push(...chunkData);
         currentTime = Math.min(...data.result.list.map((k: any[]) => parseInt(k[0]))) - 1;
         
-        // Rate limiting
-        await new Promise(resolve => setTimeout(resolve, 100));
+        // Rate limiting and memory management
+        await new Promise(resolve => setTimeout(resolve, 200));
       } else {
         break;
       }
     }
     
-    console.log(`📈 Retrieved ${allData.length} Bybit data points for ${symbol}`);
-    return allData.reverse(); // Oldest to newest
+    console.log(`📈 Retrieved ${allData.length} optimized Bybit data points for ${symbol}`);
+    return allData.reverse().slice(-1000); // Keep only most recent 1000 points
   } catch (error) {
-    console.error(`Bybit 2-year data fetch error for ${symbol}:`, error);
+    console.error(`Optimized Bybit data fetch error for ${symbol}:`, error);
     return null;
   }
 }
 
-function generateComprehensive2YearData(symbol: string): HistoricalData[] {
-  const periods = 2000; // 2 years of 4-hour periods
+function generateOptimized1YearData(symbol: string): HistoricalData[] {
+  const periods = 800; // Reduced from 2000 to 800 periods
   const data: HistoricalData[] = [];
   let basePrice = Math.random() * 200 + 100;
   let trend = (Math.random() - 0.5) * 0.001;
   let volume = 1000000 + Math.random() * 5000000;
   
-  console.log(`📊 Generating 2-year synthetic data for ${symbol} (${periods} periods)`);
+  console.log(`📊 Generating optimized 1-year synthetic data for ${symbol} (${periods} periods)`);
   
   for (let i = 0; i < periods; i++) {
-    // Market cycles and volatility changes
-    const cyclePhase = Math.sin((i / periods) * Math.PI * 4); // 4 cycles over 2 years
-    const volatility = 0.015 + Math.abs(cyclePhase) * 0.025 + Math.random() * 0.01;
+    // Simplified market cycles
+    const cyclePhase = Math.sin((i / periods) * Math.PI * 2);
+    const volatility = 0.015 + Math.abs(cyclePhase) * 0.015 + Math.random() * 0.005;
     
-    // Trend changes based on cycle
-    if (i % 100 === 0) {
-      trend = (Math.random() - 0.5) * 0.002 + cyclePhase * 0.0005;
+    // Trend changes
+    if (i % 50 === 0) {
+      trend = (Math.random() - 0.5) * 0.001 + cyclePhase * 0.0003;
     }
     
     const change = trend + (Math.random() - 0.5) * volatility;
     basePrice *= (1 + change);
     
     // Volume patterns
-    volume *= (0.7 + Math.random() * 0.6);
+    volume *= (0.8 + Math.random() * 0.4);
     
-    const high = basePrice * (1 + Math.random() * 0.025);
-    const low = basePrice * (1 - Math.random() * 0.025);
+    const high = basePrice * (1 + Math.random() * 0.015);
+    const low = basePrice * (1 - Math.random() * 0.015);
     
     data.push({
       timestamp: Date.now() - (periods - i) * 4 * 60 * 60 * 1000,
       date: new Date(Date.now() - (periods - i) * 4 * 60 * 60 * 1000),
-      open: basePrice * (1 + (Math.random() - 0.5) * 0.01),
+      open: basePrice * (1 + (Math.random() - 0.5) * 0.005),
       high,
       low,
       close: basePrice,
@@ -378,19 +386,19 @@ function generateComprehensive2YearData(symbol: string): HistoricalData[] {
   return data;
 }
 
-// Adaptive PPO Model Training
-async function trainAdaptivePPOModel(trainingData: HistoricalData[], symbol: string, riskLevel: RiskLevel): Promise<TrainingResult> {
-  console.log(`🧠 Training adaptive PPO model for ${symbol} with ${trainingData.length} periods...`);
+// Lightweight PPO Model Training (optimized for resource efficiency)
+async function trainLightweightPPOModel(trainingData: HistoricalData[], symbol: string, riskLevel: RiskLevel): Promise<TrainingResult> {
+  console.log(`🧠 Training lightweight PPO model for ${symbol} with ${trainingData.length} periods...`);
   
   const config: PPOConfig = {
-    learningRate: 0.0003,
+    learningRate: 0.001,
     epsilon: 0.2,
-    epochs: 10,
-    batchSize: 64,
+    epochs: 5, // Reduced from 10 to 5
+    batchSize: 32, // Reduced batch size
     gamma: 0.99,
     lambda: 0.95,
     adaptiveLearning: true,
-    memorySize: 1000
+    memorySize: 500 // Reduced memory
   };
   
   const trades = [];
@@ -401,9 +409,13 @@ async function trainAdaptivePPOModel(trainingData: HistoricalData[], symbol: str
   let peakValue = 100000;
   let currentValue = 100000;
   
-  // Simulate trading on training data
-  for (let i = 200; i < trainingData.length - 1; i++) {
-    const historicalSlice = trainingData.slice(i - 200, i);
+  // Optimized simulation - process fewer data points
+  const step = Math.max(1, Math.floor(trainingData.length / 200)); // Sample data points
+  
+  for (let i = 100; i < trainingData.length - 1; i += step) {
+    if (trades.length >= 100) break; // Limit number of trades processed
+    
+    const historicalSlice = trainingData.slice(Math.max(0, i - 100), i);
     const state = await analyzeMarketState(historicalSlice, symbol);
     
     // Calculate confluence score
@@ -426,7 +438,7 @@ async function trainAdaptivePPOModel(trainingData: HistoricalData[], symbol: str
       
       if (action.action !== 'HOLD') {
         const entry = trainingData[i];
-        const exit = trainingData[i + 1];
+        const exit = trainingData[Math.min(i + 1, trainingData.length - 1)];
         
         let returnPct = 0;
         if (action.action === 'BUY') {
@@ -436,7 +448,7 @@ async function trainAdaptivePPOModel(trainingData: HistoricalData[], symbol: str
         }
         
         totalReturns += returnPct;
-        currentValue *= (1 + returnPct * 0.1); // 10% position size
+        currentValue *= (1 + returnPct * 0.1);
         
         if (returnPct > 0) wins++;
         else losses++;
@@ -469,7 +481,7 @@ async function trainAdaptivePPOModel(trainingData: HistoricalData[], symbol: str
     winRate
   };
   
-  console.log(`✅ Training complete - Win Rate: ${(winRate * 100).toFixed(1)}%, Total Trades: ${trades.length}`);
+  console.log(`✅ Lightweight training complete - Win Rate: ${(winRate * 100).toFixed(1)}%, Total Trades: ${trades.length}`);
   
   return {
     model: {
@@ -479,7 +491,7 @@ async function trainAdaptivePPOModel(trainingData: HistoricalData[], symbol: str
       trainingPeriods: trainingData.length
     },
     performance,
-    convergence: trades.length > 50
+    convergence: trades.length > 20 // Reduced threshold
   };
 }
 
