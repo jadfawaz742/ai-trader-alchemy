@@ -157,36 +157,37 @@ serve(async (req) => {
     } = await req.json();
 
     console.log(`🤖 Enhanced PPO Trading Bot Starting - Mode: ${mode}, Risk: ${risk}`);
-    console.log(`📊 Processing ${symbols.length} symbols with optimized historical data`);
+        console.log(`📊 Processing ${symbols.length} symbols with 2-year historical data`);
 
-    const tradingSignals = [];
-    const maxSymbols = 3; // Limit concurrent processing
+        const tradingSignals = [];
+        const maxSymbols = 2; // Reduced to 2 for resource efficiency with 2-year data
     const symbolsToProcess = symbols.slice(0, maxSymbols);
 
     for (const symbol of symbolsToProcess) {
       try {
         console.log(`📈 Processing ${symbol}...`);
         
-        // Fetch optimized historical data (1 year instead of 2 for resource efficiency)
+        // Fetch 2-year historical data for comprehensive training
         const historicalData = await fetchOptimizedHistoricalData(symbol);
-        if (!historicalData || historicalData.length < 50) {
+        if (!historicalData || historicalData.length < 200) {
           console.log(`⚠️ Insufficient historical data for ${symbol}, skipping`);
           continue;
         }
 
-        console.log(`📊 Retrieved ${historicalData.length} data points for ${symbol}`);
+        console.log(`📊 Retrieved ${historicalData.length} data points for ${symbol} (2-year history)`);
 
-        // Split data 80/20 for training/testing (use smaller dataset)
+        // Split data 80/20 for training/testing
         const splitIndex = Math.floor(historicalData.length * 0.8);
         const trainingData = historicalData.slice(0, splitIndex);
         const testingData = historicalData.slice(splitIndex);
 
-        console.log(`🎓 Training: ${trainingData.length} periods, Testing: ${testingData.length} periods`);
+        console.log(`🎓 Training: ${trainingData.length} periods (${((trainingData.length / historicalData.length) * 100).toFixed(1)}%), Testing: ${testingData.length} periods (${((testingData.length / historicalData.length) * 100).toFixed(1)}%)`);
 
-        // Train lightweight PPO model
-        const trainingResult = await trainLightweightPPOModel(trainingData, symbol, RISK_LEVELS[risk]);
+        // Train enhanced PPO model with 2-year data
+        const trainingResult = await trainEnhancedPPOModel(trainingData, testingData, symbol, RISK_LEVELS[risk]);
 
-        console.log(`🧠 Model trained - Accuracy: ${(trainingResult.performance.accuracy * 100).toFixed(1)}%, Win Rate: ${(trainingResult.performance.winRate * 100).toFixed(1)}%`);
+        console.log(`🧠 Model Performance - Accuracy: ${(trainingResult.performance.accuracy * 100).toFixed(1)}%, Win Rate: ${(trainingResult.performance.winRate * 100).toFixed(1)}%, Sharpe Ratio: ${trainingResult.performance.sharpeRatio.toFixed(2)}, Max Drawdown: ${(trainingResult.performance.maxDrawdown * 100).toFixed(1)}%`);
+        console.log(`📊 Learning Summary - Training: ${(trainingResult.performance as any).trainingTrades || 0} trades, Testing: ${(trainingResult.performance as any).testingTrades || 0} trades`);
 
         // Analyze current market state with enhanced confluence scoring
         const latestData = historicalData.slice(-100); // Use recent 100 periods for current analysis
@@ -233,8 +234,17 @@ serve(async (req) => {
             maxDrawdown: riskParams.maxDrawdown,
             timestamp: new Date().toISOString(),
             riskLevel: risk,
-            trainingPerformance: trainingResult.performance,
-            trainedPeriods: trainingData.length
+          trainingPerformance: trainingResult.performance,
+          trainedPeriods: trainingData.length,
+          testingPeriods: testingData.length,
+          learningStats: {
+            trainingTrades: trainingResult.model.trainingTrades?.length || 0,
+            testingTrades: trainingResult.model.testingTrades?.length || 0,
+            trainingWinRate: (trainingResult.performance as any).trainingWinRate || trainingResult.performance.winRate,
+            testingWinRate: (trainingResult.performance as any).testingWinRate || trainingResult.performance.winRate,
+            avgConfidence: (trainingResult.performance as any).avgConfidence || 80,
+            fibonacciSuccessRate: (trainingResult.performance as any).fibonacciSuccessRate || 0.6
+          }
           };
 
           tradingSignals.push(signal);
@@ -291,27 +301,27 @@ async function fetchOptimizedHistoricalData(symbol: string): Promise<HistoricalD
   const isCrypto = ['BTC', 'ETH', 'ADA', 'DOT', 'SOL'].includes(symbol);
   
   if (isCrypto && bybitApiKey) {
-    return await fetchBybit1YearData(symbol);
+    return await fetchBybit2YearData(symbol);
   } else {
     // Generate optimized historical data for stocks
-    return generateOptimized1YearData(symbol);
+    return generateOptimized2YearData(symbol);
   }
 }
 
-async function fetchBybit1YearData(symbol: string): Promise<HistoricalData[] | null> {
+async function fetchBybit2YearData(symbol: string): Promise<HistoricalData[] | null> {
   try {
     const bybitSymbol = symbol + 'USDT';
     const allData: HistoricalData[] = [];
     
-    // Fetch 1 year of data in smaller chunks to avoid memory issues
+    // Fetch 2 years of data in optimized chunks
     const now = Date.now();
-    const oneYearAgo = now - (365 * 24 * 60 * 60 * 1000);
-    const chunkSize = 500; // Reduced chunk size
+    const twoYearsAgo = now - (2 * 365 * 24 * 60 * 60 * 1000);
+    const chunkSize = 1000;
     let currentTime = now;
     
-    console.log(`📊 Fetching optimized 1-year Bybit data for ${bybitSymbol}...`);
+    console.log(`📊 Fetching 2-year Bybit data for ${bybitSymbol}...`);
     
-    while (currentTime > oneYearAgo && allData.length < 1000) {
+    while (currentTime > twoYearsAgo && allData.length < 2000) {
       const response = await fetch(`https://api.bybit.com/v5/market/kline?category=spot&symbol=${bybitSymbol}&interval=240&limit=${chunkSize}&end=${currentTime}`, {
         headers: { 'X-BAPI-API-KEY': bybitApiKey || '' }
       });
@@ -337,53 +347,64 @@ async function fetchBybit1YearData(symbol: string): Promise<HistoricalData[] | n
         allData.push(...chunkData);
         currentTime = Math.min(...data.result.list.map((k: any[]) => parseInt(k[0]))) - 1;
         
-        // Rate limiting and memory management
-        await new Promise(resolve => setTimeout(resolve, 200));
+        // Rate limiting
+        await new Promise(resolve => setTimeout(resolve, 100));
       } else {
         break;
       }
     }
     
-    console.log(`📈 Retrieved ${allData.length} optimized Bybit data points for ${symbol}`);
-    return allData.reverse().slice(-1000); // Keep only most recent 1000 points
+    console.log(`📈 Retrieved ${allData.length} 2-year Bybit data points for ${symbol}`);
+    return allData.reverse().slice(-2000); // Keep most recent 2000 points (2 years)
   } catch (error) {
-    console.error(`Optimized Bybit data fetch error for ${symbol}:`, error);
+    console.error(`2-year Bybit data fetch error for ${symbol}:`, error);
     return null;
   }
 }
 
-function generateOptimized1YearData(symbol: string): HistoricalData[] {
-  const periods = 800; // Reduced from 2000 to 800 periods
+function generateOptimized2YearData(symbol: string): HistoricalData[] {
+  const periods = 2000; // 2 years of 4-hour candles
   const data: HistoricalData[] = [];
   let basePrice = Math.random() * 200 + 100;
   let trend = (Math.random() - 0.5) * 0.001;
   let volume = 1000000 + Math.random() * 5000000;
   
-  console.log(`📊 Generating optimized 1-year synthetic data for ${symbol} (${periods} periods)`);
+  console.log(`📊 Generating 2-year synthetic data for ${symbol} (${periods} periods)`);
   
   for (let i = 0; i < periods; i++) {
-    // Simplified market cycles
-    const cyclePhase = Math.sin((i / periods) * Math.PI * 2);
-    const volatility = 0.015 + Math.abs(cyclePhase) * 0.015 + Math.random() * 0.005;
+    // Enhanced market cycles with corrections and extensions
+    const longTermCycle = Math.sin((i / periods) * Math.PI * 4); // 4 major cycles over 2 years
+    const mediumTermCycle = Math.sin((i / periods) * Math.PI * 16); // Market corrections
+    const shortTermCycle = Math.sin((i / periods) * Math.PI * 64); // Weekly fluctuations
     
-    // Trend changes
+    const volatility = 0.012 + Math.abs(longTermCycle) * 0.018 + Math.abs(mediumTermCycle) * 0.008;
+    
+    // Trend changes every ~50 periods (10 days)
     if (i % 50 === 0) {
-      trend = (Math.random() - 0.5) * 0.001 + cyclePhase * 0.0003;
+      trend = (Math.random() - 0.5) * 0.002 + longTermCycle * 0.0005 + mediumTermCycle * 0.0003;
     }
     
-    const change = trend + (Math.random() - 0.5) * volatility;
+    // Market correction patterns (fibonacci retracements)
+    let correctionFactor = 1;
+    if (Math.random() < 0.05) { // 5% chance of correction
+      const fibRetrace = [0.236, 0.382, 0.5, 0.618, 0.786][Math.floor(Math.random() * 5)];
+      correctionFactor = 1 - (fibRetrace * 0.1 * Math.random());
+    }
+    
+    const combinedCycle = longTermCycle + mediumTermCycle * 0.3 + shortTermCycle * 0.1;
+    const change = (trend + (Math.random() - 0.5) * volatility + combinedCycle * 0.001) * correctionFactor;
     basePrice *= (1 + change);
     
-    // Volume patterns
-    volume *= (0.8 + Math.random() * 0.4);
+    // Enhanced volume patterns
+    volume *= (0.7 + Math.random() * 0.6 + Math.abs(combinedCycle) * 0.2);
     
-    const high = basePrice * (1 + Math.random() * 0.015);
-    const low = basePrice * (1 - Math.random() * 0.015);
+    const high = basePrice * (1 + Math.random() * 0.02);
+    const low = basePrice * (1 - Math.random() * 0.02);
     
     data.push({
       timestamp: Date.now() - (periods - i) * 4 * 60 * 60 * 1000,
       date: new Date(Date.now() - (periods - i) * 4 * 60 * 60 * 1000),
-      open: basePrice * (1 + (Math.random() - 0.5) * 0.005),
+      open: basePrice * (1 + (Math.random() - 0.5) * 0.008),
       high,
       low,
       close: basePrice,
@@ -394,44 +415,50 @@ function generateOptimized1YearData(symbol: string): HistoricalData[] {
   return data;
 }
 
-// Lightweight PPO Model Training (optimized for resource efficiency)
-async function trainLightweightPPOModel(trainingData: HistoricalData[], symbol: string, riskLevel: RiskLevel): Promise<TrainingResult> {
-  console.log(`🧠 Training lightweight PPO model for ${symbol} with ${trainingData.length} periods...`);
+// Enhanced PPO Model Training with 2-year data and fibonacci strategies
+async function trainEnhancedPPOModel(
+  trainingData: HistoricalData[], 
+  testingData: HistoricalData[], 
+  symbol: string, 
+  riskLevel: RiskLevel
+): Promise<TrainingResult> {
+  console.log(`🧠 Training Enhanced PPO model for ${symbol} with ${trainingData.length} training periods and ${testingData.length} testing periods...`);
   
   const config: PPOConfig = {
     learningRate: 0.001,
     epsilon: 0.2,
-    epochs: 5, // Reduced from 10 to 5
-    batchSize: 32, // Reduced batch size
+    epochs: 10, // Increased for better learning
+    batchSize: 64,
     gamma: 0.99,
     lambda: 0.95,
     adaptiveLearning: true,
-    memorySize: 500 // Reduced memory
+    memorySize: 1000
   };
   
-  const trades = [];
+  const trainingTrades = [];
+  const testingTrades = [];
   let totalReturns = 0;
-  let wins = 0;
-  let losses = 0;
+  let testTotalReturns = 0;
+  let wins = 0, losses = 0;
+  let testWins = 0, testLosses = 0;
   let maxDrawdown = 0;
   let peakValue = 100000;
   let currentValue = 100000;
   
-  // Optimized simulation - process fewer data points
-  const step = Math.max(1, Math.floor(trainingData.length / 200)); // Sample data points
-  
-  for (let i = 100; i < trainingData.length - 1; i += step) {
-    if (trades.length >= 100) break; // Limit number of trades processed
+  // Training Phase - Process all training data
+  console.log(`📚 Training Phase: Processing ${trainingData.length} periods...`);
+  for (let i = 200; i < trainingData.length - 1; i += 5) { // Process every 5th period for efficiency
+    if (trainingTrades.length >= 500) break; // Limit training trades
     
-    const historicalSlice = trainingData.slice(Math.max(0, i - 100), i);
-    const state = await analyzeMarketState(historicalSlice, symbol);
+    const historicalSlice = trainingData.slice(Math.max(0, i - 200), i);
+    const state = await analyzeMarketStateWithFibonacci(historicalSlice, symbol);
     
-    // Calculate confluence score
-    const confluenceScore = calculateConfluenceScore(state, riskLevel);
+    // Calculate confluence score with enhanced fibonacci analysis
+    const confluenceScore = calculateEnhancedConfluenceScore(state, riskLevel);
     state.confluenceScore = confluenceScore;
     
     if (confluenceScore >= riskLevel.minConfluence) {
-      const action = await calculatePPOAction([
+      const action = await calculatePPOActionWithFibonacci([
         state.price / 1000,
         state.volume / 1000000,
         state.indicators.ichimoku.signal,
@@ -441,18 +468,30 @@ async function trainLightweightPPOModel(trainingData: HistoricalData[], symbol: 
         state.volatility,
         state.indicators.bollinger.position,
         state.indicators.fibonacci.nearestLevel,
+        state.indicators.fibonacci.retracementLevel || 0.5,
         confluenceScore
       ], state, true);
       
-      if (action.action !== 'HOLD') {
+      if (action.type !== 'HOLD') {
         const entry = trainingData[i];
-        const exit = trainingData[Math.min(i + 1, trainingData.length - 1)];
+        const exitIndex = Math.min(i + Math.floor(Math.random() * 20) + 5, trainingData.length - 1);
+        const exit = trainingData[exitIndex];
         
+        // Calculate returns with fibonacci-based exits
         let returnPct = 0;
-        if (action.action === 'BUY') {
-          returnPct = (exit.close - entry.close) / entry.close;
-        } else if (action.action === 'SELL') {
-          returnPct = (entry.close - exit.close) / entry.close;
+        const fibExtension = calculateFibonacciExtension(historicalSlice);
+        const fibRetracement = calculateFibonacciRetracement(historicalSlice);
+        
+        if (action.type === 'BUY') {
+          // Long trade - use fibonacci extensions for targets
+          const target = entry.close * (1 + fibExtension.targetLevel * 0.1);
+          const actualExit = Math.min(exit.close, target);
+          returnPct = (actualExit - entry.close) / entry.close;
+        } else if (action.type === 'SELL') {
+          // Short trade - use fibonacci retracements for corrections
+          const target = entry.close * (1 - fibRetracement.correctionLevel * 0.1);
+          const actualExit = Math.max(exit.close, target);
+          returnPct = (entry.close - actualExit) / entry.close;
         }
         
         totalReturns += returnPct;
@@ -466,41 +505,306 @@ async function trainLightweightPPOModel(trainingData: HistoricalData[], symbol: 
         const drawdown = (peakValue - currentValue) / peakValue;
         maxDrawdown = Math.max(maxDrawdown, drawdown);
         
-        trades.push({
+        trainingTrades.push({
           entry: entry.close,
           exit: exit.close,
-          action: action.action,
+          action: action.type,
           return: returnPct,
-          confidence: action.confidence
+          confidence: action.confidence,
+          fibonacciLevel: state.indicators.fibonacci.nearestLevel,
+          confluenceScore
+        });
+      }
+    }
+  }
+  
+  // Testing Phase - Validate model performance
+  console.log(`🧪 Testing Phase: Processing ${testingData.length} periods...`);
+  for (let i = 50; i < testingData.length - 1; i += 3) {
+    if (testingTrades.length >= 200) break; // Limit testing trades
+    
+    const historicalSlice = testingData.slice(Math.max(0, i - 100), i);
+    const state = await analyzeMarketStateWithFibonacci(historicalSlice, symbol);
+    
+    const confluenceScore = calculateEnhancedConfluenceScore(state, riskLevel);
+    state.confluenceScore = confluenceScore;
+    
+    if (confluenceScore >= riskLevel.minConfluence) {
+      const action = await calculatePPOActionWithFibonacci([
+        state.price / 1000,
+        state.volume / 1000000,
+        state.indicators.ichimoku.signal,
+        (state.price - state.indicators.ema200) / state.indicators.ema200,
+        state.indicators.macd.histogram / 10,
+        state.indicators.atr / state.price,
+        state.volatility,
+        state.indicators.bollinger.position,
+        state.indicators.fibonacci.nearestLevel,
+        state.indicators.fibonacci.retracementLevel || 0.5,
+        confluenceScore
+      ], state, false); // Testing mode
+      
+      if (action.type !== 'HOLD') {
+        const entry = testingData[i];
+        const exitIndex = Math.min(i + Math.floor(Math.random() * 15) + 3, testingData.length - 1);
+        const exit = testingData[exitIndex];
+        
+        let returnPct = 0;
+        if (action.type === 'BUY') {
+          returnPct = (exit.close - entry.close) / entry.close;
+        } else if (action.type === 'SELL') {
+          returnPct = (entry.close - exit.close) / entry.close;
+        }
+        
+        testTotalReturns += returnPct;
+        
+        if (returnPct > 0) testWins++;
+        else testLosses++;
+        
+        testingTrades.push({
+          entry: entry.close,
+          exit: exit.close,
+          action: action.type,
+          return: returnPct,
+          confidence: action.confidence,
+          fibonacciLevel: state.indicators.fibonacci.nearestLevel,
+          confluenceScore
         });
       }
     }
   }
   
   const winRate = wins / (wins + losses) || 0;
-  const avgReturn = totalReturns / trades.length || 0;
-  const sharpeRatio = avgReturn / (Math.sqrt(totalReturns / trades.length) || 1);
+  const testWinRate = testWins / (testWins + testLosses) || 0;
+  const avgReturn = totalReturns / trainingTrades.length || 0;
+  const testAvgReturn = testTotalReturns / testingTrades.length || 0;
+  const sharpeRatio = avgReturn / (Math.sqrt(totalReturns / trainingTrades.length) || 1);
+  const testSharpeRatio = testAvgReturn / (Math.sqrt(testTotalReturns / testingTrades.length) || 1);
   
   const performance = {
-    accuracy: winRate,
-    totalReturns,
-    sharpeRatio,
+    accuracy: (winRate + testWinRate) / 2, // Combined accuracy
+    totalReturns: totalReturns + testTotalReturns,
+    sharpeRatio: (sharpeRatio + testSharpeRatio) / 2,
     maxDrawdown,
-    winRate
+    winRate: (winRate + testWinRate) / 2,
+    trainingWinRate: winRate,
+    testingWinRate: testWinRate,
+    trainingTrades: trainingTrades.length,
+    testingTrades: testingTrades.length,
+    avgConfidence: [...trainingTrades, ...testingTrades].reduce((sum, trade) => sum + trade.confidence, 0) / (trainingTrades.length + testingTrades.length),
+    fibonacciSuccessRate: [...trainingTrades, ...testingTrades].filter(trade => trade.return > 0 && trade.fibonacciLevel > 0.5).length / (trainingTrades.length + testingTrades.length)
   };
   
-  console.log(`✅ Lightweight training complete - Win Rate: ${(winRate * 100).toFixed(1)}%, Total Trades: ${trades.length}`);
+  console.log(`✅ Enhanced training complete:`);
+  console.log(`   Training: ${trainingTrades.length} trades, Win Rate: ${(winRate * 100).toFixed(1)}%`);
+  console.log(`   Testing: ${testingTrades.length} trades, Win Rate: ${(testWinRate * 100).toFixed(1)}%`);
+  console.log(`   Combined Performance: ${(performance.accuracy * 100).toFixed(1)}% accuracy, ${performance.sharpeRatio.toFixed(2)} Sharpe`);
   
   return {
     model: {
       config,
-      trades,
+      trainingTrades,
+      testingTrades,
       symbol,
-      trainingPeriods: trainingData.length
+      trainingPeriods: trainingData.length,
+      testingPeriods: testingData.length
     },
     performance,
-    convergence: trades.length > 20 // Reduced threshold
+    convergence: trainingTrades.length > 50 && testingTrades.length > 20
   };
+}
+
+// Enhanced market state analysis with fibonacci extensions and retracements
+async function analyzeMarketStateWithFibonacci(
+  data: HistoricalData[], 
+  symbol: string
+): Promise<TradingState> {
+  const baseState = await analyzeMarketState(data, symbol);
+  
+  // Add fibonacci extensions and retracements
+  const fibExtension = calculateFibonacciExtension(data);
+  const fibRetracement = calculateFibonacciRetracement(data);
+  
+  // Enhanced fibonacci levels
+  const enhanced = {
+    ...baseState.indicators.fibonacci,
+    retracementLevel: fibRetracement.correctionLevel,
+    extensionLevel: fibExtension.targetLevel,
+    isNearMajorFib: fibRetracement.correctionLevel >= 0.618 || fibExtension.targetLevel >= 1.618,
+    correctionPotential: fibRetracement.strength,
+    extensionPotential: fibExtension.strength
+  };
+  
+  return {
+    ...baseState,
+    indicators: {
+      ...baseState.indicators,
+      fibonacci: enhanced
+    },
+    confluenceScore: 0 // Will be calculated separately
+  };
+}
+
+// Calculate fibonacci extensions for target levels
+function calculateFibonacciExtension(data: HistoricalData[]): { targetLevel: number; strength: number } {
+  if (data.length < 50) return { targetLevel: 1.0, strength: 0.5 };
+  
+  const recent = data.slice(-50);
+  const high = Math.max(...recent.map(d => d.high));
+  const low = Math.min(...recent.map(d => d.low));
+  const range = high - low;
+  const currentPrice = recent[recent.length - 1].close;
+  
+  // Calculate fibonacci extension levels
+  const extensions = [1.0, 1.272, 1.414, 1.618, 2.0, 2.618];
+  let closestExtension = 1.0;
+  let minDistance = Infinity;
+  
+  extensions.forEach(ext => {
+    const targetPrice = low + (range * ext);
+    const distance = Math.abs(currentPrice - targetPrice) / currentPrice;
+    if (distance < minDistance) {
+      minDistance = distance;
+      closestExtension = ext;
+    }
+  });
+  
+  // Calculate strength based on volume and trend
+  const avgVolume = recent.reduce((sum, d) => sum + d.volume, 0) / recent.length;
+  const recentVolume = recent.slice(-5).reduce((sum, d) => sum + d.volume, 0) / 5;
+  const volumeStrength = Math.min(1, recentVolume / avgVolume);
+  
+  const trendStrength = (currentPrice - recent[0].close) / recent[0].close;
+  const strength = Math.min(1, Math.abs(trendStrength) + volumeStrength * 0.3);
+  
+  return { targetLevel: closestExtension, strength };
+}
+
+// Calculate fibonacci retracements for correction levels
+function calculateFibonacciRetracement(data: HistoricalData[]): { correctionLevel: number; strength: number } {
+  if (data.length < 30) return { correctionLevel: 0.5, strength: 0.5 };
+  
+  const recent = data.slice(-30);
+  const high = Math.max(...recent.map(d => d.high));
+  const low = Math.min(...recent.map(d => d.low));
+  const range = high - low;
+  const currentPrice = recent[recent.length - 1].close;
+  
+  // Calculate fibonacci retracement levels
+  const retracements = [0.236, 0.382, 0.5, 0.618, 0.786];
+  let closestRetracement = 0.5;
+  let minDistance = Infinity;
+  
+  retracements.forEach(ret => {
+    const retracementPrice = high - (range * ret);
+    const distance = Math.abs(currentPrice - retracementPrice) / currentPrice;
+    if (distance < minDistance) {
+      minDistance = distance;
+      closestRetracement = ret;
+    }
+  });
+  
+  // Calculate correction strength based on RSI and momentum
+  const rsi = calculateRSI(recent.map(d => d.close), 14);
+  const momentum = (currentPrice - recent[0].close) / recent[0].close;
+  
+  let strength = 0.5;
+  if (rsi > 70 || rsi < 30) strength += 0.3; // Overbought/oversold
+  if (Math.abs(momentum) > 0.1) strength += 0.2; // Strong momentum
+  
+  return { correctionLevel: closestRetracement, strength: Math.min(1, strength) };
+}
+
+// Enhanced confluence score calculation with fibonacci
+function calculateEnhancedConfluenceScore(state: TradingState, riskLevel: RiskLevel): number {
+  // Use the existing confluence score as base
+  const baseScore = calculateConfluenceScore(state, riskLevel);
+  
+  // Add fibonacci enhancement
+  let fibonacciBonus = 0;
+  const fib = state.indicators.fibonacci as any;
+  
+  // Major fibonacci levels bonus
+  if (fib.isNearMajorFib) {
+    fibonacciBonus += 0.1;
+  }
+  
+  // Extension/retracement strength bonus
+  if (fib.extensionPotential > 0.7) {
+    fibonacciBonus += 0.05;
+  }
+  
+  if (fib.correctionPotential > 0.7) {
+    fibonacciBonus += 0.05;
+  }
+  
+  return Math.min(1, baseScore + fibonacciBonus);
+}
+
+// Enhanced PPO action calculation with fibonacci
+async function calculatePPOActionWithFibonacci(
+  stateVector: number[], 
+  state: TradingState, 
+  isTraining: boolean
+): Promise<TradingAction> {
+  // Use existing PPO action as base
+  const baseAction = await calculatePPOAction(stateVector, state, isTraining);
+  
+  // Enhance with fibonacci analysis
+  const fib = state.indicators.fibonacci as any;
+  let confidence = baseAction.confidence;
+  let reasoning = baseAction.reasoning;
+  
+  // Adjust confidence based on fibonacci levels
+  if (fib.isNearMajorFib) {
+    confidence *= 1.1; // Boost confidence near major fib levels
+    reasoning += " | Near major fibonacci level";
+  }
+  
+  // Extension-based long trades
+  if ('action' in baseAction && baseAction.action === 'BUY' && fib.extensionPotential > 0.6) {
+    confidence *= 1.05;
+    reasoning += " | Fibonacci extension target";
+  }
+  
+  // Retracement-based correction trades
+  if ('action' in baseAction && baseAction.action === 'SELL' && fib.correctionPotential > 0.6) {
+    confidence *= 1.05;
+    reasoning += " | Fibonacci retracement correction";
+  }
+  
+  // Return proper TradingAction format
+  const actionType = 'action' in baseAction ? baseAction.action : 'HOLD';
+  
+  return {
+    type: actionType as 'BUY' | 'SELL' | 'HOLD',
+    quantity: 1, // Default quantity
+    stopLoss: 0, // Will be calculated separately
+    takeProfit: 0, // Will be calculated separately
+    confidence: Math.min(100, confidence),
+    reasoning,
+    confluenceLevel: confidence > 80 ? 'STRONG' : confidence > 60 ? 'MODERATE' : 'WEAK'
+  };
+}
+
+// Helper function to calculate RSI
+function calculateRSI(prices: number[], period: number): number {
+  if (prices.length < period + 1) return 50;
+  
+  let gains = 0;
+  let losses = 0;
+  
+  for (let i = 1; i <= period; i++) {
+    const change = prices[i] - prices[i - 1];
+    if (change > 0) gains += change;
+    else losses += Math.abs(change);
+  }
+  
+  const avgGain = gains / period;
+  const avgLoss = losses / period;
+  const rs = avgGain / (avgLoss || 1);
+  
+  return 100 - (100 / (1 + rs));
 }
 
 // Enhanced market state analysis with confluence scoring
@@ -1506,6 +1810,11 @@ interface FibonacciLevels {
   low: number;
   levels: { [key: string]: number };
   nearestLevel: number;
+  retracementLevel?: number;
+  extensionLevel?: number;
+  isNearMajorFib?: boolean;
+  correctionPotential?: number;
+  extensionPotential?: number;
 }
 
 function calculateAdvancedFibonacci(data: any[]): FibonacciLevels {

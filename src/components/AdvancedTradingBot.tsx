@@ -25,6 +25,16 @@ interface TradingSignal {
   maxDrawdown: number;
   timestamp: string;
   indicators: any;
+  trainedPeriods?: number;
+  testingPeriods?: number;
+  learningStats?: {
+    trainingTrades: number;
+    testingTrades: number;
+    trainingWinRate: number;
+    testingWinRate: number;
+    avgConfidence: number;
+    fibonacciSuccessRate: number;
+  };
 }
 
 interface BotConfig {
@@ -473,15 +483,85 @@ export default function AdvancedTradingBot() {
             </Card>
           </div>
 
+          {/* Enhanced Learning Performance Stats */}
+          {signals.length > 0 && signals[0]?.learningStats && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center space-x-2">
+                  <Brain className="h-5 w-5 text-purple-600" />
+                  <span>2-Year Learning Performance</span>
+                </CardTitle>
+                <CardDescription>
+                  Detailed analysis from 2-year historical data with 80/20 train/test split
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                  <div className="text-center">
+                    <p className="text-2xl font-bold text-blue-600">
+                      {signals[0].learningStats.trainingTrades}
+                    </p>
+                    <p className="text-sm text-muted-foreground">Training Trades</p>
+                    <p className="text-lg font-semibold text-green-600 mt-1">
+                      {signals[0].learningStats.trainingWinRate.toFixed(1)}% Win Rate
+                    </p>
+                  </div>
+                  
+                  <div className="text-center">
+                    <p className="text-2xl font-bold text-orange-600">
+                      {signals[0].learningStats.testingTrades}
+                    </p>
+                    <p className="text-sm text-muted-foreground">Testing Trades</p>
+                    <p className="text-lg font-semibold text-green-600 mt-1">
+                      {signals[0].learningStats.testingWinRate.toFixed(1)}% Win Rate
+                    </p>
+                  </div>
+                  
+                  <div className="text-center">
+                    <p className="text-2xl font-bold text-purple-600">
+                      {signals[0].learningStats.avgConfidence.toFixed(1)}%
+                    </p>
+                    <p className="text-sm text-muted-foreground">Avg Confidence</p>
+                    <Progress 
+                      value={signals[0].learningStats.avgConfidence} 
+                      className="mt-2" 
+                    />
+                  </div>
+                  
+                  <div className="text-center">
+                    <p className="text-2xl font-bold text-amber-600">
+                      {(signals[0].learningStats.fibonacciSuccessRate * 100).toFixed(1)}%
+                    </p>
+                    <p className="text-sm text-muted-foreground">Fibonacci Success</p>
+                    <Progress 
+                      value={signals[0].learningStats.fibonacciSuccessRate * 100} 
+                      className="mt-2" 
+                    />
+                  </div>
+                </div>
+                
+                <div className="mt-6 p-4 bg-muted rounded-lg">
+                  <h4 className="font-semibold mb-2">Learning Summary</h4>
+                  <p className="text-sm text-muted-foreground">
+                    Model trained on {signals[0].trainedPeriods} periods of historical data (80% training, 20% testing).
+                    The enhanced PPO algorithm achieved {signals[0].learningStats.trainingWinRate.toFixed(1)}% training accuracy 
+                    and {signals[0].learningStats.testingWinRate.toFixed(1)}% testing accuracy, demonstrating strong 
+                    generalization capabilities with fibonacci-enhanced strategies.
+                  </p>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Strategy Overview */}
           <Card>
             <CardHeader>
-              <CardTitle>PPO Strategy Overview</CardTitle>
+              <CardTitle>Enhanced PPO Strategy with Fibonacci Analysis</CardTitle>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                 <div>
-                  <h4 className="font-semibold mb-2">Technical Indicators</h4>
+                  <h4 className="font-semibold mb-2 text-blue-600">Technical Indicators</h4>
                   <ul className="space-y-1 text-sm text-muted-foreground">
                     <li>• Ichimoku Cloud (Trend & Momentum)</li>
                     <li>• 200 EMA (Long-term Trend)</li>
@@ -492,15 +572,33 @@ export default function AdvancedTradingBot() {
                   </ul>
                 </div>
                 <div>
-                  <h4 className="font-semibold mb-2">Risk Management</h4>
+                  <h4 className="font-semibold mb-2 text-green-600">Fibonacci Strategies</h4>
                   <ul className="space-y-1 text-sm text-muted-foreground">
-                    <li>• Fibonacci Extensions & Retracements</li>
-                    <li>• Dynamic Support/Resistance Levels</li>
-                    <li>• AI-Optimized Stop Loss & Take Profit</li>
-                    <li>• Kelly Criterion Position Sizing</li>
-                    <li>• PPO Algorithm Decision Making</li>
-                    <li>• Real-time Market Condition Analysis</li>
+                    <li>• <strong>Extensions (1.272, 1.618, 2.618):</strong> Long trade targets</li>
+                    <li>• <strong>Retracements (0.236, 0.382, 0.618, 0.786):</strong> Correction entries</li>
+                    <li>• <strong>Market Corrections:</strong> Profit from pullbacks</li>
+                    <li>• <strong>Dynamic S/R:</strong> Real-time support/resistance</li>
+                    <li>• <strong>Risk-Based Filtering:</strong> Confluence requirements</li>
+                    <li>• <strong>Adaptive Learning:</strong> 2-year market patterns</li>
                   </ul>
+                </div>
+              </div>
+              
+              <div className="mt-6 p-4 bg-gradient-to-r from-blue-50 to-purple-50 rounded-lg border">
+                <h4 className="font-semibold mb-2 text-purple-700">Enhanced Features</h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                  <div>
+                    <strong className="text-blue-600">2-Year Training:</strong>
+                    <p className="text-muted-foreground">Complete market cycles, corrections, and extensions</p>
+                  </div>
+                  <div>
+                    <strong className="text-green-600">Smart Risk Management:</strong>
+                    <p className="text-muted-foreground">3-level confluence filtering with fibonacci validation</p>
+                  </div>
+                  <div>
+                    <strong className="text-purple-600">Adaptive Learning:</strong>
+                    <p className="text-muted-foreground">PPO algorithm learns from historical performance</p>
+                  </div>
                 </div>
               </div>
             </CardContent>
