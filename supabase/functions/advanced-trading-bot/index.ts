@@ -149,7 +149,24 @@ serve(async (req) => {
     }
 
     const { 
-      symbols = ['BTC', 'ETH', 'AAPL', 'GOOGL', 'MSFT', 'AMZN', 'META', 'NVDA', 'TSLA', 'AMD', 'NFLX', 'CRM'], // Expanded symbols
+      symbols = [
+        // Cryptocurrencies (42 total)
+        'BTC', 'ETH', 'ADA', 'SOL', 'AVAX', 'DOT', 'MATIC', 'ATOM', 'NEAR', 'ALGO',
+        'XRP', 'LTC', 'BCH', 'ETC', 'XLM', 'VET', 'FIL', 'THETA', 'EGLD', 'HBAR',
+        'FLOW', 'ICP', 'SAND', 'MANA', 'CRV', 'UNI', 'AAVE', 'COMP', 'MKR', 'SNX',
+        'SUSHI', 'YFI', 'BAL', 'REN', 'KNC', 'ZRX', 'BAND', 'LRC', 'ENJ', 'CHZ',
+        'BAT', 'ZEC',
+        
+        // Volatile Stocks (20 total)
+        'TSLA', 'NVDA', 'AMD', 'MRNA', 'ZOOM', 'ROKU', 'NFLX', 'SQ', 'SHOP', 'TWTR',
+        'SNAP', 'UBER', 'LYFT', 'PLTR', 'GME', 'AMC', 'BB', 'MEME', 'SPCE', 'COIN',
+        
+        // Stable Stocks (10 total)  
+        'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'JNJ', 'PG', 'KO', 'WMT', 'VZ',
+        
+        // Semi-Stable Stocks (10 total)
+        'INTC', 'IBM', 'ORCL', 'CRM', 'ADBE', 'NOW', 'SNOW', 'DDOG', 'ZS', 'OKTA'
+      ],
       mode = 'simulation', 
       risk = 'medium',
       portfolioBalance = 100000,
@@ -157,10 +174,10 @@ serve(async (req) => {
     } = await req.json();
 
     console.log(`🤖 Enhanced PPO Trading Bot Starting - Mode: ${mode}, Risk: ${risk}`);
-    console.log(`📊 Processing ${symbols.length} symbols with 2-year historical data and online learning`);
+    console.log(`📊 Processing ${symbols.length} symbols (${symbols.filter(s => ['BTC', 'ETH', 'ADA', 'SOL', 'AVAX', 'DOT', 'MATIC', 'ATOM', 'NEAR', 'ALGO', 'XRP', 'LTC', 'BCH', 'ETC', 'XLM', 'VET', 'FIL', 'THETA', 'EGLD', 'HBAR', 'FLOW', 'ICP', 'SAND', 'MANA', 'CRV', 'UNI', 'AAVE', 'COMP', 'MKR', 'SNX', 'SUSHI', 'YFI', 'BAL', 'REN', 'KNC', 'ZRX', 'BAND', 'LRC', 'ENJ', 'CHZ', 'BAT', 'ZEC'].includes(s)).length} crypto, ${symbols.filter(s => ['TSLA', 'NVDA', 'AMD', 'MRNA', 'ZOOM', 'ROKU', 'NFLX', 'SQ', 'SHOP', 'TWTR', 'SNAP', 'UBER', 'LYFT', 'PLTR', 'GME', 'AMC', 'BB', 'MEME', 'SPCE', 'COIN'].includes(s)).length} volatile stocks, ${symbols.filter(s => ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'JNJ', 'PG', 'KO', 'WMT', 'VZ'].includes(s)).length} stable stocks, ${symbols.filter(s => ['INTC', 'IBM', 'ORCL', 'CRM', 'ADBE', 'NOW', 'SNOW', 'DDOG', 'ZS', 'OKTA'].includes(s)).length} semi-stable stocks) with 2-year historical data and online learning`);
 
         const tradingSignals = [];
-        const maxSymbols = symbols.length; // Process all symbols
+        const maxSymbols = Math.min(symbols.length, 15); // Limit to 15 symbols for performance
         const symbolsToProcess = symbols.slice(0, maxSymbols);
 
     for (const symbol of symbolsToProcess) {
@@ -318,12 +335,25 @@ async function fetchOptimizedHistoricalData(symbol: string): Promise<HistoricalD
 // Yahoo Finance 2-year data fetching for stocks and crypto
 async function fetchYahooFinanceData(symbol: string): Promise<HistoricalData[] | null> {
   try {
-    // Map crypto symbols to Yahoo Finance format
-    const yahooSymbol = symbol === 'BTC' ? 'BTC-USD' : 
-                       symbol === 'ETH' ? 'ETH-USD' : 
-                       symbol === 'ADA' ? 'ADA-USD' :
-                       symbol === 'DOT' ? 'DOT-USD' :
-                       symbol === 'SOL' ? 'SOL-USD' : symbol;
+    // Map crypto and stock symbols to Yahoo Finance format
+    let yahooSymbol = symbol;
+    
+    // Cryptocurrency mappings
+    const cryptoMap: Record<string, string> = {
+      'BTC': 'BTC-USD', 'ETH': 'ETH-USD', 'ADA': 'ADA-USD', 'SOL': 'SOL-USD', 'AVAX': 'AVAX-USD',
+      'DOT': 'DOT-USD', 'MATIC': 'MATIC-USD', 'ATOM': 'ATOM-USD', 'NEAR': 'NEAR-USD', 'ALGO': 'ALGO-USD',
+      'XRP': 'XRP-USD', 'LTC': 'LTC-USD', 'BCH': 'BCH-USD', 'ETC': 'ETC-USD', 'XLM': 'XLM-USD',
+      'VET': 'VET-USD', 'FIL': 'FIL-USD', 'THETA': 'THETA-USD', 'EGLD': 'EGLD-USD', 'HBAR': 'HBAR-USD',
+      'FLOW': 'FLOW-USD', 'ICP': 'ICP-USD', 'SAND': 'SAND-USD', 'MANA': 'MANA-USD', 'CRV': 'CRV-USD',
+      'UNI': 'UNI-USD', 'AAVE': 'AAVE-USD', 'COMP': 'COMP-USD', 'MKR': 'MKR-USD', 'SNX': 'SNX-USD',
+      'SUSHI': 'SUSHI-USD', 'YFI': 'YFI-USD', 'BAL': 'BAL-USD', 'REN': 'REN-USD', 'KNC': 'KNC-USD',
+      'ZRX': 'ZRX-USD', 'BAND': 'BAND-USD', 'LRC': 'LRC-USD', 'ENJ': 'ENJ-USD', 'CHZ': 'CHZ-USD',
+      'BAT': 'BAT-USD', 'ZEC': 'ZEC-USD'
+    };
+    
+    if (cryptoMap[symbol]) {
+      yahooSymbol = cryptoMap[symbol];
+    }
     
     const now = Math.floor(Date.now() / 1000);
     const twoYearsAgo = now - (2 * 365 * 24 * 60 * 60);
@@ -1002,6 +1032,11 @@ async function trainEnhancedPPOModel(
     testingRecall: testRecall,
     testingFScore: testFScore
   };
+  
+  console.log(`✅ Enhanced training complete:`);
+  console.log(`   Training: ${trainingTrades.length} trades, Win Rate: ${(winRate * 100).toFixed(1)}%`);
+  console.log(`   Testing: ${testingTrades.length} trades, Win Rate: ${(testWinRate * 100).toFixed(1)}%`);
+  console.log(`   Combined Performance: ${(performance.accuracy * 100).toFixed(1)}% accuracy, ${performance.sharpeRatio.toFixed(2)} Sharpe`);
   
   return {
     model: {

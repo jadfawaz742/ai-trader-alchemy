@@ -7,6 +7,7 @@ import { Badge } from "@/components/ui/badge";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Progress } from "@/components/ui/progress";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
 import { Activity, Brain, TrendingUp, TrendingDown, AlertTriangle, Target, Shield, Zap } from "lucide-react";
@@ -50,7 +51,24 @@ export default function AdvancedTradingBot() {
   const [isRunning, setIsRunning] = useState(false);
   const [signals, setSignals] = useState<TradingSignal[]>([]);
   const [botConfig, setBotConfig] = useState<BotConfig>({
-    symbols: ['BTC', 'ETH', 'AAPL', 'GOOGL', 'MSFT', 'AMZN', 'META', 'NVDA', 'TSLA'], // Expanded symbols
+    symbols: [
+      // Cryptocurrencies (42 total)
+      'BTC', 'ETH', 'ADA', 'SOL', 'AVAX', 'DOT', 'MATIC', 'ATOM', 'NEAR', 'ALGO',
+      'XRP', 'LTC', 'BCH', 'ETC', 'XLM', 'VET', 'FIL', 'THETA', 'EGLD', 'HBAR',
+      'FLOW', 'ICP', 'SAND', 'MANA', 'CRV', 'UNI', 'AAVE', 'COMP', 'MKR', 'SNX',
+      'SUSHI', 'YFI', 'BAL', 'REN', 'KNC', 'ZRX', 'BAND', 'LRC', 'ENJ', 'CHZ',
+      'BAT', 'ZEC',
+      
+      // Volatile Stocks (20 total)
+      'TSLA', 'NVDA', 'AMD', 'MRNA', 'ZOOM', 'ROKU', 'NFLX', 'SQ', 'SHOP', 'TWTR',
+      'SNAP', 'UBER', 'LYFT', 'PLTR', 'GME', 'AMC', 'BB', 'MEME', 'SPCE', 'COIN',
+      
+      // Stable Stocks (10 total)  
+      'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'JNJ', 'PG', 'KO', 'WMT', 'VZ',
+      
+      // Semi-Stable Stocks (10 total)
+      'INTC', 'IBM', 'ORCL', 'CRM', 'ADBE', 'NOW', 'SNOW', 'DDOG', 'ZS', 'OKTA'
+    ],
     mode: 'simulation',
     riskLevel: 'medium',
     portfolioBalance: 100000,
@@ -201,6 +219,115 @@ export default function AdvancedTradingBot() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
+              {/* Symbol Selection */}
+              <div className="space-y-2">
+                <Label>Trading Symbols (Select up to 15)</Label>
+                <div className="max-h-40 overflow-y-auto border rounded-md p-3">
+                  <div className="space-y-4">
+                    <div>
+                      <p className="font-semibold text-sm mb-2 text-blue-600">💰 Cryptocurrencies (42)</p>
+                      <div className="grid grid-cols-4 gap-2 text-sm">
+                        {['BTC', 'ETH', 'ADA', 'SOL', 'AVAX', 'DOT', 'MATIC', 'ATOM', 'NEAR', 'ALGO', 'XRP', 'LTC', 'BCH', 'ETC', 'XLM', 'VET', 'FIL', 'THETA', 'EGLD', 'HBAR', 'FLOW', 'ICP', 'SAND', 'MANA', 'CRV', 'UNI', 'AAVE', 'COMP', 'MKR', 'SNX', 'SUSHI', 'YFI', 'BAL', 'REN', 'KNC', 'ZRX', 'BAND', 'LRC', 'ENJ', 'CHZ', 'BAT', 'ZEC'].map(symbol => (
+                          <label key={symbol} className="flex items-center space-x-1 hover:bg-gray-50 p-1 rounded">
+                            <input
+                              type="checkbox"
+                              checked={botConfig.symbols.includes(symbol)}
+                              onChange={(e) => {
+                                if (e.target.checked && botConfig.symbols.length < 15) {
+                                  setBotConfig(prev => ({ ...prev, symbols: [...prev.symbols, symbol] }));
+                                } else if (!e.target.checked) {
+                                  setBotConfig(prev => ({ ...prev, symbols: prev.symbols.filter(s => s !== symbol) }));
+                                }
+                              }}
+                              className="w-3 h-3"
+                            />
+                            <span className="text-xs font-mono">{symbol}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <p className="font-semibold text-sm mb-2 text-red-600">📈 Volatile Stocks (20)</p>
+                      <div className="grid grid-cols-4 gap-2 text-sm">
+                        {['TSLA', 'NVDA', 'AMD', 'MRNA', 'ZOOM', 'ROKU', 'NFLX', 'SQ', 'SHOP', 'TWTR', 'SNAP', 'UBER', 'LYFT', 'PLTR', 'GME', 'AMC', 'BB', 'MEME', 'SPCE', 'COIN'].map(symbol => (
+                          <label key={symbol} className="flex items-center space-x-1 hover:bg-gray-50 p-1 rounded">
+                            <input
+                              type="checkbox"
+                              checked={botConfig.symbols.includes(symbol)}
+                              onChange={(e) => {
+                                if (e.target.checked && botConfig.symbols.length < 15) {
+                                  setBotConfig(prev => ({ ...prev, symbols: [...prev.symbols, symbol] }));
+                                } else if (!e.target.checked) {
+                                  setBotConfig(prev => ({ ...prev, symbols: prev.symbols.filter(s => s !== symbol) }));
+                                }
+                              }}
+                              className="w-3 h-3"
+                            />
+                            <span className="text-xs font-mono">{symbol}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <p className="font-semibold text-sm mb-2 text-green-600">🛡️ Stable Stocks (10)</p>
+                      <div className="grid grid-cols-4 gap-2 text-sm">
+                        {['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'JNJ', 'PG', 'KO', 'WMT', 'VZ'].map(symbol => (
+                          <label key={symbol} className="flex items-center space-x-1 hover:bg-gray-50 p-1 rounded">
+                            <input
+                              type="checkbox"
+                              checked={botConfig.symbols.includes(symbol)}
+                              onChange={(e) => {
+                                if (e.target.checked && botConfig.symbols.length < 15) {
+                                  setBotConfig(prev => ({ ...prev, symbols: [...prev.symbols, symbol] }));
+                                } else if (!e.target.checked) {
+                                  setBotConfig(prev => ({ ...prev, symbols: prev.symbols.filter(s => s !== symbol) }));
+                                }
+                              }}
+                              className="w-3 h-3"
+                            />
+                            <span className="text-xs font-mono">{symbol}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                    
+                    <div>
+                      <p className="font-semibold text-sm mb-2 text-yellow-600">⚖️ Semi-Stable Stocks (10)</p>
+                      <div className="grid grid-cols-4 gap-2 text-sm">
+                        {['INTC', 'IBM', 'ORCL', 'CRM', 'ADBE', 'NOW', 'SNOW', 'DDOG', 'ZS', 'OKTA'].map(symbol => (
+                          <label key={symbol} className="flex items-center space-x-1 hover:bg-gray-50 p-1 rounded">
+                            <input
+                              type="checkbox"
+                              checked={botConfig.symbols.includes(symbol)}
+                              onChange={(e) => {
+                                if (e.target.checked && botConfig.symbols.length < 15) {
+                                  setBotConfig(prev => ({ ...prev, symbols: [...prev.symbols, symbol] }));
+                                } else if (!e.target.checked) {
+                                  setBotConfig(prev => ({ ...prev, symbols: prev.symbols.filter(s => s !== symbol) }));
+                                }
+                              }}
+                              className="w-3 h-3"
+                            />
+                            <span className="text-xs font-mono">{symbol}</span>
+                          </label>
+                        ))}
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                <div className="flex justify-between text-xs">
+                  <span className="text-gray-600">Selected: {botConfig.symbols.length}/15 symbols</span>
+                  <button 
+                    onClick={() => setBotConfig(prev => ({ ...prev, symbols: [] }))}
+                    className="text-red-600 hover:underline"
+                  >
+                    Clear All
+                  </button>
+                </div>
+              </div>
+
               {/* Trading Mode */}
               <div className="flex items-center justify-between">
                 <div>
