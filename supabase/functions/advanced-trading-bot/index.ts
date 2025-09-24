@@ -55,18 +55,22 @@ interface RiskLevel {
   supportResistanceWeight: number;
   trendWeight: number;
   volumeWeight: number;
+  minFibLevel?: number;
+  minSRStrength?: number;
   description: string;
 }
 
 const RISK_LEVELS: Record<string, RiskLevel> = {
   low: {
     name: 'low',
-    minConfluence: 0.8,
-    fibonacciWeight: 0.2,
+    minConfluence: 0.85,
+    fibonacciWeight: 0.5,
     supportResistanceWeight: 0.4,
-    trendWeight: 0.3,
-    volumeWeight: 0.1,
-    description: 'Only strong confluence trades - requires 80%+ confidence'
+    trendWeight: 0.1,
+    volumeWeight: 0.0,
+    minFibLevel: 0.618, // Only major fibonacci levels (0.618, 0.786)
+    minSRStrength: 0.8, // Strong support/resistance only
+    description: 'Conservative - Only strong confluence trades (85%+), major fibonacci levels, strong S/R'
   },
   medium: {
     name: 'medium',
@@ -75,16 +79,20 @@ const RISK_LEVELS: Record<string, RiskLevel> = {
     supportResistanceWeight: 0.3,
     trendWeight: 0.3,
     volumeWeight: 0.1,
-    description: 'Moderate confluence with minor fibonacci levels'
+    minFibLevel: 0.382, // Minor fibonacci levels allowed (0.382, 0.5, 0.618, 0.786)
+    minSRStrength: 0.6, // Strong S/R only
+    description: 'Moderate confluence (60%+), minor fibonacci levels, strong S/R only'
   },
   high: {
     name: 'high',
     minConfluence: 0.4,
-    fibonacciWeight: 0.4,
+    fibonacciWeight: 0.2,
     supportResistanceWeight: 0.2,
-    trendWeight: 0.3,
-    volumeWeight: 0.1,
-    description: 'Accept weaker trends and minor S/R levels'
+    trendWeight: 0.4,
+    volumeWeight: 0.2,
+    minFibLevel: 0.236, // All fibonacci levels (0.236, 0.382, 0.5, 0.618, 0.786)
+    minSRStrength: 0.4, // Minor S/R levels accepted
+    description: 'Aggressive - Accept weaker trends (40%+), minor S/R levels, more aggressive entry'
   }
 };
 
@@ -523,7 +531,7 @@ function calculateConfluenceScore(state: TradingState, riskLevel: RiskLevel): nu
   let score = 0;
   const weights = riskLevel;
   
-  // Trend alignment (30% weight)
+  // Trend alignment (varies by risk level)
   let trendScore = 0;
   if (state.price > state.indicators.ema200 && state.indicators.ichimoku.signal > 0) {
     trendScore = 1; // Bullish alignment
@@ -534,7 +542,7 @@ function calculateConfluenceScore(state: TradingState, riskLevel: RiskLevel): nu
   }
   score += trendScore * weights.trendWeight;
   
-  // MACD momentum confirmation (20% weight)
+  // MACD momentum confirmation
   let macdScore = 0;
   if (state.indicators.macd.histogram > 0 && state.indicators.macd.macd > state.indicators.macd.signal) {
     macdScore = 1; // Strong bullish momentum
@@ -545,7 +553,7 @@ function calculateConfluenceScore(state: TradingState, riskLevel: RiskLevel): nu
   }
   score += macdScore * 0.2;
   
-  // Support/Resistance confluence (varies by risk level)
+  // Support/Resistance confluence with smart filtering
   let srScore = 0;
   const nearSupport = state.indicators.supportResistance.some(level => 
     level.type === 'support' && Math.abs(state.price - level.price) / state.price < 0.02
@@ -559,23 +567,53 @@ function calculateConfluenceScore(state: TradingState, riskLevel: RiskLevel): nu
       .filter(level => Math.abs(state.price - level.price) / state.price < 0.02)
       .sort((a, b) => b.strength - a.strength)[0];
     
-    srScore = Math.min(1, strongestLevel?.strength / 5 || 0);
+    const levelStrength = Math.min(1, strongestLevel?.strength / 5 || 0);
+    
+    // Apply risk-specific S/R strength filtering
+    if (riskLevel.minSRStrength && levelStrength >= riskLevel.minSRStrength) {
+      srScore = levelStrength;
+    } else if (riskLevel.minSRStrength && levelStrength < riskLevel.minSRStrength) {
+      srScore = levelStrength * 0.5; // Penalize weak S/R levels
+    } else {
+      srScore = levelStrength;
+    }
   }
   score += srScore * weights.supportResistanceWeight;
   
-  // Fibonacci levels (varies by risk level)
+  // Fibonacci levels with smart risk filtering
   let fibScore = 0;
   const fibLevel = state.indicators.fibonacci.nearestLevel;
-  if (fibLevel <= 0.382 || fibLevel >= 0.618) {
-    fibScore = 1; // Strong fib level
-  } else if (fibLevel === 0.5) {
-    fibScore = 0.8; // 50% retracement
+  const majorFibLevels = [0.618, 0.786];
+  const minorFibLevels = [0.382, 0.5];
+  const allFibLevels = [0.236, 0.382, 0.5, 0.618, 0.786];
+  
+  // Determine fibonacci strength based on level
+  let fibStrength = 0;
+  if (majorFibLevels.includes(fibLevel)) {
+    fibStrength = 1.0; // Strong fib level
+  } else if (minorFibLevels.includes(fibLevel)) {
+    fibStrength = 0.7; // Moderate fib level
+  } else if (fibLevel === 0.236) {
+    fibStrength = 0.4; // Weak fib level
   } else {
-    fibScore = 0.3; // Minor fib level
+    fibStrength = 0.2; // Very weak or no fib level
   }
+  
+  // Apply risk-specific fibonacci filtering
+  if (riskLevel.minFibLevel) {
+    if (fibLevel >= riskLevel.minFibLevel) {
+      fibScore = fibStrength;
+    } else {
+      // Penalize fibonacci levels below minimum requirement
+      fibScore = fibStrength * 0.3;
+    }
+  } else {
+    fibScore = fibStrength;
+  }
+  
   score += fibScore * weights.fibonacciWeight;
   
-  // Volume confirmation (10% weight)
+  // Volume confirmation
   let volumeScore = 0;
   const obvTrend = state.indicators.obv > 0 ? 'up' : 'down';
   const priceTrend = state.price > state.indicators.ema200 ? 'up' : 'down';
@@ -586,7 +624,23 @@ function calculateConfluenceScore(state: TradingState, riskLevel: RiskLevel): nu
   }
   score += volumeScore * weights.volumeWeight;
   
-  return Math.min(1, score);
+  // Additional confluence penalty for weak market conditions based on risk level
+  let confluencePenalty = 0;
+  if (riskLevel.name === 'low') {
+    // Low risk: Very strict requirements
+    if (trendScore < 0.8 || srScore < 0.8 || fibScore < 0.8) {
+      confluencePenalty = 0.2;
+    }
+  } else if (riskLevel.name === 'medium') {
+    // Medium risk: Moderate requirements
+    if (trendScore < 0.5 && srScore < 0.6) {
+      confluencePenalty = 0.1;
+    }
+  }
+  // High risk: No additional penalty
+  
+  const finalScore = Math.max(0, Math.min(1, score - confluencePenalty));
+  return finalScore;
 }
 
 // Generate adaptive PPO decision with enhanced logic

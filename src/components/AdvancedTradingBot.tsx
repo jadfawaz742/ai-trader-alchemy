@@ -30,7 +30,7 @@ interface TradingSignal {
 interface BotConfig {
   symbols: string[];
   mode: 'simulation' | 'live';
-  maxRisk: number;
+  riskLevel: 'low' | 'medium' | 'high';
   portfolioBalance: number;
   enableShorts: boolean;
   autoExecute: boolean;
@@ -42,7 +42,7 @@ export default function AdvancedTradingBot() {
   const [botConfig, setBotConfig] = useState<BotConfig>({
     symbols: ['BTC', 'ETH'], // Reduced for better performance
     mode: 'simulation',
-    maxRisk: 0.02,
+    riskLevel: 'medium',
     portfolioBalance: 100000,
     enableShorts: true,
     autoExecute: false
@@ -73,7 +73,7 @@ export default function AdvancedTradingBot() {
         body: {
           symbols: botConfig.symbols,
           mode: botConfig.mode,
-          risk: 'medium', // Use risk level instead of maxRisk
+          risk: botConfig.riskLevel,
           portfolioBalance: botConfig.portfolioBalance,
           enableShorts: botConfig.enableShorts
         }
@@ -126,7 +126,7 @@ export default function AdvancedTradingBot() {
   const startBot = () => {
     setIsRunning(true);
     toast.success('🤖 Advanced Trading Bot Started', {
-      description: `Mode: ${botConfig.mode}, Risk: ${(botConfig.maxRisk * 100).toFixed(1)}%`
+      description: `Mode: ${botConfig.mode}, Risk: ${botConfig.riskLevel}`
     });
     runAdvancedAnalysis();
   };
@@ -207,21 +207,52 @@ export default function AdvancedTradingBot() {
                 />
               </div>
 
-              {/* Max Risk */}
-              <div className="space-y-2">
-                <label className="text-sm font-medium">
-                  Max Risk per Trade: {(botConfig.maxRisk * 100).toFixed(1)}%
-                </label>
-                <Slider
-                  value={[botConfig.maxRisk * 100]}
-                  onValueChange={([value]) => 
-                    setBotConfig(prev => ({ ...prev, maxRisk: value / 100 }))
-                  }
-                  max={10}
-                  min={0.5}
-                  step={0.5}
-                  className="w-full"
-                />
+              {/* Risk Level */}
+              <div className="space-y-4">
+                <label className="text-sm font-medium">Smart Risk Management Level</label>
+                <div className="grid grid-cols-1 gap-3">
+                  {[
+                    {
+                      level: 'low' as const,
+                      title: 'Low Risk',
+                      description: 'Only strong confluence trades (85%+), major fibonacci levels, strong S/R',
+                      color: 'border-green-500 text-green-700',
+                      bgColor: 'bg-green-50'
+                    },
+                    {
+                      level: 'medium' as const,
+                      title: 'Medium Risk',
+                      description: 'Moderate confluence (60%+), minor fibonacci levels, strong S/R only',
+                      color: 'border-yellow-500 text-yellow-700',
+                      bgColor: 'bg-yellow-50'
+                    },
+                    {
+                      level: 'high' as const,
+                      title: 'High Risk',
+                      description: 'Accept weaker trends (40%+), minor S/R levels, more aggressive entry',
+                      color: 'border-red-500 text-red-700',
+                      bgColor: 'bg-red-50'
+                    }
+                  ].map((option) => (
+                    <div
+                      key={option.level}
+                      className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${
+                        botConfig.riskLevel === option.level
+                          ? `${option.color} ${option.bgColor}`
+                          : 'border-gray-200 hover:border-gray-300'
+                      }`}
+                      onClick={() => setBotConfig(prev => ({ ...prev, riskLevel: option.level }))}
+                    >
+                      <div className="flex items-center space-x-2 mb-1">
+                        <div className={`w-3 h-3 rounded-full ${
+                          botConfig.riskLevel === option.level ? 'bg-current' : 'bg-gray-300'
+                        }`} />
+                        <span className="font-medium">{option.title}</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground ml-5">{option.description}</p>
+                    </div>
+                  ))}
+                </div>
               </div>
 
               {/* Portfolio Balance */}
