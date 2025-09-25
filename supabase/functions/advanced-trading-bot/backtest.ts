@@ -76,6 +76,7 @@ export async function runBacktestSimulation(
         if (isWinningTrade) {
           tradeReturn = (Math.random() * 0.08 + 0.01) * (baseConfidence / 80) * adaptiveParams.takeProfitMultiplier;
           adaptiveParams.winningTrades++;
+          winningTrades++; // Fix: Update global winning trades counter
         } else {
           tradeReturn = -(Math.random() * 0.04 + 0.01) * adaptiveParams.stopLossMultiplier;
         }
