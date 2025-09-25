@@ -48,6 +48,8 @@ interface BotConfig {
   tradingFrequency: 'daily' | 'weekly' | 'monthly';
   maxDailyTrades: number;
   enableScheduledTrading: boolean;
+  backtestMode: boolean;
+  backtestPeriod: '1week' | '2weeks' | '1month' | '3months';
 }
 
 export default function AdvancedTradingBot() {
@@ -87,7 +89,9 @@ export default function AdvancedTradingBot() {
     autoExecute: false,
     tradingFrequency: 'daily',
     maxDailyTrades: 5,
-    enableScheduledTrading: false
+    enableScheduledTrading: false,
+    backtestMode: false,
+    backtestPeriod: '1month'
   });
 
   const [botStats, setBotStats] = useState({
@@ -99,7 +103,8 @@ export default function AdvancedTradingBot() {
     learningProgress: 0,
     adaptationRate: 0,
     totalTrades: 0,
-    winningTrades: 0
+    winningTrades: 0,
+    backtestResults: null as any
   });
 
   const [isAnalyzing, setIsAnalyzing] = useState(false);
@@ -142,7 +147,9 @@ export default function AdvancedTradingBot() {
           portfolioBalance: botConfig.portfolioBalance,
           enableShorts: botConfig.enableShorts,
           tradingFrequency: botConfig.tradingFrequency,
-          maxDailyTrades: botConfig.maxDailyTrades
+          maxDailyTrades: botConfig.maxDailyTrades,
+          backtestMode: botConfig.backtestMode,
+          backtestPeriod: botConfig.backtestPeriod
         }
       });
 
@@ -171,13 +178,20 @@ export default function AdvancedTradingBot() {
           learningProgress: Math.min(100, (learningStats.trainingTrades + learningStats.testingTrades) / 2),
           adaptationRate: learningStats.fibonacciSuccessRate * 100,
           totalTrades: learningStats.trainingTrades + learningStats.testingTrades,
-          winningTrades: Math.round(learningStats.trainingTrades * learningStats.trainingWinRate / 100 + learningStats.testingTrades * learningStats.testingWinRate / 100)
+          winningTrades: Math.round(learningStats.trainingTrades * learningStats.trainingWinRate / 100 + learningStats.testingTrades * learningStats.testingWinRate / 100),
+          backtestResults: data.backtestResults || null
         };
         setBotStats(newStats);
 
-        toast.success(`🤖 Generated ${data.signals.length} trading signals using PPO algorithm`, {
-          description: `${data.signals.filter((s: TradingSignal) => s.action === 'BUY').length} BUY, ${data.signals.filter((s: TradingSignal) => s.action === 'SELL').length} SELL signals from ${botConfig.symbols.length} symbols (${botConfig.tradingFrequency} frequency)`
-        });
+        if (botConfig.backtestMode && data.backtestResults) {
+          toast.success(`🔬 Backtest Complete: ${data.backtestResults.totalTrades} trades over ${botConfig.backtestPeriod}`, {
+            description: `Win Rate: ${(data.backtestResults.winRate * 100).toFixed(1)}%, Total Return: ${(data.backtestResults.totalReturn * 100).toFixed(2)}%`
+          });
+        } else {
+          toast.success(`🤖 Generated ${data.signals.length} trading signals using PPO algorithm`, {
+            description: `${data.signals.filter((s: TradingSignal) => s.action === 'BUY').length} BUY, ${data.signals.filter((s: TradingSignal) => s.action === 'SELL').length} SELL signals from ${botConfig.symbols.length} symbols (${botConfig.tradingFrequency} frequency)`
+          });
+        }
 
         console.log('🤖 Advanced Trading Bot Results:', data);
       }
@@ -410,6 +424,62 @@ export default function AdvancedTradingBot() {
                 </div>
               </div>
 
+              {/* Backtesting Simulation */}
+              <div className="space-y-4">
+                <div className="flex items-center justify-between">
+                  <div>
+                    <label className="text-sm font-medium">Enable Backtesting Simulation</label>
+                    <p className="text-sm text-muted-foreground">
+                      Test AI performance on historical data from selected period to now
+                    </p>
+                  </div>
+                  <Switch
+                    checked={botConfig.backtestMode}
+                    onCheckedChange={(checked) => 
+                      setBotConfig(prev => ({ ...prev, backtestMode: checked }))
+                    }
+                  />
+                </div>
+
+                {botConfig.backtestMode && (
+                  <div className="space-y-2 p-4 bg-blue-50 rounded-lg border">
+                    <label className="text-sm font-medium text-blue-700">Backtesting Period</label>
+                    <div className="grid grid-cols-2 gap-2">
+                      {[
+                        { period: '1week' as const, label: '1 Week Ago → Now', days: '7 days' },
+                        { period: '2weeks' as const, label: '2 Weeks Ago → Now', days: '14 days' },
+                        { period: '1month' as const, label: '1 Month Ago → Now', days: '30 days' },
+                        { period: '3months' as const, label: '3 Months Ago → Now', days: '90 days' }
+                      ].map((option) => (
+                        <div
+                          key={option.period}
+                          className={`p-3 rounded-md border cursor-pointer transition-all ${
+                            botConfig.backtestPeriod === option.period
+                              ? 'border-blue-500 bg-blue-100 text-blue-700'
+                              : 'border-gray-200 hover:border-gray-300'
+                          }`}
+                          onClick={() => setBotConfig(prev => ({ ...prev, backtestPeriod: option.period }))}
+                        >
+                          <div className="flex items-center space-x-2 mb-1">
+                            <div className={`w-2 h-2 rounded-full ${
+                              botConfig.backtestPeriod === option.period ? 'bg-blue-500' : 'bg-gray-300'
+                            }`} />
+                            <span className="text-xs font-medium">{option.label}</span>
+                          </div>
+                          <p className="text-xs text-muted-foreground ml-4">{option.days} of historical data</p>
+                        </div>
+                      ))}
+                    </div>
+                    <Alert>
+                      <Brain className="h-4 w-4" />
+                      <AlertDescription>
+                        <strong>Backtesting Mode:</strong> AI will analyze historical price movements and show how it would have performed with real market data from the selected period.
+                      </AlertDescription>
+                    </Alert>
+                  </div>
+                )}
+              </div>
+
               {/* Trading Frequency */}
               <div className="space-y-4">
                 <label className="text-sm font-medium">Trading Frequency & Schedule</label>
@@ -532,12 +602,18 @@ export default function AdvancedTradingBot() {
                 {/* Test Bot Button */}
                 <Button
                   onClick={runAdvancedAnalysis}
-                  variant="outline"
+                  variant={botConfig.backtestMode ? "default" : "outline"}
                   className="w-full"
                   disabled={isAnalyzing || botConfig.symbols.length === 0}
                 >
                   <Brain className="mr-2 h-4 w-4" />
-                  {isAnalyzing ? 'Testing Bot...' : `Test Bot with ${botConfig.symbols.length} Selected Symbols`}
+                  {isAnalyzing ? 
+                    (botConfig.backtestMode ? 'Running Backtest...' : 'Testing Bot...') : 
+                    (botConfig.backtestMode ? 
+                      `Run Backtest (${botConfig.backtestPeriod.replace('week', ' Week').replace('month', ' Month').replace('s', 's')})` : 
+                      `Test Bot with ${botConfig.symbols.length} Selected Symbols`
+                    )
+                  }
                 </Button>
 
                 {/* Start/Stop Bot Buttons */}
@@ -694,6 +770,76 @@ export default function AdvancedTradingBot() {
         </TabsContent>
 
         <TabsContent value="performance" className="space-y-4">
+          {/* Backtesting Results */}
+          {botStats.backtestResults && (
+            <Card>
+              <CardHeader>
+                <CardTitle className="flex items-center space-x-2">
+                  <Brain className="h-5 w-5 text-blue-600" />
+                  <span>Backtesting Results ({botConfig.backtestPeriod})</span>
+                </CardTitle>
+                <CardDescription>
+                  AI performance simulation from {botConfig.backtestPeriod.replace('week', ' week').replace('month', ' month').replace('s', 's')} ago to now
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                  <div className="text-center">
+                    <p className="text-2xl font-bold text-blue-600">{botStats.backtestResults.totalTrades}</p>
+                    <p className="text-sm text-muted-foreground">Total Trades</p>
+                    <p className="text-lg font-semibold text-green-600 mt-1">
+                      {(botStats.backtestResults.winRate * 100).toFixed(1)}% Win Rate
+                    </p>
+                  </div>
+                  
+                  <div className="text-center">
+                    <p className={`text-2xl font-bold ${botStats.backtestResults.totalReturn >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {botStats.backtestResults.totalReturn >= 0 ? '+' : ''}{(botStats.backtestResults.totalReturn * 100).toFixed(2)}%
+                    </p>
+                    <p className="text-sm text-muted-foreground">Total Return</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      ${(botConfig.portfolioBalance * botStats.backtestResults.totalReturn).toFixed(2)} P&L
+                    </p>
+                  </div>
+                  
+                  <div className="text-center">
+                    <p className="text-2xl font-bold text-purple-600">
+                      {(botStats.backtestResults.avgConfidence * 100).toFixed(1)}%
+                    </p>
+                    <p className="text-sm text-muted-foreground">Avg Confidence</p>
+                    <Progress value={botStats.backtestResults.avgConfidence * 100} className="mt-2" />
+                  </div>
+                  
+                  <div className="text-center">
+                    <p className="text-2xl font-bold text-amber-600">
+                      {(botStats.backtestResults.sharpeRatio || 0).toFixed(2)}
+                    </p>
+                    <p className="text-sm text-muted-foreground">Sharpe Ratio</p>
+                    <p className="text-xs text-muted-foreground mt-1">Risk-Adjusted Return</p>
+                  </div>
+                </div>
+                
+                <div className="mt-6 p-4 bg-gradient-to-r from-blue-50 to-green-50 rounded-lg border">
+                  <h4 className="font-semibold mb-2 text-blue-700">Backtesting Summary</h4>
+                  <div className="grid grid-cols-1 md:grid-cols-3 gap-4 text-sm">
+                    <div>
+                      <strong className="text-green-600">Winning Trades:</strong>
+                      <p className="text-muted-foreground">{Math.round(botStats.backtestResults.totalTrades * botStats.backtestResults.winRate)} out of {botStats.backtestResults.totalTrades}</p>
+                    </div>
+                    <div>
+                      <strong className="text-blue-600">Period Tested:</strong>
+                      <p className="text-muted-foreground">{botConfig.backtestPeriod.replace('week', ' week').replace('month', ' month').replace('s', 's')} of real market data</p>
+                    </div>
+                    <div>
+                      <strong className="text-purple-600">Strategy Used:</strong>
+                      <p className="text-muted-foreground">PPO with {botConfig.riskLevel} risk level</p>
+                    </div>
+                  </div>
+                </div>
+              </CardContent>
+            </Card>
+          )}
+
           {/* Real-time Learning Metrics */}
           <Card>
             <CardHeader>

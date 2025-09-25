@@ -1,6 +1,7 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
+import { runBacktestSimulation } from './backtest.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -222,13 +223,38 @@ serve(async (req) => {
       portfolioBalance = 100000,
       enableShorts = true,
       tradingFrequency = 'daily',
-      maxDailyTrades = 5
+      maxDailyTrades = 5,
+      backtestMode = false,
+      backtestPeriod = '1month'
     } = await req.json();
 
     console.log(`🤖 Enhanced PPO Trading Bot Starting - Mode: ${mode}, Risk: ${risk}, Frequency: ${tradingFrequency}`);
     console.log(`📊 Processing ${symbols.length} symbols with ${tradingFrequency} trading frequency, max ${maxDailyTrades} trades per period`);
     console.log(`💰 Portfolio: $${portfolioBalance}, Shorts: ${enableShorts ? 'enabled' : 'disabled'}`);
-
+    
+    if (backtestMode) {
+      console.log(`🔬 BACKTESTING MODE: Testing AI performance over ${backtestPeriod} period`);
+      
+      // Run backtesting simulation
+      const backtestResults = await runBacktestSimulation(symbols.slice(0, 15), backtestPeriod, risk, portfolioBalance);
+      
+      return new Response(JSON.stringify({
+        success: true,
+        mode: 'backtest',
+        risk,
+        tradingFrequency,
+        maxDailyTrades,
+        backtestPeriod,
+        riskLevelInfo: RISK_LEVELS[risk],
+        signals: [],
+        totalSignals: 0,
+        backtestResults,
+        message: `Backtesting complete: ${backtestResults.totalTrades} trades over ${backtestPeriod} with ${(backtestResults.winRate * 100).toFixed(1)}% win rate`
+      }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    
     const tradingSignals = [];
     const maxSymbols = Math.min(symbols.length, 15); // Limit to 15 symbols for performance
     const symbolsToProcess = symbols.slice(0, maxSymbols);
