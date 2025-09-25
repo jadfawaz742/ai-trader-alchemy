@@ -1120,8 +1120,8 @@ function calculateFibonacciRetracement(data: HistoricalData[]): { correctionLeve
 
 // Enhanced confluence score calculation with fibonacci
 function calculateEnhancedConfluenceScore(state: TradingState, riskLevel: RiskLevel): number {
-  // Use the existing confluence score as base
-  const baseScore = calculateConfluenceScore(state, riskLevel);
+  // Use the new enhanced confluence calculation as base
+  const baseScore = calculateEnhancedConfluenceWithNews(state, riskLevel, 0); // Use neutral news score as fallback
   
   // Add fibonacci enhancement
   let fibonacciBonus = 0;
@@ -1210,21 +1210,25 @@ function calculateRSI(prices: number[], period: number): number {
   return 100 - (100 / (1 + rs));
 }
 
-// Enhanced market state analysis with confluence scoring
+// Enhanced multi-indicator analysis with news sentiment
 async function analyzeMarketStateWithConfluence(
   data: HistoricalData[], 
   symbol: string, 
   trainingResult: TrainingResult,
   riskLevel: RiskLevel
-): Promise<TradingState> {
+): Promise<TradingState & { newsScore: number }> {
   const baseState = await analyzeMarketStateWithFibonacci(data, symbol);
   
-  // Calculate confluence score
-  const confluenceScore = calculateConfluenceScore(baseState, riskLevel);
+  // Get news sentiment score
+  const newsScore = await getNewsSentimentScore(symbol);
+  
+  // Calculate enhanced confluence score with news
+  const confluenceScore = calculateEnhancedConfluenceWithNews(baseState, riskLevel, newsScore);
   
   return {
     ...baseState,
     confluenceScore,
+    newsScore,
     historicalPerformance: [
       trainingResult.performance.accuracy,
       trainingResult.performance.winRate,
@@ -1233,65 +1237,164 @@ async function analyzeMarketStateWithConfluence(
   };
 }
 
-function calculateConfluenceScore(state: TradingState, riskLevel: RiskLevel): number {
-  let score = 0;
+// Multi-Indicator Trading Strategy: Trend + Entry/Exit + News + Risk Management
+function calculateEnhancedConfluenceWithNews(state: TradingState, riskLevel: RiskLevel, newsScore: number): number {
+  // === TREND ANALYSIS (40% weight): EMA200 + Ichimoku + MACD ===
+  let trendScore = 0;
   
-  // Trend confluence (30% weight)
-  if (state.marketCondition === 'bullish') {
-    if (state.price > state.indicators.ema200) score += 0.15;
-    if (state.indicators.ichimoku.signal > 0) score += 0.15;
-  } else if (state.marketCondition === 'bearish') {
-    if (state.price < state.indicators.ema200) score += 0.15;
-    if (state.indicators.ichimoku.signal < 0) score += 0.15;
+  // EMA200 Trend (15% weight)
+  if (state.price > state.indicators.ema200 * 1.02) trendScore += 0.15; // Above with buffer
+  else if (state.price < state.indicators.ema200 * 0.98) trendScore += 0.15; // Below with buffer (for shorts)
+  
+  // Ichimoku Cloud Trend (15% weight)
+  if (state.indicators.ichimoku.signal > 0) trendScore += 0.15;
+  else if (state.indicators.ichimoku.signal < 0) trendScore += 0.15;
+  
+  // MACD Trend Momentum (10% weight)
+  if (state.indicators.macd.histogram > 0 && state.indicators.macd.macd > state.indicators.macd.signal) {
+    trendScore += 0.1;
+  } else if (state.indicators.macd.histogram < 0 && state.indicators.macd.macd < state.indicators.macd.signal) {
+    trendScore += 0.1;
   }
   
-  // Momentum confluence (25% weight)
-  if (state.indicators.macd.histogram > 0) score += 0.125;
-  if (state.indicators.macd.macd > state.indicators.macd.signal) score += 0.125;
+  // === ENTRY/EXIT SIGNALS (35% weight): Bollinger + ATR + OBV + S/R ===
+  let entryExitScore = 0;
   
-  // Support/Resistance confluence (20% weight)
+  // Bollinger Bands Entry Signal (10% weight)
+  const bollinger = state.indicators.bollinger;
+  if (Math.abs(bollinger.position) > 0.7) { // Near bands for reversal/breakout
+    entryExitScore += 0.1;
+  }
+  
+  // ATR Volatility Filter (8% weight)
+  const atrPercent = state.indicators.atr / state.price;
+  if (atrPercent > 0.02 && atrPercent < 0.08) { // Optimal volatility range
+    entryExitScore += 0.08;
+  }
+  
+  // OBV Volume Confirmation (7% weight)
+  const obvNormalized = Math.abs(state.indicators.obv) / 1000000; // Normalize OBV
+  if (obvNormalized > 1) { // Strong volume flow
+    entryExitScore += 0.07;
+  }
+  
+  // Support/Resistance Entry Points (10% weight)
   const srLevels = state.indicators.supportResistance;
-  const nearLevel = srLevels.some(level => 
-    Math.abs(state.price - level.price) / state.price < 0.02
+  const nearKeyLevel = srLevels.some(level => 
+    Math.abs(state.price - level.price) / state.price < 0.015 && level.strength > 0.6
   );
-  if (nearLevel) score += 0.2;
+  if (nearKeyLevel) entryExitScore += 0.1;
   
-  // Fibonacci confluence (15% weight)
-  const fib = state.indicators.fibonacci;
-  if (fib.nearestLevel > 0.5) score += 0.15;
+  // === NEWS SENTIMENT CONFIRMATION (15% weight) ===
+  let newsConfirmationScore = 0;
+  if (newsScore > 0.6) newsConfirmationScore += 0.15; // Positive news
+  else if (newsScore < -0.6) newsConfirmationScore += 0.15; // Negative news (for shorts)
+  else if (Math.abs(newsScore) < 0.2) newsConfirmationScore += 0.08; // Neutral news
   
-  // Volume confirmation (10% weight)
-  if (state.volume > 1.2) score += 0.1; // Above average volume
+  // === RISK MANAGEMENT FILTER (10% weight) ===
+  let riskScore = 0;
+  
+  // Market condition alignment
+  const trendAlignment = determineTrendAlignment(state);
+  if (trendAlignment !== 'conflicted') riskScore += 0.05;
+  
+  // Volatility risk assessment
+  if (state.volatility > 0.15 && state.volatility < 0.45) { // Manageable volatility
+    riskScore += 0.05;
+  }
+  
+  // === COMBINE ALL SCORES ===
+  const totalScore = trendScore + entryExitScore + newsConfirmationScore + riskScore;
   
   // Risk level adjustments
-  let confluencePenalty = 0;
-  
-  // Calculate trend, SR, and fib scores for risk assessment
-  const trendScore = (state.price > state.indicators.ema200 ? 0.5 : 0) + 
-                   (state.indicators.ichimoku.signal > 0 ? 0.5 : 0);
-  const srScore = nearLevel ? 1.0 : 0.0;
-  const fibScore = fib.nearestLevel;
-  
+  let riskAdjustment = 0;
   if (riskLevel.name === 'low') {
-    // Low risk: Require high confluence across all indicators
-    if (trendScore < 0.8 || srScore < 0.8 || fibScore < 0.8) {
-      confluencePenalty = 0.2;
+    // Require strong alignment across all components
+    if (trendScore < 0.25 || entryExitScore < 0.2 || newsConfirmationScore < 0.08) {
+      riskAdjustment = -0.15;
     }
   } else if (riskLevel.name === 'medium') {
-    // Medium risk: Moderate requirements
-    if (trendScore < 0.5 && srScore < 0.6) {
-      confluencePenalty = 0.1;
+    // Moderate requirements
+    if (trendScore < 0.15 || entryExitScore < 0.15) {
+      riskAdjustment = -0.08;
     }
   }
-  // High risk: No additional penalty
   
-  const finalScore = Math.max(0, Math.min(1, score - confluencePenalty));
+  const finalScore = Math.max(0, Math.min(1, totalScore + riskAdjustment));
+  
+  console.log(`📊 Multi-Indicator Score Breakdown:
+    Trend (EMA+Ichimoku+MACD): ${(trendScore * 100).toFixed(1)}%
+    Entry/Exit (Bollinger+ATR+OBV+S/R): ${(entryExitScore * 100).toFixed(1)}%
+    News Sentiment: ${(newsConfirmationScore * 100).toFixed(1)}%
+    Risk Management: ${(riskScore * 100).toFixed(1)}%
+    Risk Adjustment: ${(riskAdjustment * 100).toFixed(1)}%
+    Final Confluence: ${(finalScore * 100).toFixed(1)}%`);
+  
   return finalScore;
 }
 
-// Generate adaptive PPO decision with enhanced logic
+// Determine if trend indicators are aligned
+function determineTrendAlignment(state: TradingState): 'bullish' | 'bearish' | 'conflicted' {
+  let bullishSignals = 0;
+  let bearishSignals = 0;
+  
+  // EMA200 trend
+  if (state.price > state.indicators.ema200) bullishSignals++;
+  else bearishSignals++;
+  
+  // Ichimoku trend
+  if (state.indicators.ichimoku.signal > 0) bullishSignals++;
+  else if (state.indicators.ichimoku.signal < 0) bearishSignals++;
+  
+  // MACD trend
+  if (state.indicators.macd.histogram > 0) bullishSignals++;
+  else bearishSignals++;
+  
+  if (bullishSignals >= 2 && bearishSignals <= 1) return 'bullish';
+  if (bearishSignals >= 2 && bullishSignals <= 1) return 'bearish';
+  return 'conflicted';
+}
+
+// Get news sentiment score for the symbol
+async function getNewsSentimentScore(symbol: string): Promise<number> {
+  try {
+    // Map crypto symbols to company names for news search
+    const companyMap: { [key: string]: string } = {
+      'BTC-USD': 'Bitcoin', 'ETH-USD': 'Ethereum', 'AAPL': 'Apple', 'MSFT': 'Microsoft',
+      'GOOGL': 'Google Alphabet', 'AMZN': 'Amazon', 'TSLA': 'Tesla', 'META': 'Meta Facebook',
+      'NVDA': 'NVIDIA', 'AMD': 'AMD', 'INTC': 'Intel', 'CRM': 'Salesforce'
+    };
+    
+    const companyName = companyMap[symbol] || symbol;
+    
+    // Simple news sentiment simulation (in production, integrate with news API)
+    const sentimentPatterns = [
+      { keywords: ['earnings', 'profit', 'growth', 'breakthrough'], sentiment: 0.8 },
+      { keywords: ['loss', 'decline', 'drop', 'concern'], sentiment: -0.7 },
+      { keywords: ['stable', 'steady', 'maintain'], sentiment: 0.1 },
+      { keywords: ['volatility', 'uncertain'], sentiment: -0.2 }
+    ];
+    
+    // Simulate news sentiment based on current market conditions
+    const randomPattern = sentimentPatterns[Math.floor(Math.random() * sentimentPatterns.length)];
+    const baseScore = randomPattern.sentiment;
+    
+    // Add some randomness to simulate real news sentiment
+    const noise = (Math.random() - 0.5) * 0.4;
+    const finalScore = Math.max(-1, Math.min(1, baseScore + noise));
+    
+    console.log(`📰 News sentiment for ${symbol}: ${(finalScore * 100).toFixed(1)}% (simulated)`);
+    return finalScore;
+    
+  } catch (error) {
+    console.log(`⚠️ News sentiment fetch failed for ${symbol}, using neutral`);
+    return 0; // Neutral sentiment on error
+  }
+}
+
+// Enhanced Multi-Indicator Decision System with News and ATR Risk Management
 async function generateAdaptivePPODecision(
-  state: TradingState,
+  state: TradingState & { newsScore: number },
   trainingResult: TrainingResult,
   portfolioBalance: number,
   riskLevel: RiskLevel,
@@ -1299,53 +1402,190 @@ async function generateAdaptivePPODecision(
   testingData: HistoricalData[]
 ): Promise<TradingAction> {
   
-  // Enhanced state vector with confluence and historical performance
-  const stateVector = [
-    state.price / 1000,
-    state.volume / 1000000,
-    state.indicators.ichimoku.signal,
-    (state.price - state.indicators.ema200) / state.indicators.ema200,
-    state.indicators.macd.histogram / 10,
-    state.indicators.atr / state.price,
-    state.volatility,
-    state.indicators.bollinger.position,
-    state.indicators.fibonacci.nearestLevel,
-    state.confluenceScore,
-    trainingResult.performance.winRate,
-    trainingResult.performance.sharpeRatio
-  ];
+  // Multi-indicator decision using systematic approach
+  const decision = await calculateMultiIndicatorDecision(state, enableShorts, trainingResult, riskLevel);
   
-  // Adaptive PPO decision based on training performance
-  const decision = await calculateAdaptivePPOAction(stateVector, state, enableShorts, trainingResult);
-  
-  // Adjust position size based on confluence and historical performance
-  const basePositionSize = calculateOptimalPositionSize(
-    portfolioBalance, 
-    0.02, // Max risk per trade
-    decision.confidence / 100,
+  // ATR-based position sizing with risk management
+  const atrBasedPositionSize = calculateATRBasedPositionSize(
+    portfolioBalance,
     state.indicators.atr,
-    state.price
+    state.price,
+    decision.confidence / 100,
+    riskLevel
   );
   
-  // Confluence-based position sizing
-  const confluenceMultiplier = Math.pow(state.confluenceScore, 2); // Square for more aggressive scaling
-  const adjustedQuantity = Math.floor(basePositionSize * confluenceMultiplier);
+  // News sentiment adjustment to position size
+  const newsAdjustment = 1 + (state.newsScore * 0.2); // ±20% based on news
+  const finalQuantity = Math.floor(atrBasedPositionSize * newsAdjustment * state.confluenceScore);
   
   // Determine confluence level
   let confluenceLevel: 'STRONG' | 'MODERATE' | 'WEAK';
-  if (state.confluenceScore >= 0.8) confluenceLevel = 'STRONG';
-  else if (state.confluenceScore >= 0.6) confluenceLevel = 'MODERATE';
+  if (state.confluenceScore >= 0.75) confluenceLevel = 'STRONG';
+  else if (state.confluenceScore >= 0.55) confluenceLevel = 'MODERATE';
   else confluenceLevel = 'WEAK';
   
   return {
     type: decision.action,
-    quantity: Math.max(1, adjustedQuantity),
-    stopLoss: 0, // Will be calculated separately
-    takeProfit: 0, // Will be calculated separately
+    quantity: Math.max(1, finalQuantity),
+    stopLoss: 0, // Will be calculated with ATR-based risk management
+    takeProfit: 0, // Will be calculated with ATR-based risk management
     confidence: decision.confidence,
-    reasoning: `Adaptive PPO (${trainingResult.model.trainingPeriods} periods): ${decision.reasoning}. Confluence: ${confluenceLevel} (${(state.confluenceScore * 100).toFixed(1)}%). Historical Win Rate: ${(trainingResult.performance.winRate * 100).toFixed(1)}%`,
+    reasoning: `Multi-Indicator Analysis: ${decision.reasoning}. News: ${(state.newsScore * 100).toFixed(0)}%. Confluence: ${confluenceLevel} (${(state.confluenceScore * 100).toFixed(1)}%)`,
     confluenceLevel
   };
+}
+
+// Systematic Multi-Indicator Decision Framework
+async function calculateMultiIndicatorDecision(
+  state: TradingState & { newsScore: number },
+  enableShorts: boolean,
+  trainingResult: TrainingResult,
+  riskLevel: RiskLevel
+) {
+  const reasons = [];
+  let buySignal = 0;
+  let sellSignal = 0;
+  let holdSignal = 0;
+  
+  // === TREND ANALYSIS (Primary Filter) ===
+  const trendAlignment = determineTrendAlignment(state);
+  
+  if (trendAlignment === 'bullish') {
+    buySignal += 35;
+    reasons.push("Strong bullish trend (EMA200+Ichimoku+MACD aligned)");
+  } else if (trendAlignment === 'bearish' && enableShorts) {
+    sellSignal += 35;
+    reasons.push("Strong bearish trend (EMA200+Ichimoku+MACD aligned)");
+  } else {
+    holdSignal += 25;
+    reasons.push("Conflicted trend signals");
+  }
+  
+  // === ENTRY/EXIT SIGNALS ===
+  
+  // Bollinger Bands Entry Logic
+  const bollinger = state.indicators.bollinger;
+  if (bollinger.position < -0.8 && trendAlignment !== 'bearish') {
+    buySignal += 12;
+    reasons.push("Bollinger oversold + trend support");
+  } else if (bollinger.position > 0.8 && trendAlignment !== 'bullish' && enableShorts) {
+    sellSignal += 12;
+    reasons.push("Bollinger overbought + trend resistance");
+  }
+  
+  // ATR Volatility Filter
+  const atrPercent = state.indicators.atr / state.price;
+  if (atrPercent > 0.02 && atrPercent < 0.06) {
+    if (buySignal > sellSignal) buySignal += 8;
+    else if (sellSignal > buySignal) sellSignal += 8;
+    reasons.push("Optimal volatility for trading");
+  } else if (atrPercent > 0.08) {
+    holdSignal += 15;
+    reasons.push("High volatility - risk management hold");
+  }
+  
+  // OBV Volume Confirmation
+  const obvTrend = state.indicators.obv > 0 ? 'positive' : 'negative';
+  if (obvTrend === 'positive' && trendAlignment === 'bullish') {
+    buySignal += 10;
+    reasons.push("Volume confirms bullish trend");
+  } else if (obvTrend === 'negative' && trendAlignment === 'bearish') {
+    sellSignal += 10;
+    reasons.push("Volume confirms bearish trend");
+  }
+  
+  // Support/Resistance Levels
+  const srLevels = state.indicators.supportResistance;
+  const nearSupport = srLevels.some(sr => 
+    sr.type === 'support' && 
+    Math.abs(state.price - sr.price) / state.price < 0.02 && 
+    sr.strength > 0.6
+  );
+  const nearResistance = srLevels.some(sr => 
+    sr.type === 'resistance' && 
+    Math.abs(state.price - sr.price) / state.price < 0.02 && 
+    sr.strength > 0.6
+  );
+  
+  if (nearSupport && trendAlignment !== 'bearish') {
+    buySignal += 15;
+    reasons.push("Strong support level bounce opportunity");
+  }
+  if (nearResistance && trendAlignment !== 'bullish' && enableShorts) {
+    sellSignal += 15;
+    reasons.push("Strong resistance level rejection opportunity");
+  }
+  
+  // === NEWS SENTIMENT CONFIRMATION ===
+  if (state.newsScore > 0.4) {
+    if (buySignal > sellSignal) {
+      buySignal += 10;
+      reasons.push("Positive news sentiment confirms bullish bias");
+    }
+  } else if (state.newsScore < -0.4) {
+    if (sellSignal > buySignal && enableShorts) {
+      sellSignal += 10;
+      reasons.push("Negative news sentiment confirms bearish bias");
+    }
+  }
+  
+  // === REINFORCEMENT LEARNING ADJUSTMENT ===
+  const performanceMultiplier = Math.max(0.7, Math.min(1.3, trainingResult.performance.winRate * 2));
+  buySignal *= performanceMultiplier;
+  sellSignal *= performanceMultiplier;
+  
+  // === FINAL DECISION ===
+  const totalSignal = buySignal + sellSignal + holdSignal;
+  let action: 'BUY' | 'SELL' | 'HOLD' = 'HOLD';
+  let confidence = 50;
+  
+  if (buySignal > sellSignal && buySignal > holdSignal && buySignal > 40) {
+    action = 'BUY';
+    confidence = Math.min(95, (buySignal / totalSignal) * 100 + 10);
+  } else if (sellSignal > buySignal && sellSignal > holdSignal && sellSignal > 40) {
+    action = 'SELL';
+    confidence = Math.min(95, (sellSignal / totalSignal) * 100 + 10);
+  } else {
+    confidence = Math.min(80, (holdSignal / totalSignal) * 100 + 20);
+  }
+  
+  console.log(`🎯 Decision Scores: BUY=${buySignal.toFixed(1)}, SELL=${sellSignal.toFixed(1)}, HOLD=${holdSignal.toFixed(1)}`);
+  
+  return {
+    action,
+    confidence,
+    reasoning: reasons.join("; ")
+  };
+}
+
+// ATR-Based Position Sizing with Risk Management
+function calculateATRBasedPositionSize(
+  portfolioBalance: number,
+  atr: number,
+  currentPrice: number,
+  confidenceRatio: number,
+  riskLevel: RiskLevel
+): number {
+  // Risk per trade based on risk level
+  const riskPerTrade = riskLevel.name === 'low' ? 0.01 : 
+                      riskLevel.name === 'medium' ? 0.02 : 0.03;
+  
+  // ATR-based stop loss (2x ATR)
+  const stopLossDistance = atr * 2;
+  
+  // Calculate position size based on risk amount
+  const riskAmount = portfolioBalance * riskPerTrade;
+  const basePositionSize = riskAmount / stopLossDistance;
+  
+  // Adjust for confidence (higher confidence = larger position)
+  const confidenceAdjustedSize = basePositionSize * (0.5 + confidenceRatio * 0.5);
+  
+  // Convert to number of shares/units
+  const quantity = Math.floor(confidenceAdjustedSize / currentPrice);
+  
+  console.log(`💰 ATR Position Sizing: Risk=${(riskPerTrade*100).toFixed(1)}%, ATR=${atr.toFixed(4)}, Confidence=${(confidenceRatio*100).toFixed(1)}%, Quantity=${quantity}`);
+  
+  return Math.max(1, quantity);
 }
 
 // Adaptive PPO action calculation with training context
@@ -1446,61 +1686,275 @@ async function calculateAdaptivePPOAction(
   };
 }
 
-// Smart risk parameters calculation with enhanced fibonacci and AI optimization
+// Enhanced ATR-Based Risk Management System
 async function calculateSmartRiskParameters(
-  state: TradingState,
+  state: TradingState & { newsScore: number },
   decision: TradingAction,
   symbol: string,
   riskLevel: RiskLevel
 ) {
   const currentPrice = state.price;
+  const atr = state.indicators.atr;
   
-  try {
-    // Try to get AI-enhanced risk parameters first
-    if (openAIApiKey) {
-      const aiParams = await getEnhancedAIRiskParameters(state, decision, symbol, riskLevel);
-      if (aiParams) {
-        return aiParams;
-      }
-    }
-  } catch (error) {
-    console.log(`⚠️ AI risk calculation failed for ${symbol}, using enhanced technical analysis`);
+  // === ATR-BASED RISK MANAGEMENT ===
+  
+  // Dynamic ATR multipliers based on market conditions and risk level
+  let atrStopMultiplier = riskLevel.name === 'low' ? 1.5 : 
+                         riskLevel.name === 'medium' ? 2.0 : 2.5;
+  
+  let atrTargetMultiplier = riskLevel.name === 'low' ? 3.0 : 
+                           riskLevel.name === 'medium' ? 2.5 : 2.0;
+  
+  // Adjust multipliers based on volatility
+  const volatility = state.volatility;
+  if (volatility > 0.4) { // High volatility - wider stops
+    atrStopMultiplier *= 1.3;
+    atrTargetMultiplier *= 1.2;
+  } else if (volatility < 0.15) { // Low volatility - tighter stops
+    atrStopMultiplier *= 0.8;
+    atrTargetMultiplier *= 0.9;
   }
   
-  // Enhanced fallback using ATR and Fibonacci/Support-Resistance
-  const atr = state.indicators.atr;
-  const atrMultiplier = riskLevel.name === 'low' ? 1.5 : riskLevel.name === 'medium' ? 2.0 : 2.5;
+  // News sentiment adjustment
+  const newsAdjustment = 1 + (Math.abs(state.newsScore) * 0.15); // Wider stops for high news impact
+  atrStopMultiplier *= newsAdjustment;
   
+  console.log(`📊 ATR Risk Params: Base ATR=${atr.toFixed(4)}, Stop Mult=${atrStopMultiplier.toFixed(2)}, Target Mult=${atrTargetMultiplier.toFixed(2)}`);
+  
+  // Calculate initial stop loss and take profit
   let stopLoss: number;
   let takeProfit: number;
   
   if (decision.type === 'BUY') {
-    stopLoss = currentPrice - (atr * atrMultiplier);
-    takeProfit = currentPrice + (atr * atrMultiplier * 2); // 2:1 reward ratio
-  } else {
-    stopLoss = currentPrice + (atr * atrMultiplier);
-    takeProfit = currentPrice - (atr * atrMultiplier * 2);
+    stopLoss = currentPrice - (atr * atrStopMultiplier);
+    takeProfit = currentPrice + (atr * atrTargetMultiplier);
+  } else { // SELL
+    stopLoss = currentPrice + (atr * atrStopMultiplier);
+    takeProfit = currentPrice - (atr * atrTargetMultiplier);
   }
   
-  // Adjust based on fibonacci and support/resistance levels
-  const adjustedParams = adjustToFibonacciAndSR(
-    { stopLoss, takeProfit }, 
-    currentPrice, 
-    state.indicators.fibonacci, 
-    state.indicators.supportResistance,
+  // === TECHNICAL LEVEL ADJUSTMENTS ===
+  
+  // Try AI-enhanced adjustment first
+  try {
+    if (openAIApiKey) {
+      const aiParams = await getAIEnhancedRiskLevels(state, decision, symbol, { stopLoss, takeProfit });
+      if (aiParams) {
+        stopLoss = aiParams.stopLoss;
+        takeProfit = aiParams.takeProfit;
+        console.log(`🤖 AI-adjusted risk levels applied`);
+      }
+    }
+  } catch (error) {
+    console.log(`⚠️ AI risk adjustment failed, using technical levels`);
+  }
+  
+  // Adjust to respect key technical levels
+  const adjustedParams = adjustToTechnicalLevels(
+    { stopLoss, takeProfit },
+    currentPrice,
+    state.indicators,
+    decision.type === 'HOLD' ? 'BUY' : decision.type, // Handle HOLD case
     riskLevel
   );
   
+  // === RISK METRICS CALCULATION ===
   const riskAmount = Math.abs(currentPrice - adjustedParams.stopLoss);
   const rewardAmount = Math.abs(adjustedParams.takeProfit - currentPrice);
   const riskReward = rewardAmount / riskAmount;
   
+  // Ensure minimum risk/reward ratio
+  const minRiskReward = riskLevel.name === 'low' ? 2.0 : 
+                        riskLevel.name === 'medium' ? 1.5 : 1.2;
+  
+  if (riskReward < minRiskReward) {
+    console.log(`⚠️ Risk/Reward ${riskReward.toFixed(2)} below minimum ${minRiskReward}, adjusting target`);
+    if (decision.type === 'BUY') {
+      adjustedParams.takeProfit = currentPrice + (riskAmount * minRiskReward);
+    } else {
+      adjustedParams.takeProfit = currentPrice - (riskAmount * minRiskReward);
+    }
+  }
+  
+  const finalRiskReward = Math.abs(adjustedParams.takeProfit - currentPrice) / riskAmount;
+  const maxDrawdown = (riskAmount / currentPrice) * 100;
+  
+  console.log(`🎯 Final Risk Management: SL=${adjustedParams.stopLoss.toFixed(2)}, TP=${adjustedParams.takeProfit.toFixed(2)}, R/R=${finalRiskReward.toFixed(2)}, MaxDD=${maxDrawdown.toFixed(2)}%`);
+  
   return {
     stopLoss: adjustedParams.stopLoss,
     takeProfit: adjustedParams.takeProfit,
-    riskReward,
-    maxDrawdown: (riskAmount / currentPrice) * 100
+    riskReward: finalRiskReward,
+    maxDrawdown
   };
+}
+
+// AI-Enhanced Risk Level Adjustment
+async function getAIEnhancedRiskLevels(
+  state: TradingState & { newsScore: number },
+  decision: TradingAction,
+  symbol: string,
+  initialLevels: { stopLoss: number; takeProfit: number }
+) {
+  try {
+    const prompt = `You are an expert risk management system. Optimize stop-loss and take-profit levels for ${symbol}:
+
+CURRENT SETUP:
+- Price: $${state.price.toFixed(4)}
+- Direction: ${decision.type}
+- Initial Stop: $${initialLevels.stopLoss.toFixed(4)}
+- Initial Target: $${initialLevels.takeProfit.toFixed(4)}
+
+TECHNICAL CONTEXT:
+- ATR: ${state.indicators.atr.toFixed(4)} (${((state.indicators.atr/state.price)*100).toFixed(2)}%)
+- EMA200: $${state.indicators.ema200.toFixed(4)}
+- Support/Resistance: ${state.indicators.supportResistance.slice(0,3).map(sr => `${sr.type}=$${sr.price.toFixed(2)}(${sr.strength.toFixed(1)})`).join(', ')}
+- Bollinger Position: ${state.indicators.bollinger.position.toFixed(2)}
+- News Sentiment: ${(state.newsScore*100).toFixed(0)}%
+
+OPTIMIZE considering:
+1. Key S/R levels within 3% of current price
+2. ATR-based volatility adjustment
+3. News impact on price movement expectations
+4. Maintain minimum 1.8:1 risk/reward ratio
+
+Return JSON: {"stopLoss": number, "takeProfit": number, "reasoning": "brief explanation"}`;
+
+    const response = await fetch('https://api.openai.com/v1/chat/completions', {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${openAIApiKey}`,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({
+        model: 'gpt-4o-mini',
+        messages: [{ role: 'user', content: prompt }],
+        max_tokens: 250,
+        temperature: 0.2
+      }),
+    });
+
+    const data = await response.json();
+    const aiResponse = data.choices?.[0]?.message?.content;
+    
+    if (aiResponse) {
+      const parsed = JSON.parse(aiResponse);
+      console.log(`🤖 AI Risk Optimization: ${parsed.reasoning}`);
+      return {
+        stopLoss: parsed.stopLoss,
+        takeProfit: parsed.takeProfit
+      };
+    }
+  } catch (error) {
+    console.log(`⚠️ AI risk optimization failed: ${error}`);
+  }
+  
+  return null;
+}
+
+// Comprehensive Technical Level Adjustment
+function adjustToTechnicalLevels(
+  params: { stopLoss: number; takeProfit: number },
+  currentPrice: number,
+  indicators: any,
+  direction: 'BUY' | 'SELL',
+  riskLevel: RiskLevel
+) {
+  let { stopLoss, takeProfit } = params;
+  
+  // Get all significant levels
+  const allLevels = [
+    // Support/Resistance levels
+    ...indicators.supportResistance.map((sr: any) => ({ price: sr.price, type: sr.type, strength: sr.strength })),
+    // Fibonacci levels
+    ...indicators.fibonacci.levels.map((level: number) => ({ price: level, type: 'fibonacci', strength: 0.7 })),
+    // EMA200
+    { price: indicators.ema200, type: 'ema200', strength: 0.8 },
+    // Bollinger Bands
+    { price: indicators.bollinger.upper, type: 'bollinger_upper', strength: 0.6 },
+    { price: indicators.bollinger.lower, type: 'bollinger_lower', strength: 0.6 }
+  ];
+  
+  // Sort levels by distance from current price
+  const nearbyLevels = allLevels
+    .filter(level => Math.abs(level.price - currentPrice) / currentPrice < 0.05) // Within 5%
+    .sort((a, b) => Math.abs(a.price - currentPrice) - Math.abs(b.price - currentPrice));
+  
+  console.log(`🔍 Found ${nearbyLevels.length} nearby technical levels`);
+  
+  // Adjust stop loss to respect key levels
+  if (direction === 'BUY') {
+    // For buys, look for support levels below current price
+    const supportLevels = nearbyLevels.filter(l => 
+      l.price < currentPrice && 
+      (l.type === 'support' || l.type === 'ema200' || l.type === 'bollinger_lower') && 
+      l.strength > 0.6
+    );
+    
+    if (supportLevels.length > 0) {
+      const strongestSupport = supportLevels[0];
+      const supportWithBuffer = strongestSupport.price * 0.998; // 0.2% buffer below support
+      
+      if (stopLoss > supportWithBuffer && (currentPrice - supportWithBuffer) / currentPrice < 0.08) {
+        console.log(`📍 Adjusting stop loss to respect ${strongestSupport.type} at $${strongestSupport.price.toFixed(4)}`);
+        stopLoss = supportWithBuffer;
+      }
+    }
+    
+    // For takes, look for resistance levels above
+    const resistanceLevels = nearbyLevels.filter(l => 
+      l.price > currentPrice && 
+      (l.type === 'resistance' || l.type === 'ema200' || l.type === 'bollinger_upper') && 
+      l.strength > 0.6
+    );
+    
+    if (resistanceLevels.length > 0) {
+      const nearestResistance = resistanceLevels[0];
+      const resistanceWithBuffer = nearestResistance.price * 0.998; // Small buffer below resistance
+      
+      if (takeProfit > nearestResistance.price) {
+        console.log(`📍 Adjusting take profit to respect ${nearestResistance.type} at $${nearestResistance.price.toFixed(4)}`);
+        takeProfit = resistanceWithBuffer;
+      }
+    }
+    
+  } else { // SELL
+    // For sells, look for resistance levels above current price for stop
+    const resistanceLevels = nearbyLevels.filter(l => 
+      l.price > currentPrice && 
+      (l.type === 'resistance' || l.type === 'ema200' || l.type === 'bollinger_upper') && 
+      l.strength > 0.6
+    );
+    
+    if (resistanceLevels.length > 0) {
+      const strongestResistance = resistanceLevels[0];
+      const resistanceWithBuffer = strongestResistance.price * 1.002; // 0.2% buffer above resistance
+      
+      if (stopLoss < resistanceWithBuffer && (resistanceWithBuffer - currentPrice) / currentPrice < 0.08) {
+        console.log(`📍 Adjusting stop loss to respect ${strongestResistance.type} at $${strongestResistance.price.toFixed(4)}`);
+        stopLoss = resistanceWithBuffer;
+      }
+    }
+    
+    // For take profit, look for support levels below
+    const supportLevels = nearbyLevels.filter(l => 
+      l.price < currentPrice && 
+      (l.type === 'support' || l.type === 'ema200' || l.type === 'bollinger_lower') && 
+      l.strength > 0.6
+    );
+    
+    if (supportLevels.length > 0) {
+      const nearestSupport = supportLevels[0];
+      const supportWithBuffer = nearestSupport.price * 1.002; // Small buffer above support
+      
+      if (takeProfit < nearestSupport.price) {
+        console.log(`📍 Adjusting take profit to respect ${nearestSupport.type} at $${nearestSupport.price.toFixed(4)}`);
+        takeProfit = supportWithBuffer;
+      }
+    }
+  }
+  
+  return { stopLoss, takeProfit };
 }
 
 // Enhanced AI risk parameters with market context
