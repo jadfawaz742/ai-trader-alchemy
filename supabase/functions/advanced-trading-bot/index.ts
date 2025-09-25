@@ -176,6 +176,188 @@ const ALL_SYMBOLS = [
   'INTC', 'IBM', 'ORCL', 'CRM', 'ADBE', 'NOW', 'SNOW', 'DDOG', 'ZS', 'OKTA'
 ];
 
+// Learning system interfaces
+interface LearningData {
+  symbol: string;
+  outcome: 'WIN' | 'LOSS' | 'NEUTRAL';
+  confidenceLevel: number;
+  confluenceScore: number;
+  profitLoss: number;
+  riskLevel: string;
+  indicators: any;
+  reasoning: string;
+}
+
+interface AdaptiveParameters {
+  confidenceThreshold: number;
+  confluenceThreshold: number;
+  stopLossMultiplier: number;
+  takeProfitMultiplier: number;
+  successRate: number;
+  totalTrades: number;
+  winningTrades: number;
+  averageProfit: number;
+}
+
+// Learning system functions
+async function getAdaptiveParameters(userId: string, symbol: string): Promise<AdaptiveParameters> {
+  try {
+    const { data, error } = await supabase
+      .from('bot_adaptive_parameters')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('symbol', symbol)
+      .single();
+
+    if (error && error.code !== 'PGRST116') {
+      console.error('Error fetching adaptive parameters:', error);
+    }
+
+    return data || {
+      confidenceThreshold: 75.0,
+      confluenceThreshold: 0.6,
+      stopLossMultiplier: 1.0,
+      takeProfitMultiplier: 1.0,
+      successRate: 0.0,
+      totalTrades: 0,
+      winningTrades: 0,
+      averageProfit: 0.0
+    };
+  } catch (error) {
+    console.error('Error in getAdaptiveParameters:', error);
+    return {
+      confidenceThreshold: 75.0,
+      confluenceThreshold: 0.6,
+      stopLossMultiplier: 1.0,
+      takeProfitMultiplier: 1.0,
+      successRate: 0.0,
+      totalTrades: 0,
+      winningTrades: 0,
+      averageProfit: 0.0
+    };
+  }
+}
+
+async function updateAdaptiveParameters(userId: string, symbol: string, learningData: LearningData): Promise<void> {
+  try {
+    console.log(`🧠 Learning from ${learningData.outcome} trade for ${symbol}`);
+    
+    // Get current parameters
+    const current = await getAdaptiveParameters(userId, symbol);
+    
+    // Calculate new statistics
+    const newTotalTrades = current.totalTrades + 1;
+    const newWinningTrades = current.winningTrades + (learningData.outcome === 'WIN' ? 1 : 0);
+    const newSuccessRate = newWinningTrades / newTotalTrades;
+    const newAverageProfit = ((current.averageProfit * current.totalTrades) + learningData.profitLoss) / newTotalTrades;
+    
+    // Adaptive learning: adjust thresholds based on performance
+    let newConfidenceThreshold = current.confidenceThreshold;
+    let newConfluenceThreshold = current.confluenceThreshold;
+    let newStopLossMultiplier = current.stopLossMultiplier;
+    let newTakeProfitMultiplier = current.takeProfitMultiplier;
+    
+    if (learningData.outcome === 'LOSS') {
+      // Increase thresholds after losses to be more conservative
+      newConfidenceThreshold = Math.min(95, current.confidenceThreshold + 2);
+      newConfluenceThreshold = Math.min(0.95, current.confluenceThreshold + 0.05);
+      newStopLossMultiplier = Math.max(0.5, current.stopLossMultiplier - 0.1);
+      console.log(`📉 Increasing thresholds after loss - Confidence: ${newConfidenceThreshold}%, Confluence: ${(newConfluenceThreshold * 100).toFixed(1)}%`);
+    } else if (learningData.outcome === 'WIN' && newSuccessRate > 0.7) {
+      // Slightly relax thresholds after consistent wins
+      newConfidenceThreshold = Math.max(65, current.confidenceThreshold - 1);
+      newConfluenceThreshold = Math.max(0.4, current.confluenceThreshold - 0.02);
+      newTakeProfitMultiplier = Math.min(2.0, current.takeProfitMultiplier + 0.05);
+      console.log(`📈 Optimizing thresholds after consistent wins - Success Rate: ${(newSuccessRate * 100).toFixed(1)}%`);
+    }
+    
+    // Upsert adaptive parameters
+    const { error } = await supabase
+      .from('bot_adaptive_parameters')
+      .upsert({
+        user_id: userId,
+        symbol: symbol,
+        confidence_threshold: newConfidenceThreshold,
+        confluence_threshold: newConfluenceThreshold,
+        stop_loss_multiplier: newStopLossMultiplier,
+        take_profit_multiplier: newTakeProfitMultiplier,
+        success_rate: newSuccessRate,
+        total_trades: newTotalTrades,
+        winning_trades: newWinningTrades,
+        average_profit: newAverageProfit,
+        last_updated: new Date().toISOString()
+      }, {
+        onConflict: 'user_id,symbol'
+      });
+
+    if (error) {
+      console.error('Error updating adaptive parameters:', error);
+    } else {
+      console.log(`✅ Updated adaptive parameters for ${symbol}: ${newTotalTrades} trades, ${(newSuccessRate * 100).toFixed(1)}% success rate`);
+    }
+  } catch (error) {
+    console.error('Error in updateAdaptiveParameters:', error);
+  }
+}
+
+async function storeLearningData(userId: string, learningData: LearningData, tradeDetails: any): Promise<void> {
+  try {
+    const { error } = await supabase
+      .from('trading_bot_learning')
+      .insert({
+        user_id: userId,
+        symbol: learningData.symbol,
+        trade_action: tradeDetails.action,
+        entry_price: tradeDetails.price,
+        stop_loss: tradeDetails.stopLoss,
+        take_profit: tradeDetails.takeProfit,
+        confidence_level: learningData.confidenceLevel,
+        confluence_score: learningData.confluenceScore,
+        risk_level: learningData.riskLevel,
+        outcome: learningData.outcome,
+        profit_loss: learningData.profitLoss,
+        market_condition: tradeDetails.marketCondition,
+        indicators: learningData.indicators,
+        reasoning: learningData.reasoning
+      });
+
+    if (error) {
+      console.error('Error storing learning data:', error);
+    } else {
+      console.log(`📚 Stored learning data for ${learningData.symbol} - ${learningData.outcome}`);
+    }
+  } catch (error) {
+    console.error('Error in storeLearningData:', error);
+  }
+}
+
+// Simulate trade outcome for backtesting learning
+function simulateTradeOutcome(signal: any, adaptiveParams: AdaptiveParameters): LearningData {
+  // Simulate based on confluence score and confidence
+  const baseWinProbability = Math.min(0.85, signal.confluenceScore * 0.8 + (signal.confidence / 100) * 0.2);
+  const isWin = Math.random() < baseWinProbability;
+  
+  let profitLoss = 0;
+  if (isWin) {
+    // Simulate profit (1-8% gain based on confidence)
+    profitLoss = (Math.random() * 0.07 + 0.01) * (signal.confidence / 80) * signal.price * signal.quantity;
+  } else {
+    // Simulate loss (1-5% loss)
+    profitLoss = -(Math.random() * 0.04 + 0.01) * signal.price * signal.quantity;
+  }
+  
+  return {
+    symbol: signal.symbol,
+    outcome: isWin ? 'WIN' : 'LOSS',
+    confidenceLevel: signal.confidence,
+    confluenceScore: signal.confluenceScore,
+    profitLoss,
+    riskLevel: signal.riskLevel,
+    indicators: signal.indicators,
+    reasoning: signal.reasoning
+  };
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -267,6 +449,10 @@ serve(async (req) => {
       try {
         console.log(`📈 Processing ${symbol}...`);
         
+        // Get adaptive learning parameters for this symbol
+        const adaptiveParams = await getAdaptiveParameters(user.id, symbol);
+        console.log(`🧠 Adaptive parameters for ${symbol}: Confidence ${adaptiveParams.confidenceThreshold}%, Confluence ${(adaptiveParams.confluenceThreshold * 100).toFixed(1)}%, Success Rate: ${(adaptiveParams.successRate * 100).toFixed(1)}%`);
+        
         // Fetch 2-year historical data for comprehensive training
         const historicalData = await fetchOptimizedHistoricalData(symbol);
         if (!historicalData || historicalData.length < 200) {
@@ -306,8 +492,8 @@ serve(async (req) => {
         );
         
         if (tradingDecision.type !== 'HOLD' && 
-            currentState.confluenceScore >= RISK_LEVELS[risk].minConfluence &&
-            tradingDecision.confidence > 75) {
+            currentState.confluenceScore >= adaptiveParams.confluenceThreshold &&
+            tradingDecision.confidence > adaptiveParams.confidenceThreshold) {
           
           // Calculate smart risk parameters with confluence and fibonacci
           const riskParams = await calculateSmartRiskParameters(
@@ -316,6 +502,10 @@ serve(async (req) => {
             symbol,
             RISK_LEVELS[risk]
           );
+          
+          // Apply adaptive multipliers to risk parameters
+          riskParams.stopLoss = riskParams.stopLoss * adaptiveParams.stopLossMultiplier;
+          riskParams.takeProfit = riskParams.takeProfit * adaptiveParams.takeProfitMultiplier;
           
           const signal = {
             symbol,
@@ -349,6 +539,28 @@ serve(async (req) => {
 
           tradingSignals.push(signal);
           console.log(`🎯 ${signal.action} ${symbol} @ $${signal.price.toFixed(2)} | SL: $${signal.stopLoss.toFixed(2)} | TP: $${signal.takeProfit.toFixed(2)} | Conf: ${signal.confidence.toFixed(1)}% | Confluence: ${(signal.confluenceScore * 100).toFixed(1)}%`);
+          
+          // Simulate learning for backtesting or store learning data for live trading
+          if (backtestMode) {
+            // Simulate trade outcome and learn from it
+            const learningData = simulateTradeOutcome(signal, adaptiveParams);
+            await updateAdaptiveParameters(user.id, symbol, learningData);
+            await storeLearningData(user.id, learningData, signal);
+            console.log(`🎓 Simulated ${learningData.outcome} trade for learning: ${learningData.profitLoss > 0 ? '+' : ''}$${learningData.profitLoss.toFixed(2)}`);
+          } else if (mode === 'live') {
+            // Store initial trade data - outcome will be updated later when trade closes
+            const initialLearningData: LearningData = {
+              symbol,
+              outcome: 'NEUTRAL', // Will be updated when trade closes
+              confidenceLevel: signal.confidence,
+              confluenceScore: signal.confluenceScore,
+              profitLoss: 0, // Will be updated when trade closes
+              riskLevel: risk,
+              indicators: signal.indicators,
+              reasoning: signal.reasoning
+            };
+            await storeLearningData(user.id, initialLearningData, signal);
+          }
         } else {
           const reason = tradingDecision.type === 'HOLD' ? 'Neutral conditions' : 
                         currentState.confluenceScore < RISK_LEVELS[risk].minConfluence ? 
