@@ -14,6 +14,108 @@ export type Database = {
   }
   public: {
     Tables: {
+      api_usage: {
+        Row: {
+          id: number
+          key_name: string
+          used_at: string | null
+        }
+        Insert: {
+          id?: number
+          key_name: string
+          used_at?: string | null
+        }
+        Update: {
+          id?: number
+          key_name?: string
+          used_at?: string | null
+        }
+        Relationships: []
+      }
+      bot_adaptive_parameters: {
+        Row: {
+          average_profit: number | null
+          confidence_threshold: number | null
+          confluence_threshold: number | null
+          created_at: string
+          id: string
+          last_updated: string
+          stop_loss_multiplier: number | null
+          success_rate: number | null
+          symbol: string
+          take_profit_multiplier: number | null
+          total_trades: number | null
+          user_id: string
+          winning_trades: number | null
+        }
+        Insert: {
+          average_profit?: number | null
+          confidence_threshold?: number | null
+          confluence_threshold?: number | null
+          created_at?: string
+          id?: string
+          last_updated?: string
+          stop_loss_multiplier?: number | null
+          success_rate?: number | null
+          symbol: string
+          take_profit_multiplier?: number | null
+          total_trades?: number | null
+          user_id: string
+          winning_trades?: number | null
+        }
+        Update: {
+          average_profit?: number | null
+          confidence_threshold?: number | null
+          confluence_threshold?: number | null
+          created_at?: string
+          id?: string
+          last_updated?: string
+          stop_loss_multiplier?: number | null
+          success_rate?: number | null
+          symbol?: string
+          take_profit_multiplier?: number | null
+          total_trades?: number | null
+          user_id?: string
+          winning_trades?: number | null
+        }
+        Relationships: []
+      }
+      bybit_usage: {
+        Row: {
+          api_key_name: string
+          created_at: string | null
+          endpoint: string | null
+          id: number
+          key_mask: string | null
+          notes: string | null
+          response_code: number | null
+          response_json: Json | null
+          success: boolean | null
+        }
+        Insert: {
+          api_key_name: string
+          created_at?: string | null
+          endpoint?: string | null
+          id?: number
+          key_mask?: string | null
+          notes?: string | null
+          response_code?: number | null
+          response_json?: Json | null
+          success?: boolean | null
+        }
+        Update: {
+          api_key_name?: string
+          created_at?: string | null
+          endpoint?: string | null
+          id?: number
+          key_mask?: string | null
+          notes?: string | null
+          response_code?: number | null
+          response_json?: Json | null
+          success?: boolean | null
+        }
+        Relationships: []
+      }
       market_data: {
         Row: {
           created_at: string
@@ -273,6 +375,21 @@ export type Database = {
         }
         Relationships: []
       }
+      test_table: {
+        Row: {
+          id: number
+          name: string | null
+        }
+        Insert: {
+          id?: number
+          name?: string | null
+        }
+        Update: {
+          id?: number
+          name?: string | null
+        }
+        Relationships: []
+      }
       trades: {
         Row: {
           created_at: string
@@ -325,6 +442,72 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      trading_bot_learning: {
+        Row: {
+          confidence_level: number | null
+          confluence_score: number | null
+          created_at: string
+          entry_price: number | null
+          exit_price: number | null
+          id: string
+          indicators: Json | null
+          market_condition: string | null
+          outcome: string | null
+          profit_loss: number | null
+          reasoning: string | null
+          risk_level: string | null
+          stop_loss: number | null
+          symbol: string
+          take_profit: number | null
+          trade_action: string
+          trade_duration_hours: number | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          confidence_level?: number | null
+          confluence_score?: number | null
+          created_at?: string
+          entry_price?: number | null
+          exit_price?: number | null
+          id?: string
+          indicators?: Json | null
+          market_condition?: string | null
+          outcome?: string | null
+          profit_loss?: number | null
+          reasoning?: string | null
+          risk_level?: string | null
+          stop_loss?: number | null
+          symbol: string
+          take_profit?: number | null
+          trade_action: string
+          trade_duration_hours?: number | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          confidence_level?: number | null
+          confluence_score?: number | null
+          created_at?: string
+          entry_price?: number | null
+          exit_price?: number | null
+          id?: string
+          indicators?: Json | null
+          market_condition?: string | null
+          outcome?: string | null
+          profit_loss?: number | null
+          reasoning?: string | null
+          risk_level?: string | null
+          stop_loss?: number | null
+          symbol?: string
+          take_profit?: number | null
+          trade_action?: string
+          trade_duration_hours?: number | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
       }
     }
     Views: {
