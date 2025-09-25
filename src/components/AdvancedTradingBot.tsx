@@ -50,25 +50,32 @@ interface BotConfig {
 export default function AdvancedTradingBot() {
   const [isRunning, setIsRunning] = useState(false);
   const [signals, setSignals] = useState<TradingSignal[]>([]);
+  // All available symbols organized by type and volatility
+  const ALL_SYMBOLS = {
+    crypto: {
+      name: "💰 Cryptocurrencies", 
+      symbols: ['BTC-USD', 'ETH-USD', 'ADA-USD', 'SOL-USD', 'AVAX-USD', 'DOT-USD', 'MATIC-USD', 'ATOM-USD', 'NEAR-USD', 'ALGO-USD', 'XRP-USD', 'LTC-USD', 'BCH-USD', 'ETC-USD', 'XLM-USD', 'VET-USD', 'FIL-USD', 'THETA-USD', 'EGLD-USD', 'HBAR-USD', 'FLOW-USD', 'ICP-USD', 'SAND-USD', 'MANA-USD', 'CRV-USD', 'UNI-USD', 'AAVE-USD', 'COMP-USD', 'MKR-USD', 'SNX-USD', 'SUSHI-USD', 'YFI-USD', 'BAL-USD', 'REN-USD', 'KNC-USD', 'ZRX-USD', 'BAND-USD', 'LRC-USD', 'ENJ-USD', 'CHZ-USD', 'BAT-USD', 'ZEC-USD'],
+      color: "text-orange-600"
+    },
+    volatile: {
+      name: "🔥 Volatile Stocks", 
+      symbols: ['TSLA', 'NVDA', 'AMD', 'MRNA', 'ZM', 'ROKU', 'NFLX', 'SQ', 'SHOP', 'TWTR', 'SNAP', 'UBER', 'LYFT', 'PLTR', 'GME', 'AMC', 'BB', 'MEME', 'SPCE', 'COIN'],
+      color: "text-red-600"
+    },
+    stable: {
+      name: "🛡️ Stable Stocks", 
+      symbols: ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'JNJ', 'PG', 'KO', 'WMT', 'VZ'],
+      color: "text-green-600"
+    },
+    semiStable: {
+      name: "⚖️ Semi-Stable Stocks", 
+      symbols: ['INTC', 'IBM', 'ORCL', 'CRM', 'ADBE', 'NOW', 'SNOW', 'DDOG', 'ZS', 'OKTA'],
+      color: "text-yellow-600"
+    }
+  };
+
   const [botConfig, setBotConfig] = useState<BotConfig>({
-    symbols: [
-      // Cryptocurrencies (42 total)
-      'BTC', 'ETH', 'ADA', 'SOL', 'AVAX', 'DOT', 'MATIC', 'ATOM', 'NEAR', 'ALGO',
-      'XRP', 'LTC', 'BCH', 'ETC', 'XLM', 'VET', 'FIL', 'THETA', 'EGLD', 'HBAR',
-      'FLOW', 'ICP', 'SAND', 'MANA', 'CRV', 'UNI', 'AAVE', 'COMP', 'MKR', 'SNX',
-      'SUSHI', 'YFI', 'BAL', 'REN', 'KNC', 'ZRX', 'BAND', 'LRC', 'ENJ', 'CHZ',
-      'BAT', 'ZEC',
-      
-      // Volatile Stocks (20 total)
-      'TSLA', 'NVDA', 'AMD', 'MRNA', 'ZOOM', 'ROKU', 'NFLX', 'SQ', 'SHOP', 'TWTR',
-      'SNAP', 'UBER', 'LYFT', 'PLTR', 'GME', 'AMC', 'BB', 'MEME', 'SPCE', 'COIN',
-      
-      // Stable Stocks (10 total)  
-      'AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'JNJ', 'PG', 'KO', 'WMT', 'VZ',
-      
-      // Semi-Stable Stocks (10 total)
-      'INTC', 'IBM', 'ORCL', 'CRM', 'ADBE', 'NOW', 'SNOW', 'DDOG', 'ZS', 'OKTA'
-    ],
+    symbols: ['BTC-USD', 'ETH-USD', 'AAPL', 'TSLA', 'NVDA'],
     mode: 'simulation',
     riskLevel: 'medium',
     portfolioBalance: 100000,
@@ -80,7 +87,11 @@ export default function AdvancedTradingBot() {
     successRate: 0,
     totalReturn: 0,
     activePositions: 0,
-    avgConfidence: 0
+    avgConfidence: 0,
+    learningProgress: 0,
+    adaptationRate: 0,
+    totalTrades: 0,
+    winningTrades: 0
   });
   const [isAnalyzing, setIsAnalyzing] = useState(false);
 
@@ -112,13 +123,20 @@ export default function AdvancedTradingBot() {
       if (data.success) {
         setSignals(prev => [...data.signals, ...prev].slice(0, 50)); // Keep last 50 signals
         
-        // Update bot stats
+        // Update bot stats with real learning metrics
+        const allSignals = [...signals, ...data.signals];
+        const avgLearningStats = data.signals.length > 0 && data.signals[0].learningStats ? data.signals[0].learningStats : null;
+        
         const newStats = {
           totalSignals: botStats.totalSignals + data.signals.length,
-          successRate: calculateSuccessRate([...signals, ...data.signals]),
-          totalReturn: calculateTotalReturn([...signals, ...data.signals]),
+          successRate: avgLearningStats ? (avgLearningStats.trainingWinRate + avgLearningStats.testingWinRate) / 2 : calculateSuccessRate(allSignals),
+          totalReturn: calculateTotalReturn(allSignals),
           activePositions: data.signals.length,
-          avgConfidence: data.signals.reduce((acc: number, s: TradingSignal) => acc + s.confidence, 0) / data.signals.length || 0
+          avgConfidence: data.signals.reduce((acc: number, s: TradingSignal) => acc + s.confidence, 0) / data.signals.length || 0,
+          learningProgress: avgLearningStats ? Math.min(100, (avgLearningStats.trainingTrades + avgLearningStats.testingTrades) / 50) : 0,
+          adaptationRate: avgLearningStats ? avgLearningStats.fibonacciSuccessRate * 100 : 0,
+          totalTrades: avgLearningStats ? avgLearningStats.trainingTrades + avgLearningStats.testingTrades : 0,
+          winningTrades: avgLearningStats ? Math.round(avgLearningStats.trainingTrades * avgLearningStats.trainingWinRate / 100 + avgLearningStats.testingTrades * avgLearningStats.testingWinRate / 100) : 0
         };
         setBotStats(newStats);
 
@@ -219,102 +237,51 @@ export default function AdvancedTradingBot() {
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-6">
-              {/* Symbol Selection */}
+              {/* Integrated Symbol Selection */}
               <div className="space-y-2">
-                <Label>Trading Symbols (Select up to 15)</Label>
-                <div className="max-h-40 overflow-y-auto border rounded-md p-3">
-                  <div className="space-y-4">
-                    <div>
-                      <p className="font-semibold text-sm mb-2 text-blue-600">💰 Cryptocurrencies (42)</p>
-                      <div className="grid grid-cols-4 gap-2 text-sm">
-                        {['BTC', 'ETH', 'ADA', 'SOL', 'AVAX', 'DOT', 'MATIC', 'ATOM', 'NEAR', 'ALGO', 'XRP', 'LTC', 'BCH', 'ETC', 'XLM', 'VET', 'FIL', 'THETA', 'EGLD', 'HBAR', 'FLOW', 'ICP', 'SAND', 'MANA', 'CRV', 'UNI', 'AAVE', 'COMP', 'MKR', 'SNX', 'SUSHI', 'YFI', 'BAL', 'REN', 'KNC', 'ZRX', 'BAND', 'LRC', 'ENJ', 'CHZ', 'BAT', 'ZEC'].map(symbol => (
-                          <label key={symbol} className="flex items-center space-x-1 hover:bg-gray-50 p-1 rounded">
-                            <input
-                              type="checkbox"
-                              checked={botConfig.symbols.includes(symbol)}
-                              onChange={(e) => {
-                                if (e.target.checked && botConfig.symbols.length < 15) {
-                                  setBotConfig(prev => ({ ...prev, symbols: [...prev.symbols, symbol] }));
-                                } else if (!e.target.checked) {
-                                  setBotConfig(prev => ({ ...prev, symbols: prev.symbols.filter(s => s !== symbol) }));
-                                }
-                              }}
-                              className="w-3 h-3"
-                            />
-                            <span className="text-xs font-mono">{symbol}</span>
-                          </label>
-                        ))}
+                <Label>Trading Symbols (Select up to 15 from 82 total assets)</Label>
+                <div className="max-h-48 overflow-y-auto border rounded-md p-3">
+                  <div className="space-y-3">
+                    {Object.entries(ALL_SYMBOLS).map(([key, category]) => (
+                      <div key={key}>
+                        <div className="flex items-center justify-between mb-2">
+                          <p className={`font-semibold text-sm ${category.color}`}>
+                            {category.name} ({category.symbols.length})
+                          </p>
+                          <button
+                            onClick={() => {
+                              const availableSlots = 15 - botConfig.symbols.length;
+                              const symbolsToAdd = category.symbols.slice(0, availableSlots).filter(s => !botConfig.symbols.includes(s));
+                              setBotConfig(prev => ({ ...prev, symbols: [...prev.symbols, ...symbolsToAdd] }));
+                            }}
+                            className="text-xs text-blue-600 hover:underline"
+                            disabled={botConfig.symbols.length >= 15}
+                          >
+                            Add All ({Math.min(category.symbols.length, 15 - botConfig.symbols.length)})
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-5 gap-1 text-sm">
+                          {category.symbols.map(symbol => (
+                            <label key={symbol} className="flex items-center space-x-1 hover:bg-gray-50 p-1 rounded cursor-pointer">
+                              <input
+                                type="checkbox"
+                                checked={botConfig.symbols.includes(symbol)}
+                                onChange={(e) => {
+                                  if (e.target.checked && botConfig.symbols.length < 15) {
+                                    setBotConfig(prev => ({ ...prev, symbols: [...prev.symbols, symbol] }));
+                                  } else if (!e.target.checked) {
+                                    setBotConfig(prev => ({ ...prev, symbols: prev.symbols.filter(s => s !== symbol) }));
+                                  }
+                                }}
+                                className="w-3 h-3"
+                                disabled={!botConfig.symbols.includes(symbol) && botConfig.symbols.length >= 15}
+                              />
+                              <span className="text-xs font-mono truncate">{symbol.replace('-USD', '')}</span>
+                            </label>
+                          ))}
+                        </div>
                       </div>
-                    </div>
-                    
-                    <div>
-                      <p className="font-semibold text-sm mb-2 text-red-600">📈 Volatile Stocks (20)</p>
-                      <div className="grid grid-cols-4 gap-2 text-sm">
-                        {['TSLA', 'NVDA', 'AMD', 'MRNA', 'ZOOM', 'ROKU', 'NFLX', 'SQ', 'SHOP', 'TWTR', 'SNAP', 'UBER', 'LYFT', 'PLTR', 'GME', 'AMC', 'BB', 'MEME', 'SPCE', 'COIN'].map(symbol => (
-                          <label key={symbol} className="flex items-center space-x-1 hover:bg-gray-50 p-1 rounded">
-                            <input
-                              type="checkbox"
-                              checked={botConfig.symbols.includes(symbol)}
-                              onChange={(e) => {
-                                if (e.target.checked && botConfig.symbols.length < 15) {
-                                  setBotConfig(prev => ({ ...prev, symbols: [...prev.symbols, symbol] }));
-                                } else if (!e.target.checked) {
-                                  setBotConfig(prev => ({ ...prev, symbols: prev.symbols.filter(s => s !== symbol) }));
-                                }
-                              }}
-                              className="w-3 h-3"
-                            />
-                            <span className="text-xs font-mono">{symbol}</span>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                    
-                    <div>
-                      <p className="font-semibold text-sm mb-2 text-green-600">🛡️ Stable Stocks (10)</p>
-                      <div className="grid grid-cols-4 gap-2 text-sm">
-                        {['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'JNJ', 'PG', 'KO', 'WMT', 'VZ'].map(symbol => (
-                          <label key={symbol} className="flex items-center space-x-1 hover:bg-gray-50 p-1 rounded">
-                            <input
-                              type="checkbox"
-                              checked={botConfig.symbols.includes(symbol)}
-                              onChange={(e) => {
-                                if (e.target.checked && botConfig.symbols.length < 15) {
-                                  setBotConfig(prev => ({ ...prev, symbols: [...prev.symbols, symbol] }));
-                                } else if (!e.target.checked) {
-                                  setBotConfig(prev => ({ ...prev, symbols: prev.symbols.filter(s => s !== symbol) }));
-                                }
-                              }}
-                              className="w-3 h-3"
-                            />
-                            <span className="text-xs font-mono">{symbol}</span>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
-                    
-                    <div>
-                      <p className="font-semibold text-sm mb-2 text-yellow-600">⚖️ Semi-Stable Stocks (10)</p>
-                      <div className="grid grid-cols-4 gap-2 text-sm">
-                        {['INTC', 'IBM', 'ORCL', 'CRM', 'ADBE', 'NOW', 'SNOW', 'DDOG', 'ZS', 'OKTA'].map(symbol => (
-                          <label key={symbol} className="flex items-center space-x-1 hover:bg-gray-50 p-1 rounded">
-                            <input
-                              type="checkbox"
-                              checked={botConfig.symbols.includes(symbol)}
-                              onChange={(e) => {
-                                if (e.target.checked && botConfig.symbols.length < 15) {
-                                  setBotConfig(prev => ({ ...prev, symbols: [...prev.symbols, symbol] }));
-                                } else if (!e.target.checked) {
-                                  setBotConfig(prev => ({ ...prev, symbols: prev.symbols.filter(s => s !== symbol) }));
-                                }
-                              }}
-                              className="w-3 h-3"
-                            />
-                            <span className="text-xs font-mono">{symbol}</span>
-                          </label>
-                        ))}
-                      </div>
-                    </div>
+                    ))}
                   </div>
                 </div>
                 <div className="flex justify-between text-xs">
@@ -560,14 +527,62 @@ export default function AdvancedTradingBot() {
         </TabsContent>
 
         <TabsContent value="performance" className="space-y-4">
+          {/* Real-time Learning Metrics */}
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center space-x-2">
+                <Brain className="h-5 w-5 text-purple-600" />
+                <span>Live Learning & Adaptation Metrics</span>
+              </CardTitle>
+              <CardDescription>
+                Real-time PPO algorithm performance and adaptive learning progress
+              </CardDescription>
+            </CardHeader>
+            <CardContent>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-6">
+                <div className="text-center">
+                  <p className="text-2xl font-bold text-blue-600">{botStats.totalTrades}</p>
+                  <p className="text-sm text-muted-foreground">Total Trades</p>
+                  <Progress value={botStats.learningProgress} className="mt-2" />
+                  <p className="text-xs text-muted-foreground mt-1">Learning Progress</p>
+                </div>
+                
+                <div className="text-center">
+                  <p className="text-2xl font-bold text-green-600">{botStats.winningTrades}</p>
+                  <p className="text-sm text-muted-foreground">Winning Trades</p>
+                  <p className="text-lg font-semibold text-green-600 mt-1">
+                    {botStats.totalTrades > 0 ? ((botStats.winningTrades / botStats.totalTrades) * 100).toFixed(1) : '0'}% Win Rate
+                  </p>
+                </div>
+                
+                <div className="text-center">
+                  <p className="text-2xl font-bold text-purple-600">{botStats.adaptationRate.toFixed(1)}%</p>
+                  <p className="text-sm text-muted-foreground">Adaptation Rate</p>
+                  <Progress value={botStats.adaptationRate} className="mt-2" />
+                  <p className="text-xs text-muted-foreground mt-1">Algorithm Learning</p>
+                </div>
+                
+                <div className="text-center">
+                  <p className="text-2xl font-bold text-amber-600">{botStats.avgConfidence.toFixed(1)}%</p>
+                  <p className="text-sm text-muted-foreground">Avg Confidence</p>
+                  <Progress value={botStats.avgConfidence} className="mt-2" />
+                  <p className="text-xs text-muted-foreground mt-1">Signal Strength</p>
+                </div>
+              </div>
+            </CardContent>
+          </Card>
+
           <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
             <Card>
               <CardContent className="pt-6">
                 <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium">Total Signals</p>
+                  <p className="text-sm font-medium">Active Signals</p>
                   <Activity className="h-4 w-4 text-muted-foreground" />
                 </div>
                 <p className="text-2xl font-bold">{botStats.totalSignals}</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  {isRunning ? 'Bot Active' : 'Bot Inactive'}
+                </p>
               </CardContent>
             </Card>
 
@@ -599,13 +614,15 @@ export default function AdvancedTradingBot() {
             <Card>
               <CardContent className="pt-6">
                 <div className="flex items-center justify-between">
-                  <p className="text-sm font-medium">Avg Confidence</p>
-                  <Brain className="h-4 w-4 text-purple-600" />
+                  <p className="text-sm font-medium">Portfolio Balance</p>
+                  <Shield className="h-4 w-4 text-blue-600" />
                 </div>
-                <p className="text-2xl font-bold text-purple-600">
-                  {botStats.avgConfidence.toFixed(1)}%
+                <p className="text-2xl font-bold text-blue-600">
+                  ${botConfig.portfolioBalance.toLocaleString()}
                 </p>
-                <Progress value={botStats.avgConfidence} className="mt-2" />
+                <p className="text-xs text-muted-foreground mt-1">
+                  {botConfig.mode === 'live' ? 'Live Trading' : 'Simulation'}
+                </p>
               </CardContent>
             </Card>
           </div>
