@@ -45,6 +45,9 @@ interface BotConfig {
   portfolioBalance: number;
   enableShorts: boolean;
   autoExecute: boolean;
+  tradingFrequency: 'daily' | 'weekly' | 'monthly';
+  maxDailyTrades: number;
+  enableScheduledTrading: boolean;
 }
 
 export default function AdvancedTradingBot() {
@@ -81,7 +84,10 @@ export default function AdvancedTradingBot() {
     riskLevel: 'medium',
     portfolioBalance: 100000,
     enableShorts: true,
-    autoExecute: false
+    autoExecute: false,
+    tradingFrequency: 'daily',
+    maxDailyTrades: 5,
+    enableScheduledTrading: false
   });
 
   const [botStats, setBotStats] = useState({
@@ -100,13 +106,30 @@ export default function AdvancedTradingBot() {
 
   useEffect(() => {
     if (isRunning && botConfig.autoExecute) {
+      // Set interval based on trading frequency
+      let intervalTime = 5 * 60 * 1000; // Default: 5 minutes
+      
+      switch (botConfig.tradingFrequency) {
+        case 'daily':
+          intervalTime = 24 * 60 * 60 * 1000; // 24 hours
+          break;
+        case 'weekly':
+          intervalTime = 7 * 24 * 60 * 60 * 1000; // 7 days
+          break;
+        case 'monthly':
+          intervalTime = 30 * 24 * 60 * 60 * 1000; // 30 days
+          break;
+        default:
+          intervalTime = 5 * 60 * 1000; // 5 minutes for testing
+      }
+
       const interval = setInterval(() => {
         runAdvancedAnalysis();
-      }, 5 * 60 * 1000); // Run every 5 minutes
+      }, intervalTime);
 
       return () => clearInterval(interval);
     }
-  }, [isRunning, botConfig.autoExecute]);
+  }, [isRunning, botConfig.autoExecute, botConfig.tradingFrequency]);
 
   const runAdvancedAnalysis = async () => {
     setIsAnalyzing(true);
@@ -117,7 +140,9 @@ export default function AdvancedTradingBot() {
           mode: botConfig.mode,
           risk: botConfig.riskLevel,
           portfolioBalance: botConfig.portfolioBalance,
-          enableShorts: botConfig.enableShorts
+          enableShorts: botConfig.enableShorts,
+          tradingFrequency: botConfig.tradingFrequency,
+          maxDailyTrades: botConfig.maxDailyTrades
         }
       });
 
@@ -151,7 +176,7 @@ export default function AdvancedTradingBot() {
         setBotStats(newStats);
 
         toast.success(`🤖 Generated ${data.signals.length} trading signals using PPO algorithm`, {
-          description: `${data.signals.filter((s: TradingSignal) => s.action === 'BUY').length} BUY, ${data.signals.filter((s: TradingSignal) => s.action === 'SELL').length} SELL signals`
+          description: `${data.signals.filter((s: TradingSignal) => s.action === 'BUY').length} BUY, ${data.signals.filter((s: TradingSignal) => s.action === 'SELL').length} SELL signals from ${botConfig.symbols.length} symbols (${botConfig.tradingFrequency} frequency)`
         });
 
         console.log('🤖 Advanced Trading Bot Results:', data);
@@ -182,7 +207,7 @@ export default function AdvancedTradingBot() {
   const startBot = () => {
     setIsRunning(true);
     toast.success('🤖 Advanced Trading Bot Started', {
-      description: `Mode: ${botConfig.mode}, Risk: ${botConfig.riskLevel}`
+      description: `Mode: ${botConfig.mode}, Risk: ${botConfig.riskLevel}, Frequency: ${botConfig.tradingFrequency}, Symbols: ${botConfig.symbols.length}`
     });
     runAdvancedAnalysis();
   };
@@ -385,6 +410,89 @@ export default function AdvancedTradingBot() {
                 </div>
               </div>
 
+              {/* Trading Frequency */}
+              <div className="space-y-4">
+                <label className="text-sm font-medium">Trading Frequency & Schedule</label>
+                <div className="grid grid-cols-1 gap-3">
+                  {[
+                    {
+                      frequency: 'daily' as const,
+                      title: 'Daily Trading',
+                      description: 'Execute trades daily based on market analysis (24h intervals)',
+                      color: 'border-blue-500 text-blue-700',
+                      bgColor: 'bg-blue-50'
+                    },
+                    {
+                      frequency: 'weekly' as const,
+                      title: 'Weekly Trading',
+                      description: 'Execute trades weekly for swing trading strategies (7 day intervals)',
+                      color: 'border-green-500 text-green-700',
+                      bgColor: 'bg-green-50'
+                    },
+                    {
+                      frequency: 'monthly' as const,
+                      title: 'Monthly Trading',
+                      description: 'Execute trades monthly for long-term investment strategies (30 day intervals)',
+                      color: 'border-purple-500 text-purple-700',
+                      bgColor: 'bg-purple-50'
+                    }
+                  ].map((option) => (
+                    <div
+                      key={option.frequency}
+                      className={`p-3 rounded-lg border-2 cursor-pointer transition-all ${
+                        botConfig.tradingFrequency === option.frequency
+                          ? `${option.color} ${option.bgColor}`
+                          : 'border-gray-200 hover:border-gray-300'
+                      }`}
+                      onClick={() => setBotConfig(prev => ({ ...prev, tradingFrequency: option.frequency }))}
+                    >
+                      <div className="flex items-center space-x-2 mb-1">
+                        <div className={`w-3 h-3 rounded-full ${
+                          botConfig.tradingFrequency === option.frequency ? 'bg-current' : 'bg-gray-300'
+                        }`} />
+                        <span className="font-medium">{option.title}</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground ml-5">{option.description}</p>
+                    </div>
+                  ))}
+                </div>
+              </div>
+
+              {/* Max Daily Trades */}
+              <div className="space-y-2">
+                <label className="text-sm font-medium">Max Trades per Period</label>
+                <div className="flex items-center space-x-4">
+                  <input
+                    type="range"
+                    min="1"
+                    max="20"
+                    value={botConfig.maxDailyTrades}
+                    onChange={(e) => setBotConfig(prev => ({ ...prev, maxDailyTrades: Number(e.target.value) }))}
+                    className="flex-1"
+                  />
+                  <span className="text-sm font-medium w-12">{botConfig.maxDailyTrades}</span>
+                </div>
+                <p className="text-xs text-muted-foreground">
+                  Maximum number of trades per {botConfig.tradingFrequency.replace('ly', '')} period
+                </p>
+              </div>
+
+              {/* Enable Scheduled Trading */}
+              <div className="flex items-center justify-between">
+                <div>
+                  <label className="text-sm font-medium">Enable Scheduled Trading</label>
+                  <p className="text-sm text-muted-foreground">
+                    Automatically execute trades based on selected frequency
+                  </p>
+                </div>
+                <Switch
+                  checked={botConfig.enableScheduledTrading}
+                  onCheckedChange={(checked) => 
+                    setBotConfig(prev => ({ ...prev, enableScheduledTrading: checked }))
+                  }
+                />
+              </div>
+
               {/* Enable Shorts */}
               <div className="flex items-center justify-between">
                 <div>
@@ -403,7 +511,13 @@ export default function AdvancedTradingBot() {
               <div className="flex items-center justify-between">
                 <div>
                   <label className="text-sm font-medium">Auto Execute Trades</label>
-                  <p className="text-sm text-muted-foreground">Automatically execute signals every 5 minutes</p>
+                  <p className="text-sm text-muted-foreground">
+                    Automatically execute signals every {
+                      botConfig.tradingFrequency === 'daily' ? '24 hours' :
+                      botConfig.tradingFrequency === 'weekly' ? '7 days' :
+                      '30 days'
+                    }
+                  </p>
                 </div>
                 <Switch
                   checked={botConfig.autoExecute}
@@ -414,39 +528,82 @@ export default function AdvancedTradingBot() {
               </div>
 
               {/* Control Buttons */}
-              <div className="flex space-x-4">
-                <Button
-                  onClick={isRunning ? stopBot : startBot}
-                  variant={isRunning ? "destructive" : "default"}
-                  className="flex-1"
-                  disabled={isAnalyzing}
-                >
-                  {isAnalyzing ? (
-                    <>
-                      <Activity className="mr-2 h-4 w-4 animate-spin" />
-                      Analyzing...
-                    </>
-                  ) : isRunning ? (
-                    <>
-                      <AlertTriangle className="mr-2 h-4 w-4" />
-                      Stop Bot
-                    </>
-                  ) : (
-                    <>
-                      <Zap className="mr-2 h-4 w-4" />
-                      Start Bot
-                    </>
-                  )}
-                </Button>
-                
+              <div className="space-y-4">
+                {/* Test Bot Button */}
                 <Button
                   onClick={runAdvancedAnalysis}
                   variant="outline"
-                  disabled={isAnalyzing}
+                  className="w-full"
+                  disabled={isAnalyzing || botConfig.symbols.length === 0}
                 >
                   <Brain className="mr-2 h-4 w-4" />
-                  Run Analysis
+                  {isAnalyzing ? 'Testing Bot...' : `Test Bot with ${botConfig.symbols.length} Selected Symbols`}
                 </Button>
+
+                {/* Start/Stop Bot Buttons */}
+                <div className="grid grid-cols-2 gap-3">
+                  <Button
+                    onClick={isRunning ? stopBot : startBot}
+                    variant={isRunning ? "destructive" : "default"}
+                    disabled={isAnalyzing || botConfig.symbols.length === 0}
+                  >
+                    {isRunning ? (
+                      <>
+                        <AlertTriangle className="mr-2 h-4 w-4" />
+                        Stop Bot
+                      </>
+                    ) : (
+                      <>
+                        <Zap className="mr-2 h-4 w-4" />
+                        Start Bot
+                      </>
+                    )}
+                  </Button>
+                  
+                  <Button
+                    onClick={() => {
+                      setBotConfig(prev => ({ 
+                        ...prev, 
+                        enableScheduledTrading: !prev.enableScheduledTrading,
+                        autoExecute: !prev.enableScheduledTrading 
+                      }));
+                      toast.success(`Scheduled trading ${botConfig.enableScheduledTrading ? 'disabled' : 'enabled'}`);
+                    }}
+                    variant={botConfig.enableScheduledTrading ? "secondary" : "outline"}
+                  >
+                    {botConfig.enableScheduledTrading ? (
+                      <>
+                        <Activity className="mr-2 h-4 w-4" />
+                        Scheduled ON
+                      </>
+                    ) : (
+                      <>
+                        <Activity className="mr-2 h-4 w-4" />
+                        Enable Schedule
+                      </>
+                    )}
+                  </Button>
+                </div>
+
+                {/* Status Display */}
+                {botConfig.symbols.length === 0 && (
+                  <Alert>
+                    <AlertTriangle className="h-4 w-4" />
+                    <AlertDescription>
+                      Please select at least one symbol to start trading.
+                    </AlertDescription>
+                  </Alert>
+                )}
+
+                {botConfig.enableScheduledTrading && (
+                  <Alert>
+                    <Activity className="h-4 w-4" />
+                    <AlertDescription>
+                      <strong>Scheduled Trading Active:</strong> Bot will execute trades {botConfig.tradingFrequency} 
+                      with max {botConfig.maxDailyTrades} trades per period on {botConfig.symbols.length} selected symbols.
+                    </AlertDescription>
+                  </Alert>
+                )}
               </div>
 
               {botConfig.mode === 'live' && (
@@ -554,7 +711,9 @@ export default function AdvancedTradingBot() {
                   <p className="text-2xl font-bold text-blue-600">{botStats.totalTrades}</p>
                   <p className="text-sm text-muted-foreground">Total Trades</p>
                   <Progress value={botStats.learningProgress} className="mt-2" />
-                  <p className="text-xs text-muted-foreground mt-1">Learning Progress</p>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {botConfig.tradingFrequency.charAt(0).toUpperCase() + botConfig.tradingFrequency.slice(1)} Trading
+                  </p>
                 </div>
                 
                 <div className="text-center">

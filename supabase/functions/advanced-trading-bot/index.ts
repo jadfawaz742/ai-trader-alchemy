@@ -220,15 +220,22 @@ serve(async (req) => {
       mode = 'simulation', 
       risk = 'medium',
       portfolioBalance = 100000,
-      enableShorts = true 
+      enableShorts = true,
+      tradingFrequency = 'daily',
+      maxDailyTrades = 5
     } = await req.json();
 
-    console.log(`🤖 Enhanced PPO Trading Bot Starting - Mode: ${mode}, Risk: ${risk}`);
-    console.log(`📊 Processing ${symbols.length} symbols (${symbols.filter((s: string) => ['BTC', 'ETH', 'ADA', 'SOL', 'AVAX', 'DOT', 'MATIC', 'ATOM', 'NEAR', 'ALGO', 'XRP', 'LTC', 'BCH', 'ETC', 'XLM', 'VET', 'FIL', 'THETA', 'EGLD', 'HBAR', 'FLOW', 'ICP', 'SAND', 'MANA', 'CRV', 'UNI', 'AAVE', 'COMP', 'MKR', 'SNX', 'SUSHI', 'YFI', 'BAL', 'REN', 'KNC', 'ZRX', 'BAND', 'LRC', 'ENJ', 'CHZ', 'BAT', 'ZEC'].includes(s)).length} crypto, ${symbols.filter((s: string) => ['TSLA', 'NVDA', 'AMD', 'MRNA', 'ZOOM', 'ROKU', 'NFLX', 'SQ', 'SHOP', 'TWTR', 'SNAP', 'UBER', 'LYFT', 'PLTR', 'GME', 'AMC', 'BB', 'MEME', 'SPCE', 'COIN'].includes(s)).length} volatile stocks, ${symbols.filter((s: string) => ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'JNJ', 'PG', 'KO', 'WMT', 'VZ'].includes(s)).length} stable stocks, ${symbols.filter((s: string) => ['INTC', 'IBM', 'ORCL', 'CRM', 'ADBE', 'NOW', 'SNOW', 'DDOG', 'ZS', 'OKTA'].includes(s)).length} semi-stable stocks) with 2-year historical data and online learning`);
+    console.log(`🤖 Enhanced PPO Trading Bot Starting - Mode: ${mode}, Risk: ${risk}, Frequency: ${tradingFrequency}`);
+    console.log(`📊 Processing ${symbols.length} symbols with ${tradingFrequency} trading frequency, max ${maxDailyTrades} trades per period`);
+    console.log(`💰 Portfolio: $${portfolioBalance}, Shorts: ${enableShorts ? 'enabled' : 'disabled'}`);
 
     const tradingSignals = [];
     const maxSymbols = Math.min(symbols.length, 15); // Limit to 15 symbols for performance
     const symbolsToProcess = symbols.slice(0, maxSymbols);
+    
+    // Adjust signal generation based on trading frequency
+    const signalsPerSymbol = Math.max(1, Math.floor(maxDailyTrades / symbolsToProcess.length));
+    console.log(`🎯 Target: ${signalsPerSymbol} signals per symbol (total max: ${maxDailyTrades})`);
 
     for (const symbol of symbolsToProcess) {
       try {
