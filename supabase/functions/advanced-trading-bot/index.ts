@@ -251,24 +251,31 @@ async function updateAdaptiveParameters(userId: string, symbol: string, learning
     const newSuccessRate = newWinningTrades / newTotalTrades;
     const newAverageProfit = ((current.averageProfit * current.totalTrades) + learningData.profitLoss) / newTotalTrades;
     
-    // Adaptive learning: adjust thresholds based on performance
+    // Adaptive learning: adjust thresholds based on performance with caps to prevent over-restriction
     let newConfidenceThreshold = current.confidenceThreshold;
     let newConfluenceThreshold = current.confluenceThreshold;
     let newStopLossMultiplier = current.stopLossMultiplier;
     let newTakeProfitMultiplier = current.takeProfitMultiplier;
     
     if (learningData.outcome === 'LOSS') {
-      // Increase thresholds after losses to be more conservative
-      newConfidenceThreshold = Math.min(95, current.confidenceThreshold + 2);
-      newConfluenceThreshold = Math.min(0.95, current.confluenceThreshold + 0.05);
-      newStopLossMultiplier = Math.max(0.5, current.stopLossMultiplier - 0.1);
-      console.log(`📉 Increasing thresholds after loss - Confidence: ${newConfidenceThreshold}%, Confluence: ${(newConfluenceThreshold * 100).toFixed(1)}%`);
+      // Increase thresholds after losses but cap them to prevent over-restriction
+      newConfidenceThreshold = Math.min(85, current.confidenceThreshold + 1); // Cap at 85%
+      newConfluenceThreshold = Math.min(0.8, current.confluenceThreshold + 0.02); // Cap at 80%
+      newStopLossMultiplier = Math.max(0.5, current.stopLossMultiplier - 0.05); // Floor at 0.5
+      console.log(`📉 Increasing thresholds after loss - Confidence: ${newConfidenceThreshold.toFixed(1)}% (capped), Confluence: ${(newConfluenceThreshold * 100).toFixed(1)}% (capped)`);
     } else if (learningData.outcome === 'WIN' && newSuccessRate > 0.7) {
-      // Slightly relax thresholds after consistent wins
-      newConfidenceThreshold = Math.max(65, current.confidenceThreshold - 1);
-      newConfluenceThreshold = Math.max(0.4, current.confluenceThreshold - 0.02);
-      newTakeProfitMultiplier = Math.min(2.0, current.takeProfitMultiplier + 0.05);
+      // Slightly relax thresholds after consistent wins but maintain minimums
+      newConfidenceThreshold = Math.max(65, current.confidenceThreshold - 0.5); // Floor at 65%
+      newConfluenceThreshold = Math.max(0.4, current.confluenceThreshold - 0.01); // Floor at 40%
+      newTakeProfitMultiplier = Math.min(2.0, current.takeProfitMultiplier + 0.02); // Cap at 2.0
       console.log(`📈 Optimizing thresholds after consistent wins - Success Rate: ${(newSuccessRate * 100).toFixed(1)}%`);
+    }
+    
+    // Reset thresholds if they become too restrictive and no trades are happening
+    if (newTotalTrades > 5 && newSuccessRate === 0) {
+      console.log(`🔄 Resetting overly restrictive thresholds for ${symbol}`);
+      newConfidenceThreshold = Math.max(70, newConfidenceThreshold - 5);
+      newConfluenceThreshold = Math.max(0.5, newConfluenceThreshold - 0.05);
     }
     
     // Upsert adaptive parameters
@@ -293,7 +300,7 @@ async function updateAdaptiveParameters(userId: string, symbol: string, learning
     if (error) {
       console.error('Error updating adaptive parameters:', error);
     } else {
-      console.log(`✅ Updated adaptive parameters for ${symbol}: ${newTotalTrades} trades, ${(newSuccessRate * 100).toFixed(1)}% success rate`);
+      console.log(`✅ Updated adaptive parameters for ${symbol}: ${newTotalTrades} trades, ${(newSuccessRate * 100).toFixed(1)}% success rate, Conf: ${newConfidenceThreshold.toFixed(1)}%, Confluence: ${(newConfluenceThreshold * 100).toFixed(1)}%`);
     }
   } catch (error) {
     console.error('Error in updateAdaptiveParameters:', error);
@@ -492,8 +499,10 @@ serve(async (req) => {
         );
         
         if (tradingDecision.type !== 'HOLD' && 
-            currentState.confluenceScore >= adaptiveParams.confluenceThreshold &&
-            tradingDecision.confidence > adaptiveParams.confidenceThreshold) {
+            currentState.confluenceScore >= Math.min(adaptiveParams.confluenceThreshold, RISK_LEVELS[risk].minConfluence * 1.2) &&
+            tradingDecision.confidence > Math.min(adaptiveParams.confidenceThreshold, 85)) {
+          
+          console.log(`✅ Signal passed filters - Confidence: ${tradingDecision.confidence.toFixed(1)}% (threshold: ${Math.min(adaptiveParams.confidenceThreshold, 85).toFixed(1)}%), Confluence: ${(currentState.confluenceScore * 100).toFixed(1)}% (threshold: ${(Math.min(adaptiveParams.confluenceThreshold, RISK_LEVELS[risk].minConfluence * 1.2) * 100).toFixed(1)}%)`);
           
           // Calculate smart risk parameters with confluence and fibonacci
           const riskParams = await calculateSmartRiskParameters(
@@ -504,8 +513,8 @@ serve(async (req) => {
           );
           
           // Apply adaptive multipliers to risk parameters
-          riskParams.stopLoss = riskParams.stopLoss * adaptiveParams.stopLossMultiplier;
-          riskParams.takeProfit = riskParams.takeProfit * adaptiveParams.takeProfitMultiplier;
+          riskParams.stopLoss = riskParams.stopLoss * Math.max(adaptiveParams.stopLossMultiplier, 0.5);
+          riskParams.takeProfit = riskParams.takeProfit * Math.min(adaptiveParams.takeProfitMultiplier, 2.0);
           
           const signal = {
             symbol,
@@ -562,11 +571,14 @@ serve(async (req) => {
             await storeLearningData(user.id, initialLearningData, signal);
           }
         } else {
+          const adaptiveConfThreshold = Math.min(adaptiveParams.confidenceThreshold, 85);
+          const adaptiveConfluenceThreshold = Math.min(adaptiveParams.confluenceThreshold, RISK_LEVELS[risk].minConfluence * 1.2);
+          
           const reason = tradingDecision.type === 'HOLD' ? 'Neutral conditions' : 
-                        currentState.confluenceScore < RISK_LEVELS[risk].minConfluence ? 
-                        `Low confluence (${(currentState.confluenceScore * 100).toFixed(1)}%)` : 
-                        `Low confidence (${tradingDecision.confidence.toFixed(1)}%)`;
-          console.log(`⏸️ HOLD ${symbol} - ${reason}`);
+                        currentState.confluenceScore < adaptiveConfluenceThreshold ? 
+                        `Low confluence (${(currentState.confluenceScore * 100).toFixed(1)}% < ${(adaptiveConfluenceThreshold * 100).toFixed(1)}%)` : 
+                        `Low confidence (${tradingDecision.confidence.toFixed(1)}% ≤ ${adaptiveConfThreshold.toFixed(1)}%)`;
+          console.log(`⏸️ HOLD ${symbol} - ${reason} | Adaptive thresholds: Conf=${adaptiveParams.confidenceThreshold.toFixed(1)}%, Confluence=${(adaptiveParams.confluenceThreshold * 100).toFixed(1)}%`);
         }
         
         // Add small delay between symbols to prevent resource overload
