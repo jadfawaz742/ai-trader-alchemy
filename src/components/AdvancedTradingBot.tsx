@@ -184,8 +184,12 @@ export default function AdvancedTradingBot() {
         setBotStats(newStats);
 
         if (botConfig.backtestMode && data.backtestResults) {
-          toast.success(`🔬 Backtest Complete: ${data.backtestResults.totalTrades} trades over ${botConfig.backtestPeriod}`, {
-            description: `Win Rate: ${(data.backtestResults.winRate * 100).toFixed(1)}%, Total Return: ${(data.backtestResults.totalReturn * 100).toFixed(2)}%`
+          const enhancedMessage = data.backtestResults.enhancedFeatures ? 
+            `🚀 ENHANCED Backtest Complete: ${data.backtestResults.totalTrades} trades over ${botConfig.backtestPeriod} with Phase 1-3 improvements` :
+            `🔬 Backtest Complete: ${data.backtestResults.totalTrades} trades over ${botConfig.backtestPeriod}`;
+            
+          toast.success(enhancedMessage, {
+            description: `Win Rate: ${(data.backtestResults.winRate * 100).toFixed(1)}%, Total Return: ${(data.backtestResults.totalReturn * 100).toFixed(2)}%${data.backtestResults.enhancedFeatures ? ' (With Phase 1-3 ROI Boosts)' : ''}`
           });
         } else {
           toast.success(`🤖 Generated ${data.signals.length} trading signals using PPO algorithm`, {
