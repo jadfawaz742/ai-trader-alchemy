@@ -1056,9 +1056,9 @@ export default function AdvancedTradingBot() {
                     </div>
                   </div>
                 </div>
-              </CardContent>
-            </Card>
-          )}
+              </div>
+            </CardContent>
+          </Card>
 
           {/* Asset-Specific Performance */}
           {botStats.backtestResults?.learningData && (
