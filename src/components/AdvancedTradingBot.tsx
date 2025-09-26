@@ -1372,8 +1372,9 @@ export default function AdvancedTradingBot() {
             </CardContent>
           </Card>
 
-          {/* 🚀 PHASE 1 ROI IMPROVEMENTS DISPLAY */}
-          <Card className="border-2 border-gradient-to-r from-green-500 to-blue-500 bg-gradient-to-r from-green-50 to-blue-50">
+          {/* 🚀 PHASE 1 ROI IMPROVEMENTS DISPLAY - Only show after backtest */}
+          {botStats.backtestResults?.enhancedFeatures && (
+            <Card className="border-2 border-gradient-to-r from-green-500 to-blue-500 bg-gradient-to-r from-green-50 to-blue-50">
             <CardHeader>
               <CardTitle className="flex items-center gap-2 text-green-700">
                 🚀 Phase 1-3 ROI Enhancements - Live Performance Boost
@@ -1478,6 +1479,7 @@ export default function AdvancedTradingBot() {
               </div>
             </CardContent>
           </Card>
+          )}
 
           {/* Enhanced Strategy Overview */}
           <Card>
