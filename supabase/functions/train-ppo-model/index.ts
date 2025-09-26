@@ -234,29 +234,38 @@ class PPOTrainer {
       
       const episodeBuffer: any[] = []
       
-      // Run episode with proper trading simulation
+      // Run episode with improved trading simulation
       for (let i = 50; i < data.length - 1; i++) {
         const features = this.extractFeatures(data, i)
         const actionProbs = this.forwardActor(features)
         const value = this.forwardCritic(features)
         const currentPrice = data[i].close
         
-        // Sample action
-        const actionIndex = this.sampleAction(actionProbs)
+        // Enhanced action selection with technical analysis
+        const actionIndex = this.selectSmartAction(features, actionProbs, inPosition)
         const actionName = ['BUY', 'SELL', 'HOLD'][actionIndex] as 'BUY' | 'SELL' | 'HOLD'
         
-        // Execute trades
-        let tradeReward = 0
+        // Execute trades with improved logic
+        let stepReward = 0
         
         if (actionName === 'BUY' && !inPosition && portfolio.cash > 0) {
-          // Enter long position
-          portfolio.shares = portfolio.cash / currentPrice
-          portfolio.cash = 0
+          // Enter long position with confidence-based sizing
+          const confidence = Math.max(...actionProbs)
+          const positionSize = confidence > 0.6 ? 0.8 : 0.5 // Risk management
+          const investAmount = portfolio.cash * positionSize
+          
+          portfolio.shares = investAmount / currentPrice
+          portfolio.cash -= investAmount
           entryPrice = currentPrice
           inPosition = true
+          
+          // Small reward for taking action in good conditions
+          stepReward = confidence > 0.7 ? 0.01 : 0
+          
         } else if (actionName === 'SELL' && inPosition) {
           // Exit position
-          portfolio.cash = portfolio.shares * currentPrice
+          const exitValue = portfolio.shares * currentPrice
+          portfolio.cash += exitValue
           const tradeReturn = (currentPrice - entryPrice) / entryPrice
           
           portfolio.trades.push({
@@ -267,9 +276,29 @@ class PPOTrainer {
           })
           
           if (tradeReturn > 0) profitableTrades++
-          tradeReward = tradeReturn
+          
+          // Enhanced reward based on trade quality
+          if (tradeReturn > 0.02) {
+            stepReward = tradeReturn * 2 // Bonus for good trades
+          } else if (tradeReturn > 0) {
+            stepReward = tradeReturn
+          } else {
+            stepReward = tradeReturn * 0.5 // Reduce penalty for small losses
+          }
+          
           portfolio.shares = 0
           inPosition = false
+          
+        } else if (actionName === 'HOLD') {
+          // Reward for holding in position when trending up
+          if (inPosition && i > 0) {
+            const priceChange = (currentPrice - data[i-1].close) / data[i-1].close
+            stepReward = priceChange > 0 ? priceChange * 0.3 : priceChange * 0.1
+          } else if (!inPosition) {
+            // Small penalty for cash sitting idle in trending market
+            const momentum = features[3] // Momentum indicator
+            stepReward = momentum > 0.02 ? -0.001 : 0.001 // Slight penalty for missing opportunities
+          }
         }
         
         // Calculate current portfolio value
@@ -280,12 +309,16 @@ class PPOTrainer {
         const currentDrawdown = (maxValue - portfolio.totalValue) / maxValue
         if (currentDrawdown > maxDrawdown) maxDrawdown = currentDrawdown
         
+        // Add portfolio growth component to reward
+        const portfolioGrowth = (portfolio.totalValue - 10000) / 10000
+        const totalStepReward = stepReward + portfolioGrowth * 0.01
+        
         episodeBuffer.push({
           features,
           actionIndex,
           actionProbs,
           value,
-          reward: tradeReward,
+          reward: totalStepReward,
           done: i === data.length - 2
         })
       }
@@ -293,7 +326,7 @@ class PPOTrainer {
       // Close any remaining position
       if (inPosition && data.length > 0) {
         const finalPrice = data[data.length - 1].close
-        portfolio.cash = portfolio.shares * finalPrice
+        portfolio.cash += portfolio.shares * finalPrice
         const tradeReturn = (finalPrice - entryPrice) / entryPrice
         
         portfolio.trades.push({
@@ -314,7 +347,7 @@ class PPOTrainer {
         ? portfolio.trades.reduce((sum, trade) => sum + trade.profit, 0) / portfolio.trades.length
         : 0
       
-      // Update networks
+      // Update networks with better learning
       this.updateNetworks(episodeBuffer)
       
       const metrics: TrainingMetrics = {
@@ -336,6 +369,48 @@ class PPOTrainer {
     }
     
     return episodeMetrics
+  }
+  
+  private selectSmartAction(features: number[], actionProbs: number[], inPosition: boolean): number {
+    // Enhanced action selection using technical indicators
+    const rsi = features[1]
+    const macdSignal = features[2] 
+    const momentum = features[3]
+    const trend = features[4]
+    
+    // Apply technical analysis filters
+    let buySignal = 0
+    let sellSignal = 0
+    
+    // RSI signals
+    if (rsi < 0.3) buySignal += 0.3 // Oversold
+    if (rsi > 0.7) sellSignal += 0.3 // Overbought
+    
+    // MACD signals
+    if (macdSignal > 0.02) buySignal += 0.2
+    if (macdSignal < -0.02) sellSignal += 0.2
+    
+    // Momentum and trend alignment
+    if (momentum > 0.01 && trend > 0.01) buySignal += 0.3
+    if (momentum < -0.01 && trend < -0.01) sellSignal += 0.3
+    
+    // Modify action probabilities based on technical signals
+    const modifiedProbs = [...actionProbs]
+    
+    if (!inPosition) {
+      modifiedProbs[0] *= (1 + buySignal) // BUY
+      modifiedProbs[2] *= (1 + sellSignal * 0.5) // Reduce HOLD when sell signals
+    } else {
+      modifiedProbs[1] *= (1 + sellSignal) // SELL
+      modifiedProbs[2] *= (1 - sellSignal * 0.3) // Reduce HOLD during sell signals
+    }
+    
+    // Normalize probabilities
+    const sum = modifiedProbs.reduce((a, b) => a + b, 0)
+    const normalizedProbs = modifiedProbs.map(p => p / sum)
+    
+    // Sample from modified probabilities
+    return this.sampleAction(normalizedProbs)
   }
   
   private sampleAction(probs: number[]): number {
@@ -473,7 +548,19 @@ function generateMockData(symbol: string): TrainingData[] {
     'GOOGL': { basePrice: 140, volatility: 0.028, avgVolume: 25000000, sector: 'tech' },
     'MSFT': { basePrice: 380, volatility: 0.022, avgVolume: 20000000, sector: 'tech' },
     'AMZN': { basePrice: 145, volatility: 0.030, avgVolume: 35000000, sector: 'tech' },
-    'META': { basePrice: 320, volatility: 0.035, avgVolume: 18000000, sector: 'tech' }
+    'META': { basePrice: 320, volatility: 0.035, avgVolume: 18000000, sector: 'tech' },
+    'NFLX': { basePrice: 450, volatility: 0.040, avgVolume: 8000000, sector: 'tech' },
+    'JPM': { basePrice: 160, volatility: 0.025, avgVolume: 15000000, sector: 'financial' },
+    'JNJ': { basePrice: 160, volatility: 0.018, avgVolume: 12000000, sector: 'healthcare' },
+    'PG': { basePrice: 155, volatility: 0.015, avgVolume: 8000000, sector: 'consumer' },
+    'V': { basePrice: 260, volatility: 0.022, avgVolume: 7000000, sector: 'financial' },
+    'WMT': { basePrice: 160, volatility: 0.020, avgVolume: 10000000, sector: 'retail' },
+    'UNH': { basePrice: 520, volatility: 0.025, avgVolume: 3000000, sector: 'healthcare' },
+    'HD': { basePrice: 360, volatility: 0.023, avgVolume: 4000000, sector: 'retail' },
+    'SPY': { basePrice: 450, volatility: 0.015, avgVolume: 80000000, sector: 'etf' },
+    'QQQ': { basePrice: 380, volatility: 0.020, avgVolume: 40000000, sector: 'etf' },
+    'IWM': { basePrice: 200, volatility: 0.025, avgVolume: 25000000, sector: 'etf' },
+    'VTI': { basePrice: 240, volatility: 0.015, avgVolume: 5000000, sector: 'etf' }
   };
   
   // Get stock parameters or defaults
@@ -628,9 +715,14 @@ serve(async (req: Request) => {
       
       // Default symbols if none provided
       const symbolsToTrain = symbols || [
-        'AAPL', 'GOOGL', 'MSFT', 'TSLA', 'NVDA', // Tech stocks
-        'SPY', 'QQQ', // ETFs  
-        'BTCUSD', 'ETHUSD' // Crypto
+        // Major US Tech Stocks
+        'AAPL', 'GOOGL', 'MSFT', 'TSLA', 'NVDA', 'META', 'AMZN', 'NFLX',
+        // Other Major Stocks
+        'JPM', 'JNJ', 'PG', 'V', 'WMT', 'UNH', 'HD',
+        // ETFs
+        'SPY', 'QQQ', 'IWM', 'VTI',
+        // Major Cryptocurrencies
+        'BTCUSD', 'ETHUSD', 'SOLUSDT', 'ADAUSDT', 'DOTUSDT'
       ]
       
       console.log(`Starting PPO training on ${symbolsToTrain.length} symbols`)
