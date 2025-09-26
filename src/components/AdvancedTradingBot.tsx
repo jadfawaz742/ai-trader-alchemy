@@ -933,8 +933,9 @@ export default function AdvancedTradingBot() {
             </Card>
           )}
 
-          {/* Strategy Component Performance */}
-          <Card>
+          {/* Strategy Component Performance - Only show after backtest */}
+          {botStats.backtestResults && (
+            <Card>
             <CardHeader>
               <CardTitle className="flex items-center space-x-2">
                 <Zap className="h-5 w-5 text-purple-600" />
@@ -1063,6 +1064,7 @@ export default function AdvancedTradingBot() {
               </div>
             </CardContent>
           </Card>
+          )}
 
           {/* Asset-Specific Performance */}
           {botStats.backtestResults?.learningData && (
