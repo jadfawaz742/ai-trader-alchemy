@@ -515,6 +515,511 @@ function calculateNewsScore(newsScore: number): { score: number; signal: 'BUY' |
   return { score: 0.5, signal: 'NEUTRAL', reasoning: 'Neutral news sentiment' };
 }
 
+// ============================================================================
+// 🎯 DYNAMIC TARGET & STOP-LOSS SELECTION SYSTEM
+// Evaluates multiple candidates using weighted scoring with indicator confluence
+// ============================================================================
+
+interface TargetCandidate {
+  level: number;
+  type: 'fibonacci_extension' | 'support_resistance' | 'trendline' | 'ichimoku_edge';
+  score: number;
+  reasoning: string;
+  reliability: number; // Historical success rate at this level
+  distance: number; // Distance from entry in %
+}
+
+interface StopLossCandidate {
+  level: number;
+  type: 'fibonacci_retracement' | 'support_resistance' | 'atr_adjusted';
+  score: number;
+  reasoning: string;
+  reliability: number;
+  riskPercent: number; // Risk from entry in %
+}
+
+interface DynamicLevelWeights {
+  trend: number;        // 0.25 - EMA200, Ichimoku trend alignment
+  momentum: number;     // 0.20 - MACD, OBV momentum confirmation  
+  volatility: number;   // 0.20 - ATR, Bollinger bands reachability
+  history: number;      // 0.25 - Historical reliability of level
+  news: number;         // 0.10 - News sentiment catalyst
+}
+
+const LEVEL_WEIGHTS: DynamicLevelWeights = {
+  trend: 0.25,
+  momentum: 0.20,
+  volatility: 0.20,
+  history: 0.25,
+  news: 0.10
+};
+
+// 🔹 1. CANDIDATE IDENTIFICATION
+function identifyStopLossCandidates(
+  entryPrice: number,
+  action: 'BUY' | 'SELL',
+  state: TradingState,
+  atr: number
+): StopLossCandidate[] {
+  const candidates: StopLossCandidate[] = [];
+  
+  // Fibonacci retracement levels
+  const fibLevels = [0.236, 0.382, 0.5, 0.618, 0.786];
+  const priceHigh = Math.max(...state.indicators.fibonacci.levels);
+  const priceLow = Math.min(...state.indicators.fibonacci.levels);
+  
+  fibLevels.forEach(level => {
+    let stopLevel: number;
+    if (action === 'BUY') {
+      // For longs: stop below entry using fib retracements
+      stopLevel = entryPrice - ((priceHigh - priceLow) * level);
+    } else {
+      // For shorts: stop above entry using fib retracements  
+      stopLevel = entryPrice + ((priceHigh - priceLow) * level);
+    }
+    
+    const riskPercent = Math.abs((entryPrice - stopLevel) / entryPrice);
+    if (riskPercent <= 0.05 && riskPercent >= 0.01) { // 1-5% risk range
+      candidates.push({
+        level: stopLevel,
+        type: 'fibonacci_retracement',
+        score: 0, // Will be calculated
+        reasoning: `Fibonacci ${(level * 100).toFixed(1)}% retracement`,
+        reliability: 0.7 + (level * 0.3), // Higher fib levels more reliable
+        riskPercent
+      });
+    }
+  });
+  
+  // Support/Resistance levels near entry
+  state.indicators.supportResistance.forEach(sr => {
+    const distance = Math.abs(entryPrice - sr.price) / entryPrice;
+    if (distance <= 0.03) { // Within 3% of entry
+      let isValidStop = false;
+      if (action === 'BUY' && sr.type === 'support' && sr.price < entryPrice) isValidStop = true;
+      if (action === 'SELL' && sr.type === 'resistance' && sr.price > entryPrice) isValidStop = true;
+      
+      if (isValidStop) {
+        const riskPercent = Math.abs((entryPrice - sr.price) / entryPrice);
+        candidates.push({
+          level: sr.price,
+          type: 'support_resistance',
+          score: 0,
+          reasoning: `${sr.type} at ${sr.price.toFixed(2)}`,
+          reliability: sr.strength,
+          riskPercent
+        });
+      }
+    }
+  });
+  
+  // ATR-adjusted levels with volatility buffer
+  const atrMultipliers = [1.0, 1.5, 2.0];
+  atrMultipliers.forEach(multiplier => {
+    let stopLevel: number;
+    if (action === 'BUY') {
+      stopLevel = entryPrice - (atr * multiplier);
+    } else {
+      stopLevel = entryPrice + (atr * multiplier);
+    }
+    
+    const riskPercent = Math.abs((entryPrice - stopLevel) / entryPrice);
+    if (riskPercent <= 0.05 && riskPercent >= 0.01) {
+      candidates.push({
+        level: stopLevel,
+        type: 'atr_adjusted',
+        score: 0,
+        reasoning: `ATR ${multiplier}x volatility buffer`,
+        reliability: 0.8, // ATR stops generally reliable
+        riskPercent
+      });
+    }
+  });
+  
+  return candidates;
+}
+
+function identifyTargetCandidates(
+  entryPrice: number,
+  action: 'BUY' | 'SELL', 
+  state: TradingState
+): TargetCandidate[] {
+  const candidates: TargetCandidate[] = [];
+  
+  // Fibonacci extensions
+  const fibExtensions = [1.272, 1.618, 2.0, 2.618];
+  const priceRange = Math.max(...state.indicators.fibonacci.levels) - Math.min(...state.indicators.fibonacci.levels);
+  
+  fibExtensions.forEach(extension => {
+    let targetLevel: number;
+    if (action === 'BUY') {
+      targetLevel = entryPrice + (priceRange * (extension - 1));
+    } else {
+      targetLevel = entryPrice - (priceRange * (extension - 1));
+    }
+    
+    const distance = Math.abs((targetLevel - entryPrice) / entryPrice);
+    if (distance >= 0.02 && distance <= 0.15) { // 2-15% target range
+      candidates.push({
+        level: targetLevel,
+        type: 'fibonacci_extension',
+        score: 0,
+        reasoning: `Fibonacci ${(extension * 100).toFixed(1)}% extension`,
+        reliability: extension <= 1.618 ? 0.8 : 0.6, // 127.2% and 161.8% more reliable
+        distance
+      });
+    }
+  });
+  
+  // Support/Resistance levels beyond entry
+  state.indicators.supportResistance.forEach(sr => {
+    let isValidTarget = false;
+    if (action === 'BUY' && sr.type === 'resistance' && sr.price > entryPrice) isValidTarget = true;
+    if (action === 'SELL' && sr.type === 'support' && sr.price < entryPrice) isValidTarget = true;
+    
+    if (isValidTarget) {
+      const distance = Math.abs((sr.price - entryPrice) / entryPrice);
+      if (distance >= 0.02 && distance <= 0.20) {
+        candidates.push({
+          level: sr.price,
+          type: 'support_resistance',
+          score: 0,
+          reasoning: `${sr.type} target at ${sr.price.toFixed(2)}`,
+          reliability: sr.strength,
+          distance
+        });
+      }
+    }
+  });
+  
+  // Ichimoku cloud edges as targets
+  const ichimoku = state.indicators.ichimoku;
+  if (ichimoku.senkouSpanA && ichimoku.senkouSpanB) {
+    const cloudTop = Math.max(ichimoku.senkouSpanA, ichimoku.senkouSpanB);
+    const cloudBottom = Math.min(ichimoku.senkouSpanA, ichimoku.senkouSpanB);
+    
+    [cloudTop, cloudBottom].forEach(level => {
+      let isValidTarget = false;
+      if (action === 'BUY' && level > entryPrice) isValidTarget = true;
+      if (action === 'SELL' && level < entryPrice) isValidTarget = true;
+      
+      if (isValidTarget) {
+        const distance = Math.abs((level - entryPrice) / entryPrice);
+        if (distance >= 0.02 && distance <= 0.10) {
+          candidates.push({
+            level,
+            type: 'ichimoku_edge',
+            score: 0,
+            reasoning: `Ichimoku cloud edge at ${level.toFixed(2)}`,
+            reliability: 0.75,
+            distance
+          });
+        }
+      }
+    });
+  }
+  
+  return candidates;
+}
+
+// 🔹 2. CANDIDATE SCORING
+function scoreStopLossCandidate(
+  candidate: StopLossCandidate,
+  action: 'BUY' | 'SELL',
+  state: TradingState,
+  newsScore: number,
+  marketRegime: 'bull_market' | 'bear_market' | 'sideways_market'
+): number {
+  let score = 0;
+  
+  // Trend Score (0.25 weight)
+  let trendScore = 0;
+  const emaAlignment = action === 'BUY' ? state.price > state.indicators.ema200 : state.price < state.indicators.ema200;
+  const ichimokuAlignment = action === 'BUY' ? state.indicators.ichimoku.signal > 0 : state.indicators.ichimoku.signal < 0;
+  
+  if (emaAlignment) trendScore += 0.5;
+  if (ichimokuAlignment) trendScore += 0.5;
+  score += trendScore * LEVEL_WEIGHTS.trend;
+  
+  // Momentum Score (0.20 weight)
+  let momentumScore = 0;
+  const macdAlignment = action === 'BUY' ? state.indicators.macd.histogram > 0 : state.indicators.macd.histogram < 0;
+  const obvAlignment = action === 'BUY' ? state.indicators.obv > 0 : state.indicators.obv < 0;
+  
+  if (macdAlignment) momentumScore += 0.6;
+  if (obvAlignment) momentumScore += 0.4;
+  score += momentumScore * LEVEL_WEIGHTS.momentum;
+  
+  // Volatility Score (0.20 weight) - ATR reachability
+  let volatilityScore = 0;
+  const atrPercent = state.indicators.atr / state.price;
+  const levelDistance = candidate.riskPercent;
+  
+  // Optimal if stop is 1-2x ATR away
+  if (levelDistance >= atrPercent && levelDistance <= atrPercent * 2) {
+    volatilityScore = 1.0;
+  } else if (levelDistance <= atrPercent * 3) {
+    volatilityScore = 0.7;
+  } else {
+    volatilityScore = 0.4;
+  }
+  score += volatilityScore * LEVEL_WEIGHTS.volatility;
+  
+  // Historical Reliability Score (0.25 weight)
+  score += candidate.reliability * LEVEL_WEIGHTS.history;
+  
+  // News/Sentiment Score (0.10 weight)
+  let newsScoreComponent = 0.5; // Neutral base
+  if ((action === 'BUY' && newsScore > 0.3) || (action === 'SELL' && newsScore < -0.3)) {
+    newsScoreComponent = 0.8; // Favorable news
+  } else if ((action === 'BUY' && newsScore < -0.3) || (action === 'SELL' && newsScore > 0.3)) {
+    newsScoreComponent = 0.3; // Unfavorable news
+  }
+  score += newsScoreComponent * LEVEL_WEIGHTS.news;
+  
+  // Market regime bonus/penalty
+  if (marketRegime === 'bull_market' && action === 'BUY') score *= 1.1;
+  if (marketRegime === 'bear_market' && action === 'SELL') score *= 1.1;
+  if (marketRegime === 'sideways_market') score *= 0.95;
+  
+  return Math.min(1.0, score);
+}
+
+function scoreTargetCandidate(
+  candidate: TargetCandidate,
+  action: 'BUY' | 'SELL',
+  state: TradingState,
+  newsScore: number,
+  marketRegime: 'bull_market' | 'bear_market' | 'sideways_market'
+): number {
+  let score = 0;
+  
+  // Trend Score (0.25 weight) - Higher for trend-aligned targets
+  let trendScore = 0;
+  const emaAlignment = action === 'BUY' ? state.price > state.indicators.ema200 : state.price < state.indicators.ema200;
+  const ichimokuAlignment = action === 'BUY' ? state.indicators.ichimoku.signal > 0 : state.indicators.ichimoku.signal < 0;
+  
+  if (emaAlignment) trendScore += 0.5;
+  if (ichimokuAlignment) trendScore += 0.5;
+  score += trendScore * LEVEL_WEIGHTS.trend;
+  
+  // Momentum Score (0.20 weight)
+  let momentumScore = 0;
+  const macdStrength = Math.abs(state.indicators.macd.histogram);
+  const obvStrength = Math.abs(state.indicators.obv) / 1000000;
+  
+  momentumScore = Math.min(1.0, (macdStrength + obvStrength) / 2);
+  score += momentumScore * LEVEL_WEIGHTS.momentum;
+  
+  // Volatility Score (0.20 weight) - Reachability given ATR
+  let volatilityScore = 0;
+  const atrPercent = state.indicators.atr / state.price;
+  const targetDistance = candidate.distance;
+  
+  // Target should be reachable within 3-5x ATR for optimal probability
+  if (targetDistance >= atrPercent * 2 && targetDistance <= atrPercent * 5) {
+    volatilityScore = 1.0;
+  } else if (targetDistance <= atrPercent * 8) {
+    volatilityScore = 0.7;
+  } else {
+    volatilityScore = 0.4;
+  }
+  score += volatilityScore * LEVEL_WEIGHTS.volatility;
+  
+  // Historical Reliability Score (0.25 weight)
+  score += candidate.reliability * LEVEL_WEIGHTS.history;
+  
+  // News/Sentiment Score (0.10 weight) - Higher score for catalyst-supported targets
+  let newsScoreComponent = 0.5;
+  if ((action === 'BUY' && newsScore > 0.5) || (action === 'SELL' && newsScore < -0.5)) {
+    newsScoreComponent = 0.9; // Strong catalyst
+  } else if (Math.abs(newsScore) > 0.3) {
+    newsScoreComponent = 0.7; // Moderate catalyst
+  }
+  score += newsScoreComponent * LEVEL_WEIGHTS.news;
+  
+  // Market regime adjustments
+  if (marketRegime === 'bull_market' && action === 'BUY') {
+    score *= 1.15; // Higher targets more likely in bull market
+  } else if (marketRegime === 'bear_market' && action === 'SELL') {
+    score *= 1.15; // Lower targets more likely in bear market
+  } else if (marketRegime === 'sideways_market') {
+    score *= 0.9; // Smaller targets in range-bound market
+  }
+  
+  return Math.min(1.0, score);
+}
+
+// 🔹 3. OPTIMAL LEVEL SELECTION
+function selectOptimalStopLoss(
+  candidates: StopLossCandidate[],
+  maxRiskPercent: number = 0.03 // 3% max risk
+): StopLossCandidate | null {
+  // Filter candidates within risk tolerance
+  const validCandidates = candidates.filter(c => c.riskPercent <= maxRiskPercent);
+  
+  if (validCandidates.length === 0) return null;
+  
+  // Sort by score (highest first)
+  validCandidates.sort((a, b) => b.score - a.score);
+  
+  const optimal = validCandidates[0];
+  
+  console.log(`🛡️ Optimal Stop Loss Selected:`);
+  console.log(`   Level: ${optimal.level.toFixed(4)} (${(optimal.riskPercent * 100).toFixed(2)}% risk)`);
+  console.log(`   Type: ${optimal.type} | Score: ${(optimal.score * 100).toFixed(1)}%`);
+  console.log(`   Reasoning: ${optimal.reasoning}`);
+  
+  return optimal;
+}
+
+function selectOptimalTargets(
+  candidates: TargetCandidate[],
+  enableTieredTargets: boolean = true
+): TargetCandidate[] {
+  if (candidates.length === 0) return [];
+  
+  // Sort by score (highest first)
+  candidates.sort((a, b) => b.score - a.score);
+  
+  if (!enableTieredTargets) {
+    const primary = candidates[0];
+    console.log(`🎯 Primary Target Selected: ${primary.level.toFixed(4)} (${(primary.distance * 100).toFixed(2)}% distance)`);
+    console.log(`   Type: ${primary.type} | Score: ${(primary.score * 100).toFixed(1)}%`);
+    return [primary];
+  }
+  
+  // Tiered targets: Select up to 3 high-scoring targets at different distances
+  const tieredTargets: TargetCandidate[] = [];
+  const minDistanceBetweenTargets = 0.02; // 2% minimum separation
+  
+  for (const candidate of candidates) {
+    const tooClose = tieredTargets.some(existing => 
+      Math.abs(candidate.distance - existing.distance) < minDistanceBetweenTargets
+    );
+    
+    if (!tooClose && candidate.score > 0.6 && tieredTargets.length < 3) {
+      tieredTargets.push(candidate);
+    }
+  }
+  
+  console.log(`🎯 Tiered Targets Selected (${tieredTargets.length}):`);
+  tieredTargets.forEach((target, i) => {
+    console.log(`   T${i+1}: ${target.level.toFixed(4)} (${(target.distance * 100).toFixed(2)}% | ${(target.score * 100).toFixed(1)}% score)`);
+  });
+  
+  return tieredTargets.length > 0 ? tieredTargets : [candidates[0]];
+}
+
+// 🔹 4. POSITION SIZING BASED ON CONFLUENCE
+function calculateDynamicPositionSize(
+  baseSize: number,
+  stopLossScore: number,
+  targetScores: number[],
+  confluenceScore: number,
+  riskLevel: RiskLevel
+): number {
+  // Base confluence from entry analysis
+  let sizeMultiplier = confluenceScore;
+  
+  // Stop-loss quality adjustment (±20%)
+  const stopAdjustment = (stopLossScore - 0.5) * 0.4;
+  sizeMultiplier += stopAdjustment;
+  
+  // Target quality adjustment (±15%)
+  const avgTargetScore = targetScores.reduce((sum, score) => sum + score, 0) / targetScores.length;
+  const targetAdjustment = (avgTargetScore - 0.5) * 0.3;
+  sizeMultiplier += targetAdjustment;
+  
+  // Risk level constraints
+  const riskMultipliers = { low: 0.7, medium: 1.0, high: 1.3 };
+  sizeMultiplier *= riskMultipliers[riskLevel.name];
+  
+  // Final bounds
+  sizeMultiplier = Math.max(0.3, Math.min(1.5, sizeMultiplier));
+  
+  const finalSize = Math.floor(baseSize * sizeMultiplier);
+  
+  console.log(`📏 Dynamic Position Sizing:`);
+  console.log(`   Base Size: ${baseSize} | Confluence: ${(confluenceScore * 100).toFixed(1)}%`);
+  console.log(`   Stop Score: ${(stopLossScore * 100).toFixed(1)}% | Target Score: ${(avgTargetScore * 100).toFixed(1)}%`);
+  console.log(`   Final Multiplier: ${sizeMultiplier.toFixed(2)}x | Final Size: ${finalSize}`);
+  
+  return finalSize;
+}
+
+// 🔹 5. MAIN DYNAMIC LEVEL SELECTION FUNCTION
+async function selectDynamicLevels(
+  entryPrice: number,
+  action: 'BUY' | 'SELL',
+  state: TradingState,
+  newsScore: number,
+  marketRegime: 'bull_market' | 'bear_market' | 'sideways_market',
+  riskLevel: RiskLevel,
+  basePositionSize: number
+): Promise<{
+  stopLoss: number;
+  targets: number[];
+  positionSize: number;
+  reasoning: string;
+}> {
+  
+  console.log(`\n🎯 === DYNAMIC LEVEL SELECTION FOR ${action} @ ${entryPrice.toFixed(4)} ===`);
+  
+  // 1. Identify all candidates
+  const stopLossCandidates = identifyStopLossCandidates(entryPrice, action, state, state.indicators.atr);
+  const targetCandidates = identifyTargetCandidates(entryPrice, action, state);
+  
+  console.log(`📋 Identified ${stopLossCandidates.length} stop-loss candidates, ${targetCandidates.length} target candidates`);
+  
+  // 2. Score all candidates
+  stopLossCandidates.forEach(candidate => {
+    candidate.score = scoreStopLossCandidate(candidate, action, state, newsScore, marketRegime);
+  });
+  
+  targetCandidates.forEach(candidate => {
+    candidate.score = scoreTargetCandidate(candidate, action, state, newsScore, marketRegime);
+  });
+  
+  // 3. Select optimal levels
+  const optimalStopLoss = selectOptimalStopLoss(stopLossCandidates, 0.05); // 5% max risk
+  const optimalTargets = selectOptimalTargets(targetCandidates, true); // Enable tiered targets
+  
+  if (!optimalStopLoss || optimalTargets.length === 0) {
+    console.log('❌ Could not find suitable stop-loss or target levels');
+    return {
+      stopLoss: action === 'BUY' ? entryPrice * 0.97 : entryPrice * 1.03, // Fallback 3%
+      targets: [action === 'BUY' ? entryPrice * 1.05 : entryPrice * 0.95], // Fallback 5%
+      positionSize: Math.floor(basePositionSize * 0.5), // Reduced size for suboptimal levels
+      reasoning: 'Fallback levels - no optimal candidates found'
+    };
+  }
+  
+  // 4. Calculate dynamic position size
+  const targetScores = optimalTargets.map(t => t.score);
+  const dynamicSize = calculateDynamicPositionSize(
+    basePositionSize,
+    optimalStopLoss.score,
+    targetScores,
+    state.confluenceScore,
+    riskLevel
+  );
+  
+  // 5. Prepare reasoning
+  const reasoning = `Dynamic Selection: Stop @ ${optimalStopLoss.reasoning} (${(optimalStopLoss.score * 100).toFixed(1)}% score), Targets: ${optimalTargets.map(t => t.reasoning).join(', ')}`;
+  
+  console.log(`✅ Dynamic Level Selection Complete`);
+  
+  return {
+    stopLoss: optimalStopLoss.level,
+    targets: optimalTargets.map(t => t.level),
+    positionSize: dynamicSize,
+    reasoning
+  };
+}
+
+// ============================================================================
+
 // Learning system functions
 async function getAdaptiveParameters(userId: string, symbol: string): Promise<AdaptiveParameters> {
   try {
@@ -2181,13 +2686,42 @@ async function generateAdaptivePPODecision(
   
   const ppoReward = calculatePPOReward(mockTradeResult, finalConfidence, portfolioBalance, riskLevel);
   
-  console.log(`🤖 PPO Decision Analysis: Expected Reward: ${ppoReward.totalReward.toFixed(4)} | Action: ${decision.action}`);
-  
+  // 🎯 DYNAMIC LEVEL SELECTION: Replace static stop-loss and take-profit with intelligent multi-candidate system
+  if (decision.action !== 'HOLD') {
+    const marketRegimeType = state.marketCondition === 'bullish' ? 'bull_market' : 
+                            state.marketCondition === 'bearish' ? 'bear_market' : 'sideways_market';
+    
+    const dynamicLevels = await selectDynamicLevels(
+      state.price, // Entry price
+      decision.action,
+      state,
+      state.newsScore,
+      marketRegimeType,
+      riskLevel,
+      finalQuantity
+    );
+    
+    console.log(`🤖 PPO Decision Analysis with Dynamic Levels:`);
+    console.log(`   Expected Reward: ${ppoReward.totalReward.toFixed(4)} | Action: ${decision.action}`);
+    console.log(`   Dynamic Stop: ${dynamicLevels.stopLoss.toFixed(4)} | Targets: ${dynamicLevels.targets.map(t => t.toFixed(4)).join(', ')}`);
+    console.log(`   Optimized Size: ${dynamicLevels.positionSize} (base: ${finalQuantity})`);
+
+    return {
+      type: decision.action,
+      quantity: Math.max(1, dynamicLevels.positionSize),
+      stopLoss: dynamicLevels.stopLoss,
+      takeProfit: dynamicLevels.targets[0], // Use primary target
+      confidence: decision.confidence,
+      reasoning: `PPO + Dynamic Levels: ${decision.reasoning}. ${dynamicLevels.reasoning}. News: ${(state.newsScore * 100).toFixed(0)}%. Confluence: ${confluenceLevel} (${(finalConfidence * 100).toFixed(1)}%). Expected Reward: ${ppoReward.totalReward.toFixed(4)}`,
+      confluenceLevel
+    };
+  }
+
   return {
     type: decision.action,
     quantity: Math.max(1, finalQuantity),
-    stopLoss: 0, // Will be calculated with ATR-based risk management
-    takeProfit: 0, // Will be calculated with ATR-based risk management
+    stopLoss: 0,
+    takeProfit: 0,
     confidence: decision.confidence,
     reasoning: `PPO Analysis: ${decision.reasoning}. News: ${(state.newsScore * 100).toFixed(0)}%. Confluence: ${confluenceLevel} (${(finalConfidence * 100).toFixed(1)}%). Expected Reward: ${ppoReward.totalReward.toFixed(4)}`,
     confluenceLevel
