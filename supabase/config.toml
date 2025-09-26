@@ -17,3 +17,6 @@ verify_jwt = true
 
 [functions.update-positions]
 verify_jwt = true
+
+[functions.train-ppo-model]
+verify_jwt = true

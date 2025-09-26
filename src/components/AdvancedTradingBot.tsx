@@ -10,7 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Label } from "@/components/ui/label";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "sonner";
-import { Activity, Brain, TrendingUp, TrendingDown, AlertTriangle, Target, Shield, Zap } from "lucide-react";
+import { Activity, Brain, TrendingUp, TrendingDown, AlertTriangle, Target, Shield, Zap, Loader2 } from "lucide-react";
 
 interface TradingSignal {
   symbol: string;
@@ -108,6 +108,9 @@ export default function AdvancedTradingBot() {
   });
 
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [trainingMetrics, setTrainingMetrics] = useState<any>(null);
+  const [isTraining, setIsTraining] = useState(false);
+  const [trainingProgress, setTrainingProgress] = useState<string>('');
 
   useEffect(() => {
     if (isRunning && botConfig.autoExecute) {
@@ -135,6 +138,50 @@ export default function AdvancedTradingBot() {
       return () => clearInterval(interval);
     }
   }, [isRunning, botConfig.autoExecute, botConfig.tradingFrequency]);
+
+  const trainPPOModel = async () => {
+    setIsTraining(true);
+    setTrainingProgress('Initializing PPO training on 2 years of historical data...');
+    
+    try {
+      const symbols = ['AAPL', 'GOOGL', 'MSFT', 'TSLA', 'NVDA', 'SPY', 'QQQ', 'BTCUSD', 'ETHUSD', 'ADAUSD'];
+      
+      const { data, error } = await supabase.functions.invoke('train-ppo-model', {
+        body: { 
+          action: 'train',
+          symbols
+        }
+      });
+
+      if (error) throw error;
+      
+      if (data.success) {
+        setTrainingMetrics(data.metrics);
+        setTrainingProgress('Training completed successfully!');
+        
+        toast.success(`🧠 PPO Training Complete!`, {
+          description: `Trained on ${data.metrics.totalSymbols} symbols with ${(data.metrics.averageWinRate * 100).toFixed(1)}% average win rate`
+        });
+        
+        // Update bot stats with new training metrics
+        setBotStats(prev => ({
+          ...prev,
+          totalTrades: data.metrics.totalTrades,
+          successRate: data.metrics.averageWinRate * 100,
+          avgConfidence: data.metrics.averageReward * 100,
+          learningProgress: 100
+        }));
+      }
+    } catch (error) {
+      console.error('Training error:', error);
+      setTrainingProgress('Training failed: ' + (error as Error).message);
+      toast.error('PPO Training Failed', {
+        description: 'Failed to train PPO model'
+      });
+    } finally {
+      setIsTraining(false);
+    }
+  };
 
   const runAdvancedAnalysis = async () => {
     setIsAnalyzing(true);
@@ -301,8 +348,9 @@ export default function AdvancedTradingBot() {
 
       {/* Configuration & Controls */}
       <Tabs defaultValue="performance" className="w-full">
-        <TabsList className="grid w-full grid-cols-3">
+        <TabsList className="grid w-full grid-cols-4">
           <TabsTrigger value="config">Configuration</TabsTrigger>
+          <TabsTrigger value="training">PPO Training</TabsTrigger>
           <TabsTrigger value="signals">Trading Signals</TabsTrigger>
           <TabsTrigger value="performance">Performance</TabsTrigger>
         </TabsList>
@@ -720,6 +768,111 @@ export default function AdvancedTradingBot() {
                     Make sure you understand the risks involved.
                   </AlertDescription>
                 </Alert>
+              )}
+            </CardContent>
+          </Card>
+        </TabsContent>
+
+        <TabsContent value="training" className="space-y-4">
+          <Card>
+            <CardHeader>
+              <CardTitle className="flex items-center gap-2">
+                <Brain className="h-5 w-5" />
+                PPO Model Training
+              </CardTitle>
+              <CardDescription>
+                Train the reinforcement learning model on 2 years of historical data across multiple assets
+              </CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex gap-4">
+                <Button 
+                  onClick={trainPPOModel} 
+                  disabled={isTraining}
+                  className="flex items-center gap-2"
+                >
+                  {isTraining ? (
+                    <>
+                      <Loader2 className="h-4 w-4 animate-spin" />
+                      Training...
+                    </>
+                  ) : (
+                    <>
+                      <Brain className="h-4 w-4" />
+                      Start PPO Training
+                    </>
+                  )}
+                </Button>
+              </div>
+              
+              {trainingProgress && (
+                <div className="p-3 bg-muted rounded-lg">
+                  <p className="text-sm">{trainingProgress}</p>
+                </div>
+              )}
+              
+              {trainingMetrics && (
+                <div className="space-y-4">
+                  <div className="grid gap-4 md:grid-cols-2 lg:grid-cols-4">
+                    <div className="p-3 bg-background rounded-lg border">
+                      <div className="text-sm text-muted-foreground">Symbols Trained</div>
+                      <div className="text-xl font-bold">{trainingMetrics.totalSymbols}</div>
+                    </div>
+                    <div className="p-3 bg-background rounded-lg border">
+                      <div className="text-sm text-muted-foreground">Average Win Rate</div>
+                      <div className="text-xl font-bold">{(trainingMetrics.averageWinRate * 100).toFixed(1)}%</div>
+                    </div>
+                    <div className="p-3 bg-background rounded-lg border">
+                      <div className="text-sm text-muted-foreground">Total Trades</div>
+                      <div className="text-xl font-bold">{trainingMetrics.totalTrades}</div>
+                    </div>
+                    <div className="p-3 bg-background rounded-lg border">
+                      <div className="text-sm text-muted-foreground">Average Reward</div>
+                      <div className="text-xl font-bold">{(trainingMetrics.averageReward * 100).toFixed(2)}%</div>
+                    </div>
+                  </div>
+                  
+                  {trainingMetrics.symbolMetrics && (
+                    <div>
+                      <h4 className="text-sm font-medium mb-3">📊 Symbol Performance Metrics:</h4>
+                      <div className="grid gap-2 max-h-80 overflow-y-auto">
+                        {Object.entries(trainingMetrics.symbolMetrics).map(([symbol, metrics]: [string, any]) => {
+                          const lastEpisode = metrics[metrics.length - 1];
+                          return (
+                            <div key={symbol} className="flex justify-between items-center p-3 bg-muted rounded text-sm border">
+                              <div className="flex items-center gap-2">
+                                <span className="font-medium text-base">{symbol}</span>
+                                <Badge variant={lastEpisode.winRate > 0.6 ? "default" : "secondary"}>
+                                  {lastEpisode.winRate > 0.6 ? "🎯 Strong" : "📈 Learning"}
+                                </Badge>
+                              </div>
+                              <div className="flex gap-4 text-xs">
+                                <div className="text-center">
+                                  <div className="text-green-600 font-medium">{(lastEpisode.winRate * 100).toFixed(1)}%</div>
+                                  <div className="text-muted-foreground">Win Rate</div>
+                                </div>
+                                <div className="text-center">
+                                  <div className="font-medium">{lastEpisode.totalTrades}</div>
+                                  <div className="text-muted-foreground">Trades</div>
+                                </div>
+                                <div className="text-center">
+                                  <div className={`font-medium ${lastEpisode.totalReward > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                    {lastEpisode.totalReward.toFixed(3)}
+                                  </div>
+                                  <div className="text-muted-foreground">Reward</div>
+                                </div>
+                                <div className="text-center">
+                                  <div className="font-medium">{lastEpisode.sharpeRatio.toFixed(2)}</div>
+                                  <div className="text-muted-foreground">Sharpe</div>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+                </div>
               )}
             </CardContent>
           </Card>
