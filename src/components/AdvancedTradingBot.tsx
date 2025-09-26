@@ -837,32 +837,55 @@ export default function AdvancedTradingBot() {
                       <h4 className="text-sm font-medium mb-3">📊 Symbol Performance Metrics:</h4>
                       <div className="grid gap-2 max-h-80 overflow-y-auto">
                         {Object.entries(trainingMetrics.symbolMetrics).map(([symbol, metrics]: [string, any]) => {
+                          // Check if metrics array exists and has data
+                          if (!Array.isArray(metrics) || metrics.length === 0) {
+                            return (
+                              <div key={symbol} className="flex justify-between items-center p-3 bg-muted rounded text-sm border">
+                                <span className="font-medium text-base">{symbol}</span>
+                                <span className="text-muted-foreground">No training data</span>
+                              </div>
+                            );
+                          }
+                          
                           const lastEpisode = metrics[metrics.length - 1];
+                          
+                          // Additional safety check for lastEpisode
+                          if (!lastEpisode) {
+                            return (
+                              <div key={symbol} className="flex justify-between items-center p-3 bg-muted rounded text-sm border">
+                                <span className="font-medium text-base">{symbol}</span>
+                                <span className="text-muted-foreground">Invalid data</span>
+                              </div>
+                            );
+                          }
+                          
                           return (
                             <div key={symbol} className="flex justify-between items-center p-3 bg-muted rounded text-sm border">
                               <div className="flex items-center gap-2">
                                 <span className="font-medium text-base">{symbol}</span>
-                                <Badge variant={lastEpisode.winRate > 0.6 ? "default" : "secondary"}>
-                                  {lastEpisode.winRate > 0.6 ? "🎯 Strong" : "📈 Learning"}
+                                <Badge variant={(lastEpisode.winRate || 0) > 0.6 ? "default" : "secondary"}>
+                                  {(lastEpisode.winRate || 0) > 0.6 ? "🎯 Strong" : "📈 Learning"}
                                 </Badge>
                               </div>
                               <div className="flex gap-4 text-xs">
                                 <div className="text-center">
-                                  <div className="text-green-600 font-medium">{(lastEpisode.winRate * 100).toFixed(1)}%</div>
+                                  <div className="text-green-600 font-medium">
+                                    {((lastEpisode.winRate || 0) * 100).toFixed(1)}%
+                                  </div>
                                   <div className="text-muted-foreground">Win Rate</div>
                                 </div>
                                 <div className="text-center">
-                                  <div className="font-medium">{lastEpisode.totalTrades}</div>
+                                  <div className="font-medium">{lastEpisode.totalTrades || 0}</div>
                                   <div className="text-muted-foreground">Trades</div>
                                 </div>
                                 <div className="text-center">
-                                  <div className={`font-medium ${lastEpisode.totalReward > 0 ? 'text-green-600' : 'text-red-600'}`}>
-                                    {lastEpisode.totalReward.toFixed(3)}
+                                  <div className={`font-medium ${(lastEpisode.totalReturn || 0) > 0 ? 'text-green-600' : 'text-red-600'}`}>
+                                    {((lastEpisode.totalReturn || 0) * 100).toFixed(2)}%
                                   </div>
-                                  <div className="text-muted-foreground">Reward</div>
+                                  <div className="text-muted-foreground">Return</div>
                                 </div>
                                 <div className="text-center">
-                                  <div className="font-medium">{lastEpisode.sharpeRatio.toFixed(2)}</div>
+                                  <div className="font-medium">{(lastEpisode.sharpeRatio || 0).toFixed(2)}</div>
                                   <div className="text-muted-foreground">Sharpe</div>
                                 </div>
                               </div>
