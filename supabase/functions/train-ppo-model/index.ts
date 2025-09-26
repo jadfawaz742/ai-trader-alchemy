@@ -1,13 +1,11 @@
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+// ============= Supabase Edge Function: PPO Model Training =============
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 interface TrainingData {
   symbol: string
-  date: string
+  timestamp: string
   open: number
   high: number
   low: number
@@ -16,146 +14,167 @@ interface TrainingData {
 }
 
 interface PPOState {
-  symbol: string
-  indicators: any
-  marketRegime: string
-  volatility: number
-  momentum: number
-  trend: number
+  features: number[]
 }
 
 interface PPOAction {
   action: 'BUY' | 'SELL' | 'HOLD'
   confidence: number
-  stopLoss: number
-  targets: number[]
-  positionSize: number
+  stopLoss?: number
+  targets?: number[]
+  positionSize?: number
 }
 
 interface TrainingMetrics {
   episode: number
-  totalReward: number
-  averageReward: number
+  totalReturn: number // Actual portfolio return percentage
+  avgTradeReturn: number // Average return per trade
   winRate: number
   sharpeRatio: number
   maxDrawdown: number
   totalTrades: number
   profitableTrades: number
-  loss: number
-  policyLoss: number
-  valueLoss: number
+  finalPortfolioValue: number
 }
 
 class PPOTrainer {
-  private learningRate = 0.0003
-  private clipEpsilon = 0.2
+  private learningRate = 0.001
   private gamma = 0.99
   private lambda = 0.95
-  private entropyCoeff = 0.01
-  private valueCoeff = 0.5
-  private maxGradNorm = 0.5
+  private episodes = 10
   
-  private actor: any = null
-  private critic: any = null
-  private optimizer: any = null
-  
+  private actor!: { weights: number[][], bias: number[][] }
+  private critic!: { weights: number[][], bias: number[][] }
   private trainingHistory: TrainingMetrics[] = []
-  private replayBuffer: any[] = []
-  
+
   constructor() {
     this.initializeNetworks()
   }
-  
+
   private initializeNetworks() {
-    // Initialize simple neural network approximations
-    // In a real implementation, this would use TensorFlow.js or similar
+    const inputSize = 15 // Number of features
+    const actorOutputSize = 3 // BUY, SELL, HOLD
+    const criticOutputSize = 1
+
     this.actor = {
-      weights: this.randomWeights(50, 3), // 50 input features -> 3 actions
-      bias: this.randomWeights(1, 3)
+      weights: this.randomWeights(inputSize, actorOutputSize),
+      bias: this.randomWeights(1, actorOutputSize)
     }
-    
+
     this.critic = {
-      weights: this.randomWeights(50, 1), // 50 input features -> 1 value
-      bias: this.randomWeights(1, 1)
+      weights: this.randomWeights(inputSize, criticOutputSize),
+      bias: this.randomWeights(1, criticOutputSize)
     }
   }
-  
-  private randomWeights(inputSize: number, outputSize: number): number[][] {
-    const weights: number[][] = []
-    for (let i = 0; i < inputSize; i++) {
-      weights[i] = []
-      for (let j = 0; j < outputSize; j++) {
-        weights[i][j] = (Math.random() - 0.5) * 0.2
-      }
-    }
-    return weights
+
+  private randomWeights(rows: number, cols: number): number[][] {
+    return Array.from({ length: rows }, () =>
+      Array.from({ length: cols }, () => (Math.random() - 0.5) * 0.1)
+    )
   }
-  
+
   private extractFeatures(data: TrainingData[], index: number): number[] {
-    const features = []
+    if (index < 20) return new Array(15).fill(0)
+
     const current = data[index]
+    const prev = data[index - 1]
     
     // Price features
-    features.push(current.close / current.open - 1) // Price change
-    features.push(current.volume / 1000000) // Normalized volume
-    features.push((current.high - current.low) / current.close) // Volatility
+    const priceChange = (current.close - prev.close) / prev.close
+    const volatility = this.calculateVolatility(data, index, 10)
     
-    // Technical indicators (simplified)
-    const prices = data.slice(Math.max(0, index - 20), index + 1).map(d => d.close)
-    const sma20 = prices.reduce((a, b) => a + b, 0) / prices.length
-    const sma50 = data.slice(Math.max(0, index - 50), index + 1).map(d => d.close).reduce((a, b) => a + b, 0) / Math.min(50, index + 1)
+    // Volume features
+    const volumeChange = (current.volume - prev.volume) / prev.volume
+    const avgVolume = data.slice(Math.max(0, index - 10), index + 1)
+      .reduce((sum, d) => sum + d.volume, 0) / Math.min(11, index + 1)
+    const volumeRatio = current.volume / avgVolume
+
+    // Technical indicators
+    const sma5 = this.calculateSMA(data, index, 5)
+    const sma20 = data.slice(Math.max(0, index - 19), index + 1)
+      .reduce((sum, d) => sum + d.close, 0) / Math.min(20, index + 1)
+    const smaRatio = current.close / sma20
+
+    // RSI calculation
+    const rsi = this.calculateRSI(data, index, 14)
     
-    features.push(current.close / sma20 - 1) // Distance from SMA20
-    features.push(current.close / sma50 - 1) // Distance from SMA50
-    features.push(sma20 / sma50 - 1) // SMA trend
+    // Momentum
+    const momentum = this.calculateMomentum(data, index, 10)
     
-    // RSI approximation
+    // Trend
+    const trend = this.calculateTrend(data, index, 10)
+
+    return [
+      priceChange,
+      volatility,
+      volumeChange,
+      volumeRatio,
+      smaRatio,
+      rsi / 100, // Normalize RSI
+      momentum,
+      trend,
+      (current.high - current.low) / current.close, // Daily range
+      (current.close - current.open) / current.open, // Daily change
+      Math.log(current.volume / avgVolume), // Log volume ratio
+      current.close / sma5 - 1, // Price vs SMA5
+      (current.high - current.close) / current.close, // Upper shadow
+      (current.close - current.low) / current.close, // Lower shadow
+      Math.min(1, Math.max(-1, priceChange * 10)) // Normalized price change
+    ]
+  }
+
+  private calculateSMA(data: TrainingData[], index: number, period: number): number {
+    const start = Math.max(0, index - period + 1)
+    const prices = data.slice(start, index + 1).map(d => d.close)
+    return prices.reduce((sum, price) => sum + price, 0) / prices.length
+  }
+
+  private calculateRSI(data: TrainingData[], index: number, period: number): number {
+    if (index < period) return 50
+
     const gains = []
     const losses = []
-    for (let i = Math.max(1, index - 14); i <= index; i++) {
+    
+    for (let i = Math.max(1, index - period + 1); i <= index; i++) {
       const change = data[i].close - data[i - 1].close
-      gains.push(Math.max(change, 0))
-      losses.push(Math.max(-change, 0))
+      gains.push(Math.max(0, change))
+      losses.push(Math.max(0, -change))
     }
-    const avgGain = gains.reduce((a, b) => a + b, 0) / gains.length
-    const avgLoss = losses.reduce((a, b) => a + b, 0) / losses.length
-    const rsi = avgLoss === 0 ? 100 : 100 - (100 / (1 + avgGain / avgLoss))
-    features.push(rsi / 100) // Normalized RSI
-    
-    // Market regime features
-    const volatility = this.calculateVolatility(data, index)
-    const momentum = this.calculateMomentum(data, index)
-    const trend = this.calculateTrend(data, index)
-    
-    features.push(volatility)
-    features.push(momentum)
-    features.push(trend)
-    
-    // Pad or truncate to 50 features
-    while (features.length < 50) {
-      features.push(0)
-    }
-    
-    return features.slice(0, 50)
+
+    const avgGain = gains.reduce((sum, gain) => sum + gain, 0) / gains.length
+    const avgLoss = losses.reduce((sum, loss) => sum + loss, 0) / losses.length
+
+    if (avgLoss === 0) return 100
+    const rs = avgGain / avgLoss
+    return 100 - (100 / (1 + rs))
   }
-  
-  private calculateVolatility(data: TrainingData[], index: number): number {
+
+  private calculateVolatility(data: TrainingData[], index: number, period: number): number {
+    const start = Math.max(0, index - period + 1)
     const returns = []
-    for (let i = Math.max(1, index - 20); i <= index; i++) {
-      returns.push(Math.log(data[i].close / data[i - 1].close))
+    
+    for (let i = start + 1; i <= index; i++) {
+      const ret = (data[i].close - data[i - 1].close) / data[i - 1].close
+      returns.push(ret)
     }
-    const mean = returns.reduce((a, b) => a + b, 0) / returns.length
-    const variance = returns.reduce((acc, ret) => acc + Math.pow(ret - mean, 2), 0) / returns.length
-    return Math.sqrt(variance) * Math.sqrt(252) // Annualized volatility
+
+    if (returns.length === 0) return 0
+    
+    const mean = returns.reduce((sum, ret) => sum + ret, 0) / returns.length
+    const variance = returns.reduce((sum, ret) => sum + Math.pow(ret - mean, 2), 0) / returns.length
+    
+    return Math.sqrt(variance)
   }
-  
-  private calculateMomentum(data: TrainingData[], index: number): number {
-    if (index < 20) return 0
-    return (data[index].close - data[index - 20].close) / data[index - 20].close
+
+  private calculateMomentum(data: TrainingData[], index: number, period: number): number {
+    if (index < period) return 0
+    return (data[index].close - data[index - period].close) / data[index - period].close
   }
-  
-  private calculateTrend(data: TrainingData[], index: number): number {
-    const prices = data.slice(Math.max(0, index - 50), index + 1).map(d => d.close)
+
+  private calculateTrend(data: TrainingData[], index: number, period: number): number {
+    const start = Math.max(0, index - period + 1)
+    const prices = data.slice(start, index + 1).map(d => d.close)
+    
     if (prices.length < 2) return 0
     
     // Simple linear regression slope
@@ -193,77 +212,72 @@ class PPOTrainer {
     return sum // Linear output for value function
   }
   
-  private calculateReward(action: PPOAction, data: TrainingData[], index: number): number {
-    if (index >= data.length - 1) return 0
-    
-    const currentPrice = data[index].close
-    const futurePrice = data[index + 1].close
-    const priceChange = (futurePrice - currentPrice) / currentPrice
-    
-    let reward = 0
-    
-    if (action.action === 'BUY' && priceChange > 0) {
-      reward = priceChange * action.confidence * action.positionSize
-    } else if (action.action === 'SELL' && priceChange < 0) {
-      reward = -priceChange * action.confidence * action.positionSize
-    } else if (action.action === 'HOLD') {
-      reward = -Math.abs(priceChange) * 0.1 // Small penalty for missing moves
-    } else {
-      reward = priceChange * action.confidence * action.positionSize // Penalty for wrong direction
-    }
-    
-    // Bonus for high confidence correct predictions
-    if ((action.action === 'BUY' && priceChange > 0.01) || 
-        (action.action === 'SELL' && priceChange < -0.01)) {
-      reward += action.confidence * 0.1
-    }
-    
-    return reward
-  }
-  
   async trainOnSymbol(symbol: string, data: TrainingData[]): Promise<TrainingMetrics[]> {
     console.log(`Training PPO model on ${symbol} with ${data.length} data points`)
     
     const episodeMetrics: TrainingMetrics[] = []
-    const episodes = 10 // Number of training episodes
     
-    for (let episode = 0; episode < episodes; episode++) {
-      let totalReward = 0
-      let trades = 0
+    for (let episode = 0; episode < this.episodes; episode++) {
+      // Initialize trading simulation
+      let portfolio = {
+        cash: 10000,
+        shares: 0,
+        totalValue: 10000,
+        trades: [] as Array<{entry: number, exit: number, profit: number, type: string}>
+      }
+      
+      let inPosition = false
+      let entryPrice = 0
       let profitableTrades = 0
+      let maxValue = 10000
       let maxDrawdown = 0
-      let currentDrawdown = 0
-      let peak = 0
       
       const episodeBuffer: any[] = []
       
-      // Run episode
+      // Run episode with proper trading simulation
       for (let i = 50; i < data.length - 1; i++) {
         const features = this.extractFeatures(data, i)
         const actionProbs = this.forwardActor(features)
         const value = this.forwardCritic(features)
+        const currentPrice = data[i].close
         
         // Sample action
         const actionIndex = this.sampleAction(actionProbs)
-        const action: PPOAction = {
-          action: ['BUY', 'SELL', 'HOLD'][actionIndex] as any,
-          confidence: actionProbs[actionIndex],
-          stopLoss: data[i].close * (actionIndex === 0 ? 0.98 : 1.02),
-          targets: [data[i].close * (actionIndex === 0 ? 1.05 : 0.95)],
-          positionSize: actionProbs[actionIndex]
+        const actionName = ['BUY', 'SELL', 'HOLD'][actionIndex] as 'BUY' | 'SELL' | 'HOLD'
+        
+        // Execute trades
+        let tradeReward = 0
+        
+        if (actionName === 'BUY' && !inPosition && portfolio.cash > 0) {
+          // Enter long position
+          portfolio.shares = portfolio.cash / currentPrice
+          portfolio.cash = 0
+          entryPrice = currentPrice
+          inPosition = true
+        } else if (actionName === 'SELL' && inPosition) {
+          // Exit position
+          portfolio.cash = portfolio.shares * currentPrice
+          const tradeReturn = (currentPrice - entryPrice) / entryPrice
+          
+          portfolio.trades.push({
+            entry: entryPrice,
+            exit: currentPrice,
+            profit: tradeReturn,
+            type: 'LONG'
+          })
+          
+          if (tradeReturn > 0) profitableTrades++
+          tradeReward = tradeReturn
+          portfolio.shares = 0
+          inPosition = false
         }
         
-        const reward = this.calculateReward(action, data, i)
-        totalReward += reward
-        
-        if (action.action !== 'HOLD') {
-          trades++
-          if (reward > 0) profitableTrades++
-        }
+        // Calculate current portfolio value
+        portfolio.totalValue = portfolio.cash + (portfolio.shares * currentPrice)
         
         // Track drawdown
-        if (totalReward > peak) peak = totalReward
-        currentDrawdown = peak - totalReward
+        if (portfolio.totalValue > maxValue) maxValue = portfolio.totalValue
+        const currentDrawdown = (maxValue - portfolio.totalValue) / maxValue
         if (currentDrawdown > maxDrawdown) maxDrawdown = currentDrawdown
         
         episodeBuffer.push({
@@ -271,32 +285,54 @@ class PPOTrainer {
           actionIndex,
           actionProbs,
           value,
-          reward,
+          reward: tradeReward,
           done: i === data.length - 2
         })
       }
       
-      // Calculate advantages and update networks
+      // Close any remaining position
+      if (inPosition && data.length > 0) {
+        const finalPrice = data[data.length - 1].close
+        portfolio.cash = portfolio.shares * finalPrice
+        const tradeReturn = (finalPrice - entryPrice) / entryPrice
+        
+        portfolio.trades.push({
+          entry: entryPrice,
+          exit: finalPrice,
+          profit: tradeReturn,
+          type: 'LONG'
+        })
+        
+        if (tradeReturn > 0) profitableTrades++
+        portfolio.shares = 0
+        portfolio.totalValue = portfolio.cash
+      }
+      
+      // Calculate episode metrics
+      const totalReturn = (portfolio.totalValue - 10000) / 10000
+      const avgTradeReturn = portfolio.trades.length > 0 
+        ? portfolio.trades.reduce((sum, trade) => sum + trade.profit, 0) / portfolio.trades.length
+        : 0
+      
+      // Update networks
       this.updateNetworks(episodeBuffer)
       
       const metrics: TrainingMetrics = {
         episode: episode + 1,
-        totalReward,
-        averageReward: totalReward / (data.length - 51),
-        winRate: trades > 0 ? profitableTrades / trades : 0,
+        totalReturn,
+        avgTradeReturn,
+        winRate: portfolio.trades.length > 0 ? profitableTrades / portfolio.trades.length : 0,
         sharpeRatio: this.calculateSharpeRatio(episodeBuffer),
         maxDrawdown,
-        totalTrades: trades,
+        totalTrades: portfolio.trades.length,
         profitableTrades,
-        loss: 0, // Would be calculated during network update
-        policyLoss: 0,
-        valueLoss: 0
+        finalPortfolioValue: portfolio.totalValue
       }
       
       episodeMetrics.push(metrics)
       this.trainingHistory.push(metrics)
       
-      console.log(`Episode ${episode + 1}/${episodes} - Reward: ${totalReward.toFixed(4)}, Win Rate: ${(metrics.winRate * 100).toFixed(2)}%`)
+      console.log(`Episode ${episode + 1}/${this.episodes} - Return: ${(totalReturn * 100).toFixed(2)}%, Win Rate: ${(metrics.winRate * 100).toFixed(2)}%`)
     }
     
     return episodeMetrics
@@ -313,7 +349,9 @@ class PPOTrainer {
   }
   
   private calculateSharpeRatio(buffer: any[]): number {
-    const returns = buffer.map(b => b.reward)
+    const returns = buffer.map(b => b.reward).filter(r => r !== 0)
+    if (returns.length < 2) return 0
+    
     const mean = returns.reduce((a, b) => a + b, 0) / returns.length
     const variance = returns.reduce((acc, ret) => acc + Math.pow(ret - mean, 2), 0) / returns.length
     const std = Math.sqrt(variance)
@@ -322,8 +360,6 @@ class PPOTrainer {
   
   private updateNetworks(buffer: any[]) {
     // Simplified PPO update
-    // In a real implementation, this would use proper gradient computation
-    
     const advantages = this.calculateAdvantages(buffer)
     
     for (let i = 0; i < buffer.length; i++) {
@@ -374,7 +410,6 @@ async function fetchHistoricalData(symbol: string): Promise<TrainingData[]> {
   console.log(`Fetching 2 years of data for ${symbol}`)
   
   // Simulate fetching historical data
-  // In production, this would call a real API like Alpha Vantage, Yahoo Finance, etc.
   const data: TrainingData[] = []
   const startDate = new Date('2022-01-01')
   const endDate = new Date('2024-01-01')
@@ -398,7 +433,7 @@ async function fetchHistoricalData(symbol: string): Promise<TrainingData[]> {
       
       data.push({
         symbol,
-        date: currentDate.toISOString().split('T')[0],
+        timestamp: currentDate.toISOString(),
         open,
         high,
         low,
@@ -415,16 +450,23 @@ async function fetchHistoricalData(symbol: string): Promise<TrainingData[]> {
   return data
 }
 
-Deno.serve(async (req) => {
-  // Handle CORS
+// ============= Serverless Function Handler =============
+
+const corsHeaders = {
+  'Access-Control-Allow-Origin': '*',
+  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+}
+
+serve(async (req: Request) => {
+  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders })
+    return new Response(null, { headers: corsHeaders });
   }
 
   try {
     const supabase = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      Deno.env.get('SUPABASE_ANON_KEY') ?? ''
     )
 
     const { action, symbols } = await req.json()
@@ -436,8 +478,8 @@ Deno.serve(async (req) => {
       // Default symbols if none provided
       const symbolsToTrain = symbols || [
         'AAPL', 'GOOGL', 'MSFT', 'TSLA', 'NVDA', // Tech stocks
-        'SPY', 'QQQ', 'IWM', // ETFs
-        'BTCUSD', 'ETHUSD', 'ADAUSD' // Crypto
+        'SPY', 'QQQ', // ETFs  
+        'BTCUSD', 'ETHUSD' // Crypto
       ]
       
       console.log(`Starting PPO training on ${symbolsToTrain.length} symbols`)
@@ -449,15 +491,16 @@ Deno.serve(async (req) => {
           allMetrics[symbol] = metrics
           
           // Store training results in database
+          const latestMetrics = metrics[metrics.length - 1]
           await supabase.from('bot_adaptive_parameters').upsert({
             user_id: '00000000-0000-0000-0000-000000000000', // System training
             symbol,
             confidence_threshold: 75.0,
             confluence_threshold: 0.6,
-            total_trades: metrics[metrics.length - 1].totalTrades,
-            winning_trades: metrics[metrics.length - 1].profitableTrades,
-            success_rate: metrics[metrics.length - 1].winRate,
-            average_profit: metrics[metrics.length - 1].averageReward,
+            total_trades: latestMetrics.totalTrades,
+            winning_trades: latestMetrics.profitableTrades,
+            success_rate: latestMetrics.winRate,
+            average_profit: latestMetrics.avgTradeReturn,
             last_updated: new Date().toISOString()
           })
           
@@ -466,11 +509,15 @@ Deno.serve(async (req) => {
         }
       }
       
+      // Calculate overall performance metrics
+      const allEpisodes = Object.values(allMetrics).flat()
+      
       const overallMetrics = {
         totalSymbols: symbolsToTrain.length,
-        averageWinRate: Object.values(allMetrics).flat().reduce((acc, m) => acc + m.winRate, 0) / Object.values(allMetrics).flat().length,
-        averageReward: Object.values(allMetrics).flat().reduce((acc, m) => acc + m.averageReward, 0) / Object.values(allMetrics).flat().length,
-        totalTrades: Object.values(allMetrics).flat().reduce((acc, m) => acc + m.totalTrades, 0),
+        totalTrades: allEpisodes.reduce((sum, m) => sum + m.totalTrades, 0),
+        averageWinRate: allEpisodes.reduce((sum, m) => sum + m.winRate, 0) / allEpisodes.length,
+        averageReward: allEpisodes.reduce((sum, m) => sum + m.totalReturn, 0) / allEpisodes.length,
+        averageTradeReturn: allEpisodes.reduce((sum, m) => sum + m.avgTradeReturn, 0) / allEpisodes.length,
         modelWeights: trainer.getModelWeights(),
         symbolMetrics: allMetrics
       }
@@ -509,10 +556,10 @@ Deno.serve(async (req) => {
     })
 
   } catch (error) {
-    console.error('Error in train-ppo-model function:', error)
+    console.error('PPO Training Error:', error)
     return new Response(JSON.stringify({
       success: false,
-      error: error instanceof Error ? error.message : 'Unknown error'
+      error: (error as Error).message || 'PPO training failed'
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
