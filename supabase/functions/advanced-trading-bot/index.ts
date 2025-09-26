@@ -1465,30 +1465,69 @@ function calculateFibonacciRetracement(data: HistoricalData[]): { correctionLeve
   return { correctionLevel: closestRetracement, strength: Math.min(1, strength) };
 }
 
-// Enhanced confluence score calculation with fibonacci
+// Enhanced confluence score calculation with sophisticated indicator relationships
 function calculateEnhancedConfluenceScore(state: TradingState, riskLevel: RiskLevel): number {
-  // Use the new enhanced confluence calculation as base
-  const baseScore = calculateEnhancedConfluenceWithNews(state, riskLevel, 0); // Use neutral news score as fallback
+  let score = 0.0;
+  let maxScore = 0.0;
   
-  // Add fibonacci enhancement
-  let fibonacciBonus = 0;
-  const fib = state.indicators.fibonacci as any;
+  const indicators = state.indicators;
+  const price = state.price;
   
-  // Major fibonacci levels bonus
-  if (fib.isNearMajorFib) {
-    fibonacciBonus += 0.1;
-  }
+  // === 1. EMA 200 + MACD: Trend Confirmation ===
+  const ema200TrendConfirmation = analyzeEMA200MACDRelationship(price, indicators.ema200, indicators.macd);
+  const emamacdWeight = 0.25;
+  score += ema200TrendConfirmation.confluenceScore * emamacdWeight;
+  maxScore += emamacdWeight;
   
-  // Extension/retracement strength bonus
-  if (fib.extensionPotential > 0.7) {
-    fibonacciBonus += 0.05;
-  }
+  // === 2. EMA + Ichimoku Cloud: Momentum Analysis ===
+  const emaMomentumConfirmation = analyzeEMAIchimokuRelationship(price, indicators.ema200, indicators.ichimoku);
+  const emaichimokuWeight = 0.20;
+  score += emaMomentumConfirmation.confluenceScore * emaichimokuWeight;
+  maxScore += emaichimokuWeight;
   
-  if (fib.correctionPotential > 0.7) {
-    fibonacciBonus += 0.05;
-  }
+  // === 3. EMA + S/R Levels: Reversion vs Continuation ===
+  const emaSRConfirmation = analyzeEMASupportResistanceRelationship(price, indicators.ema200, indicators.supportResistance);
+  const emasrWeight = 0.15;
+  score += emaSRConfirmation.confluenceScore * emasrWeight;
+  maxScore += emasrWeight;
   
-  return Math.min(1, baseScore + fibonacciBonus);
+  // === 4. MACD + ATR14: Breakout Potential ===
+  const macdATRConfirmation = analyzeMACDATRRelationship(indicators.macd, indicators.atr, price);
+  const macdatrWeight = 0.15;
+  score += macdATRConfirmation.confluenceScore * macdatrWeight;
+  maxScore += macdatrWeight;
+  
+  // === 5. MACD + OBV: Volume Momentum Confirmation ===
+  const macdOBVConfirmation = analyzeMACDOBVRelationship(indicators.macd, indicators.obv, state.volume);
+  const macdobvWeight = 0.10;
+  score += macdOBVConfirmation.confluenceScore * macdobvWeight;
+  maxScore += macdobvWeight;
+  
+  // === 6. ATR + Bollinger Bands: Volatility Breakout/Consolidation ===
+  const atrBBConfirmation = analyzeATRBollingerRelationship(indicators.atr, indicators.bollinger, price);
+  const atrbbWeight = 0.10;
+  score += atrBBConfirmation.confluenceScore * atrbbWeight;
+  maxScore += atrbbWeight;
+  
+  // === 7. Fibonacci + S/R Alignment: High Probability Targets ===
+  const fibSRConfirmation = analyzeFibonacciSRAlignment(indicators.fibonacci, indicators.supportResistance, price);
+  const fibsrWeight = 0.05;
+  score += fibSRConfirmation.confluenceScore * fibsrWeight;
+  maxScore += fibsrWeight;
+  
+  const finalScore = maxScore > 0 ? score / maxScore : 0.5;
+  
+  console.log(`🔗 Sophisticated Indicator Relationships Analysis:`);
+  console.log(`   EMA+MACD: ${ema200TrendConfirmation.signal} (${(ema200TrendConfirmation.confluenceScore * 100).toFixed(1)}%)`);
+  console.log(`   EMA+Ichimoku: ${emaMomentumConfirmation.signal} (${(emaMomentumConfirmation.confluenceScore * 100).toFixed(1)}%)`);
+  console.log(`   EMA+S/R: ${emaSRConfirmation.signal} (${(emaSRConfirmation.confluenceScore * 100).toFixed(1)}%)`);
+  console.log(`   MACD+ATR: ${macdATRConfirmation.signal} (${(macdATRConfirmation.confluenceScore * 100).toFixed(1)}%)`);
+  console.log(`   MACD+OBV: ${macdOBVConfirmation.signal} (${(macdOBVConfirmation.confluenceScore * 100).toFixed(1)}%)`);
+  console.log(`   ATR+BB: ${atrBBConfirmation.signal} (${(atrBBConfirmation.confluenceScore * 100).toFixed(1)}%)`);
+  console.log(`   Fib+S/R: ${fibSRConfirmation.signal} (${(fibSRConfirmation.confluenceScore * 100).toFixed(1)}%)`);
+  console.log(`🎯 Final Enhanced Confluence Score: ${(finalScore * 100).toFixed(1)}%`);
+  
+  return finalScore;
 }
 
 // Enhanced PPO action calculation with fibonacci
@@ -3096,6 +3135,284 @@ function calculateEMA(prices: number[], period: number): number {
   }
   
   return ema;
+}
+
+// === SOPHISTICATED INDICATOR RELATIONSHIP ANALYSIS FUNCTIONS ===
+
+// 1. EMA 200 + MACD: Trend Confirmation Analysis
+function analyzeEMA200MACDRelationship(price: number, ema200: number, macd: MACDResult): { 
+  signal: string; 
+  confluenceScore: number; 
+  reasoning: string 
+} {
+  const priceVsEMA = price > ema200 ? 'above' : 'below';
+  const macdSignal = macd.histogram > 0 ? 'bullish' : 'bearish';
+  
+  let confluenceScore = 0;
+  let signal = 'NEUTRAL';
+  let reasoning = '';
+  
+  if (priceVsEMA === 'above' && macdSignal === 'bullish') {
+    // Strong bullish confluence
+    confluenceScore = Math.min(1.0, 0.8 + Math.abs(macd.histogram) * 0.2);
+    signal = 'STRONG_BULLISH';
+    reasoning = 'Price above EMA200 + bullish MACD = strong uptrend confirmation';
+  } else if (priceVsEMA === 'below' && macdSignal === 'bearish') {
+    // Strong bearish confluence
+    confluenceScore = Math.min(1.0, 0.8 + Math.abs(macd.histogram) * 0.2);
+    signal = 'STRONG_BEARISH';
+    reasoning = 'Price below EMA200 + bearish MACD = strong downtrend confirmation';
+  } else if (priceVsEMA === 'above' && macdSignal === 'bearish') {
+    // Weak signal - contradiction
+    confluenceScore = 0.3;
+    signal = 'WEAK_BULLISH';
+    reasoning = 'Price above EMA200 but bearish MACD = weakening uptrend';
+  } else if (priceVsEMA === 'below' && macdSignal === 'bullish') {
+    // Weak signal - contradiction
+    confluenceScore = 0.3;
+    signal = 'WEAK_BEARISH';
+    reasoning = 'Price below EMA200 but bullish MACD = potential reversal or weak downtrend';
+  }
+  
+  return { signal, confluenceScore, reasoning };
+}
+
+// 2. EMA + Ichimoku Cloud: Momentum Analysis
+function analyzeEMAIchimokuRelationship(price: number, ema200: number, ichimoku: IchimokuResult): {
+  signal: string;
+  confluenceScore: number;
+  reasoning: string;
+} {
+  const priceVsEMA = price > ema200 ? 'bullish' : 'bearish';
+  const ichimokuSignal = ichimoku.signal > 0 ? 'bullish' : ichimoku.signal < 0 ? 'bearish' : 'neutral';
+  
+  let confluenceScore = 0;
+  let signal = 'NEUTRAL';
+  let reasoning = '';
+  
+  if (priceVsEMA === 'bullish' && ichimokuSignal === 'bullish') {
+    // Strong momentum confirmation
+    confluenceScore = Math.min(1.0, 0.85 + Math.abs(ichimoku.signal) * 0.15);
+    signal = 'STRONG_MOMENTUM';
+    reasoning = 'EMA trend + Ichimoku cloud alignment = strong momentum';
+  } else if (priceVsEMA === 'bearish' && ichimokuSignal === 'bearish') {
+    // Strong bearish momentum
+    confluenceScore = Math.min(1.0, 0.85 + Math.abs(ichimoku.signal) * 0.15);
+    signal = 'STRONG_BEARISH_MOMENTUM';
+    reasoning = 'EMA downtrend + bearish Ichimoku = strong bearish momentum';
+  } else if ((priceVsEMA === 'bullish' && ichimokuSignal === 'bearish') || 
+             (priceVsEMA === 'bearish' && ichimokuSignal === 'bullish')) {
+    // Market confusion
+    confluenceScore = 0.2;
+    signal = 'MARKET_CONFUSION';
+    reasoning = 'EMA and Ichimoku contradiction = market confusion, avoid trades';
+  } else {
+    confluenceScore = 0.5;
+    signal = 'NEUTRAL';
+    reasoning = 'Mixed signals between EMA and Ichimoku';
+  }
+  
+  return { signal, confluenceScore, reasoning };
+}
+
+// 3. EMA + S/R Levels: Reversion vs Continuation Analysis
+function analyzeEMASupportResistanceRelationship(price: number, ema200: number, srLevels: SupportResistanceLevel[]): {
+  signal: string;
+  confluenceScore: number;
+  reasoning: string;
+} {
+  const priceVsEMA = price > ema200 ? 'uptrend' : 'downtrend';
+  const nearestSR = srLevels.find(sr => Math.abs(price - sr.price) / price < 0.02);
+  
+  let confluenceScore = 0.5;
+  let signal = 'NEUTRAL';
+  let reasoning = 'No significant S/R levels nearby';
+  
+  if (nearestSR) {
+    if (priceVsEMA === 'uptrend' && nearestSR.type === 'support') {
+      // Trend continuation setup
+      confluenceScore = Math.min(1.0, 0.8 + nearestSR.strength * 0.2);
+      signal = 'TREND_CONTINUATION';
+      reasoning = 'Uptrend + support level = trend continuation likely';
+    } else if (priceVsEMA === 'downtrend' && nearestSR.type === 'resistance') {
+      // Downtrend continuation
+      confluenceScore = Math.min(1.0, 0.8 + nearestSR.strength * 0.2);
+      signal = 'DOWNTREND_CONTINUATION';
+      reasoning = 'Downtrend + resistance level = downtrend continuation likely';
+    } else if (priceVsEMA === 'uptrend' && nearestSR.type === 'resistance') {
+      // Potential reversal or pullback
+      confluenceScore = 0.4;
+      signal = 'POTENTIAL_REVERSAL';
+      reasoning = 'Uptrend hitting resistance = potential reversal or pullback';
+    } else if (priceVsEMA === 'downtrend' && nearestSR.type === 'support') {
+      // Potential bounce or reversal
+      confluenceScore = 0.4;
+      signal = 'POTENTIAL_BOUNCE';
+      reasoning = 'Downtrend hitting support = potential bounce or reversal';
+    }
+  }
+  
+  return { signal, confluenceScore, reasoning };
+}
+
+// 4. MACD + ATR14: Breakout Potential Analysis
+function analyzeMACDATRRelationship(macd: MACDResult, atr: number, price: number): {
+  signal: string;
+  confluenceScore: number;
+  reasoning: string;
+} {
+  const macdBullish = macd.histogram > 0;
+  const atrPercentage = (atr / price) * 100;
+  const highATR = atrPercentage > 2.0; // Above 2% considered high
+  const lowATR = atrPercentage < 1.0; // Below 1% considered low
+  
+  let confluenceScore = 0.5;
+  let signal = 'NEUTRAL';
+  let reasoning = '';
+  
+  if (macdBullish && highATR) {
+    // High breakout potential
+    confluenceScore = Math.min(1.0, 0.85 + (atrPercentage - 2.0) * 0.05);
+    signal = 'HIGH_BREAKOUT_POTENTIAL';
+    reasoning = `Bullish MACD + high ATR (${atrPercentage.toFixed(1)}%) = high breakout possibility`;
+  } else if (macdBullish && lowATR) {
+    // Weak move likely to fail
+    confluenceScore = 0.3;
+    signal = 'WEAK_MOVE';
+    reasoning = `Bullish MACD + low ATR (${atrPercentage.toFixed(1)}%) = weak move likely to fail`;
+  } else if (!macdBullish && highATR) {
+    // Bearish breakout potential
+    confluenceScore = Math.min(1.0, 0.85 + (atrPercentage - 2.0) * 0.05);
+    signal = 'BEARISH_BREAKOUT_POTENTIAL';
+    reasoning = `Bearish MACD + high ATR (${atrPercentage.toFixed(1)}%) = bearish breakout possibility`;
+  } else if (!macdBullish && lowATR) {
+    // Consolidation likely
+    confluenceScore = 0.4;
+    signal = 'CONSOLIDATION';
+    reasoning = `Bearish MACD + low ATR (${atrPercentage.toFixed(1)}%) = consolidation likely`;
+  }
+  
+  return { signal, confluenceScore, reasoning };
+}
+
+// 5. MACD + OBV: Volume Momentum Confirmation
+function analyzeMACDOBVRelationship(macd: MACDResult, obv: number, currentVolume: number): {
+  signal: string;
+  confluenceScore: number;
+  reasoning: string;
+} {
+  const macdBullish = macd.histogram > 0;
+  const obvTrend = obv > 0 ? 'bullish' : 'bearish'; // Simplified OBV trend
+  const volumeConfirmation = currentVolume > 1.2; // Above average volume
+  
+  let confluenceScore = 0.5;
+  let signal = 'NEUTRAL';
+  let reasoning = '';
+  
+  if (macdBullish && obvTrend === 'bullish' && volumeConfirmation) {
+    // Strong volume momentum confirmation
+    confluenceScore = Math.min(1.0, 0.9 + Math.abs(macd.histogram) * 0.1);
+    signal = 'STRONG_VOLUME_MOMENTUM';
+    reasoning = 'Bullish MACD + positive OBV + high volume = strong momentum with volume confirmation';
+  } else if (!macdBullish && obvTrend === 'bearish' && volumeConfirmation) {
+    // Strong bearish volume momentum
+    confluenceScore = Math.min(1.0, 0.9 + Math.abs(macd.histogram) * 0.1);
+    signal = 'STRONG_BEARISH_VOLUME_MOMENTUM';
+    reasoning = 'Bearish MACD + negative OBV + high volume = strong bearish momentum with volume confirmation';
+  } else if ((macdBullish && obvTrend === 'bearish') || (!macdBullish && obvTrend === 'bullish')) {
+    // Volume divergence - weak signal
+    confluenceScore = 0.3;
+    signal = 'VOLUME_DIVERGENCE';
+    reasoning = 'MACD and OBV divergence = weak signal, volume not confirming price action';
+  }
+  
+  return { signal, confluenceScore, reasoning };
+}
+
+// 6. ATR + Bollinger Bands: Volatility Breakout/Consolidation Analysis
+function analyzeATRBollingerRelationship(atr: number, bollinger: BollingerBandsResult, price: number): {
+  signal: string;
+  confluenceScore: number;
+  reasoning: string;
+} {
+  const atrPercentage = (atr / price) * 100;
+  const highATR = atrPercentage > 2.0;
+  const lowATR = atrPercentage < 1.0;
+  
+  const bandWidth = ((bollinger.upper - bollinger.lower) / bollinger.middle) * 100;
+  const bandsExpanding = bandWidth > 4.0; // Above 4% considered expanding
+  const bandsContracting = bandWidth < 2.0; // Below 2% considered contracting
+  
+  let confluenceScore = 0.5;
+  let signal = 'NEUTRAL';
+  let reasoning = '';
+  
+  if (highATR && bandsExpanding) {
+    // High breakout probability
+    confluenceScore = Math.min(1.0, 0.9 + (atrPercentage - 2.0) * 0.02);
+    signal = 'HIGH_BREAKOUT_PROBABILITY';
+    reasoning = `High ATR (${atrPercentage.toFixed(1)}%) + Bollinger expansion = high breakout possibility`;
+  } else if (lowATR && bandsContracting) {
+    // High consolidation probability
+    confluenceScore = 0.8;
+    signal = 'HIGH_CONSOLIDATION_PROBABILITY';
+    reasoning = `Low ATR (${atrPercentage.toFixed(1)}%) + Bollinger contraction = high consolidation possibility`;
+  } else if (highATR && bandsContracting) {
+    // Potential volatility expansion coming
+    confluenceScore = 0.6;
+    signal = 'VOLATILITY_EXPANSION_SETUP';
+    reasoning = 'High ATR with contracting bands = potential volatility expansion setup';
+  } else if (lowATR && bandsExpanding) {
+    // Volatility divergence
+    confluenceScore = 0.4;
+    signal = 'VOLATILITY_DIVERGENCE';
+    reasoning = 'Low ATR with expanding bands = volatility divergence';
+  }
+  
+  return { signal, confluenceScore, reasoning };
+}
+
+// 7. Fibonacci + S/R Alignment: High Probability Target Analysis
+function analyzeFibonacciSRAlignment(fibonacci: FibonacciLevels, srLevels: SupportResistanceLevel[], price: number): {
+  signal: string;
+  confluenceScore: number;
+  reasoning: string;
+} {
+  let confluenceScore = 0.5;
+  let signal = 'NEUTRAL';
+  let reasoning = 'No significant Fibonacci-S/R alignment';
+  
+  // Check if any strong S/R levels align with Fibonacci levels
+  const strongSRLevels = srLevels.filter(sr => sr.strength > 0.7);
+  
+  for (const sr of strongSRLevels) {
+    for (const fibLevel of fibonacci.levels) {
+      const alignmentDistance = Math.abs(sr.price - fibLevel) / sr.price;
+      
+      if (alignmentDistance < 0.005) { // Within 0.5% considered aligned
+        confluenceScore = Math.min(1.0, 0.9 + sr.strength * 0.1);
+        signal = 'HIGH_PROBABILITY_TARGET';
+        reasoning = `Strong ${sr.type} at $${sr.price.toFixed(2)} aligns with Fibonacci level = high probability target zone`;
+        break;
+      }
+    }
+    if (signal === 'HIGH_PROBABILITY_TARGET') break;
+  }
+  
+  // Also check if current price is near aligned levels
+  if (signal === 'HIGH_PROBABILITY_TARGET') {
+    const nearAlignedLevel = strongSRLevels.some(sr => 
+      Math.abs(price - sr.price) / price < 0.02 && 
+      fibonacci.levels.some(fib => Math.abs(sr.price - fib) / sr.price < 0.005)
+    );
+    
+    if (nearAlignedLevel) {
+      confluenceScore = Math.min(1.0, confluenceScore + 0.1);
+      reasoning += ' (currently near aligned level)';
+    }
+  }
+  
+  return { signal, confluenceScore, reasoning };
 }
 
 function determineMarketCondition(data: any[], ichimoku: IchimokuResult, ema200: number): 'bullish' | 'bearish' | 'sideways' {
