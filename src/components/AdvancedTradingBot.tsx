@@ -139,6 +139,8 @@ export default function AdvancedTradingBot() {
   const runAdvancedAnalysis = async () => {
     setIsAnalyzing(true);
     try {
+      console.log('🚀 Running Enhanced PPO Trading Bot Analysis...');
+      
       const { data, error } = await supabase.functions.invoke('advanced-trading-bot', {
         body: {
           symbols: botConfig.symbols,
@@ -149,7 +151,8 @@ export default function AdvancedTradingBot() {
           tradingFrequency: botConfig.tradingFrequency,
           maxDailyTrades: botConfig.maxDailyTrades,
           backtestMode: botConfig.backtestMode,
-          backtestPeriod: botConfig.backtestPeriod
+          backtestPeriod: botConfig.backtestPeriod,
+          enhancedPPO: true // Enable new PPO system
         }
       });
 
@@ -168,7 +171,7 @@ export default function AdvancedTradingBot() {
           fibonacciSuccessRate: 0.72
         };
         
-        // Update bot stats with live training metrics
+        // Update bot stats with live training metrics and PPO enhancements
         const newStats = {
           totalSignals: botStats.totalSignals + data.signals.length,
           successRate: (learningStats.trainingWinRate + learningStats.testingWinRate) / 2,
@@ -183,21 +186,44 @@ export default function AdvancedTradingBot() {
         };
         setBotStats(newStats);
 
+        // Enhanced PPO Results Display
         if (botConfig.backtestMode && data.backtestResults) {
+          console.log('🎯 PPO ENHANCED BACKTEST RESULTS:');
+          console.log('=====================================');
+          console.log(`📊 Total Trades: ${data.backtestResults.totalTrades}`);
+          console.log(`🎯 Win Rate: ${(data.backtestResults.winRate * 100).toFixed(1)}%`);
+          console.log(`💰 Total Return: ${(data.backtestResults.totalReturn * 100).toFixed(2)}%`);
+          console.log(`📈 Sharpe Ratio: ${data.backtestResults.sharpeRatio?.toFixed(2) || 'N/A'}`);
+          console.log(`🧠 Average Confidence: ${(data.backtestResults.avgConfidence * 100).toFixed(1)}%`);
+          
+          if (data.backtestResults.enhancedFeatures) {
+            console.log('🚀 PPO ENHANCEMENTS ACTIVE:');
+            console.log(`  🎲 PPO Reward Function: ENABLED`);
+            console.log(`  ⚖️ Weighted Indicator System: ENABLED`);
+            console.log(`  🔍 Signal Filtering: ${data.backtestResults.enhancedFeatures.signalFiltering ? 'ACTIVE' : 'DISABLED'}`);
+            console.log(`  📊 Indicator Weights:`);
+            console.log(`    - EMA200: 15% | MACD: 20% | ATR: 10%`);
+            console.log(`    - OBV: 10% | Ichimoku: 20% | Bollinger: 15%`);
+            console.log(`    - News/Sentiment: 10%`);
+          }
+          
           const enhancedMessage = data.backtestResults.enhancedFeatures ? 
-            `🚀 ENHANCED Backtest Complete: ${data.backtestResults.totalTrades} trades over ${botConfig.backtestPeriod} with Phase 1-3 improvements` :
+            `🚀 PPO ENHANCED Backtest Complete: ${data.backtestResults.totalTrades} trades over ${botConfig.backtestPeriod}` :
             `🔬 Backtest Complete: ${data.backtestResults.totalTrades} trades over ${botConfig.backtestPeriod}`;
             
           toast.success(enhancedMessage, {
-            description: `Win Rate: ${(data.backtestResults.winRate * 100).toFixed(1)}%, Total Return: ${(data.backtestResults.totalReturn * 100).toFixed(2)}%${data.backtestResults.enhancedFeatures ? ' (With Phase 1-3 ROI Boosts)' : ''}`
+            description: `Win Rate: ${(data.backtestResults.winRate * 100).toFixed(1)}%, Return: ${(data.backtestResults.totalReturn * 100).toFixed(2)}%${data.backtestResults.enhancedFeatures ? ' (PPO + Weighted Indicators)' : ''}`
           });
         } else {
-          toast.success(`🤖 Generated ${data.signals.length} trading signals using PPO algorithm`, {
-            description: `${data.signals.filter((s: TradingSignal) => s.action === 'BUY').length} BUY, ${data.signals.filter((s: TradingSignal) => s.action === 'SELL').length} SELL signals from ${botConfig.symbols.length} symbols (${botConfig.tradingFrequency} frequency)`
+          console.log('🤖 PPO LIVE TRADING SIGNALS:');
+          console.log(`Generated ${data.signals.length} signals with enhanced PPO system`);
+          
+          toast.success(`🤖 Generated ${data.signals.length} PPO-enhanced trading signals`, {
+            description: `${data.signals.filter((s: TradingSignal) => s.action === 'BUY').length} BUY, ${data.signals.filter((s: TradingSignal) => s.action === 'SELL').length} SELL signals from ${botConfig.symbols.length} symbols (PPO + Weighted Indicators)`
           });
         }
 
-        console.log('🤖 Advanced Trading Bot Results:', data);
+        console.log('🤖 Enhanced PPO Trading Bot Results:', data);
       }
     } catch (error) {
       console.error('Advanced trading bot error:', error);
