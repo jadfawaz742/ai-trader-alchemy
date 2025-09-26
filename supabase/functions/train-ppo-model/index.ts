@@ -458,73 +458,136 @@ async function fetchBybitData(symbol: string): Promise<TrainingData[]> {
   }
 }
 
-// Generate mock data for stocks or when Bybit fails
+// Generate realistic mock data for stocks or when Bybit fails
 function generateMockData(symbol: string): TrainingData[] {
-  console.log(`Generating enhanced mock data for ${symbol}`)
+  console.log(`Generating realistic mock data for ${symbol}`)
   
   const data: TrainingData[] = []
-  const dataPoints = 200 // Match Bybit data length
+  const dataPoints = 200
   
-  // Different base prices and volatilities for different assets
-  let price = symbol.includes('BTC') ? 45000 + Math.random() * 20000 :
-              symbol.includes('ETH') ? 2500 + Math.random() * 1000 :
-              symbol.includes('AAPL') ? 150 + Math.random() * 50 :
-              symbol.includes('TSLA') ? 200 + Math.random() * 100 :
-              symbol.includes('NVDA') ? 400 + Math.random() * 200 :
-              100 + Math.random() * 50;
+  // Realistic stock parameters based on actual market characteristics
+  const stockParams: Record<string, { basePrice: number; volatility: number; avgVolume: number; sector: string }> = {
+    'AAPL': { basePrice: 180, volatility: 0.025, avgVolume: 50000000, sector: 'tech' },
+    'TSLA': { basePrice: 250, volatility: 0.045, avgVolume: 40000000, sector: 'auto' },
+    'NVDA': { basePrice: 450, volatility: 0.035, avgVolume: 30000000, sector: 'tech' },
+    'GOOGL': { basePrice: 140, volatility: 0.028, avgVolume: 25000000, sector: 'tech' },
+    'MSFT': { basePrice: 380, volatility: 0.022, avgVolume: 20000000, sector: 'tech' },
+    'AMZN': { basePrice: 145, volatility: 0.030, avgVolume: 35000000, sector: 'tech' },
+    'META': { basePrice: 320, volatility: 0.035, avgVolume: 18000000, sector: 'tech' }
+  };
   
-  const baseVolatility = symbol.includes('USD') ? 0.03 : 0.02; // Crypto more volatile
+  // Get stock parameters or defaults
+  const params = stockParams[symbol] || { 
+    basePrice: 100 + Math.random() * 100, 
+    volatility: 0.025, 
+    avgVolume: 10000000,
+    sector: 'general'
+  };
   
-  // Create more realistic market phases
-  let marketPhase = 'bull'; // bull, bear, sideways
-  let phaseLength = 0;
-  let maxPhaseLength = 30 + Math.random() * 20;
+  let price = params.basePrice + (Math.random() - 0.5) * params.basePrice * 0.2;
+  
+  // Support and resistance levels
+  const supportLevel = price * 0.85;
+  const resistanceLevel = price * 1.15;
+  let prevPrice = price;
+  
+  // Market regime simulation
+  let marketRegime = Math.random() > 0.5 ? 'bull' : 'bear';
+  let regimeStrength = 0.3 + Math.random() * 0.4; // 0.3 to 0.7
+  let regimeDuration = 0;
+  const maxRegimeDuration = 40 + Math.random() * 60;
+  
+  // Volatility clustering parameters
+  let currentVolCluster = params.volatility;
+  let volClusterDirection = Math.random() > 0.5 ? 1 : -1;
   
   for (let i = 0; i < dataPoints; i++) {
-    // Change market phase periodically
-    phaseLength++;
-    if (phaseLength > maxPhaseLength) {
-      const phases = ['bull', 'bear', 'sideways'];
-      marketPhase = phases[Math.floor(Math.random() * phases.length)];
-      phaseLength = 0;
-      maxPhaseLength = 20 + Math.random() * 30;
+    // Change market regime periodically
+    regimeDuration++;
+    if (regimeDuration > maxRegimeDuration) {
+      const regimes = ['bull', 'bear', 'sideways'];
+      marketRegime = regimes[Math.floor(Math.random() * regimes.length)];
+      regimeStrength = 0.2 + Math.random() * 0.6;
+      regimeDuration = 0;
     }
     
-    // Phase-based drift
-    let drift = 0;
-    if (marketPhase === 'bull') drift = 0.001 + Math.random() * 0.002;
-    else if (marketPhase === 'bear') drift = -0.001 - Math.random() * 0.002;
-    else drift = (Math.random() - 0.5) * 0.0005; // sideways
+    // Calculate trend based on regime
+    let trend = 0;
+    if (marketRegime === 'bull') {
+      trend = 0.0008 * regimeStrength + Math.random() * 0.001;
+    } else if (marketRegime === 'bear') {
+      trend = -0.0008 * regimeStrength - Math.random() * 0.001;
+    } else {
+      trend = (Math.random() - 0.5) * 0.0003; // sideways with small drift
+    }
     
-    // Add some momentum and mean reversion
-    const momentum = Math.sin(i * 0.1) * 0.001;
-    const volatility = baseVolatility * (0.8 + Math.random() * 0.4);
+    // Volatility clustering - periods of high/low volatility
+    currentVolCluster += volClusterDirection * Math.random() * 0.002;
+    if (currentVolCluster > params.volatility * 2) volClusterDirection = -1;
+    if (currentVolCluster < params.volatility * 0.3) volClusterDirection = 1;
+    currentVolCluster = Math.max(0.005, Math.min(0.08, currentVolCluster));
     
-    const open = price
-    const change = (drift + momentum + (Math.random() - 0.5) * volatility) * price
-    const close = Math.max(price * 0.1, price + change) // Prevent negative prices
+    // Mean reversion around support/resistance
+    let meanReversion = 0;
+    if (price < supportLevel) {
+      meanReversion = 0.002 * Math.random(); // Bounce off support
+    } else if (price > resistanceLevel) {
+      meanReversion = -0.002 * Math.random(); // Rejection at resistance
+    }
     
-    const high = Math.max(open, close) * (1 + Math.random() * 0.015)
-    const low = Math.min(open, close) * (1 - Math.random() * 0.015)
-    const volume = Math.floor(500000 + Math.random() * 2000000)
+    // Momentum component
+    const momentum = (price - prevPrice) / prevPrice * 0.3; // 30% momentum carry-over
     
-    // Use 4-hour intervals to match Bybit
-    const timestamp = new Date(Date.now() - (dataPoints - i) * 4 * 60 * 60 * 1000)
+    // News/earnings simulation (random spikes)
+    let newsImpact = 0;
+    if (Math.random() < 0.02) { // 2% chance of news event
+      newsImpact = (Math.random() - 0.5) * 0.05; // ±5% news impact
+    }
+    
+    // Combine all factors
+    const totalReturn = trend + meanReversion + momentum + newsImpact + 
+                       (Math.random() - 0.5) * currentVolCluster;
+    
+    prevPrice = price;
+    const open = price;
+    const change = totalReturn * price;
+    const close = Math.max(1, price + change);
+    
+    // Realistic intraday range
+    const dailyRange = currentVolCluster * price * (0.5 + Math.random() * 0.5);
+    const high = Math.max(open, close) + dailyRange * Math.random() * 0.6;
+    const low = Math.min(open, close) - dailyRange * Math.random() * 0.6;
+    
+    // Realistic volume with correlation to price movement and volatility
+    const priceChangeAbs = Math.abs(change / price);
+    const volumeMultiplier = 1 + priceChangeAbs * 3; // Higher volume on big moves
+    const volume = Math.floor(params.avgVolume * volumeMultiplier * (0.3 + Math.random() * 1.4));
+    
+    // Use daily intervals for stocks (not 4-hour like crypto)
+    const isStock = !symbol.includes('USD') && !symbol.includes('BTC') && !symbol.includes('ETH');
+    const intervalHours = isStock ? 24 : 4;
+    const timestamp = new Date(Date.now() - (dataPoints - i) * intervalHours * 60 * 60 * 1000);
+    
+    // Skip weekends for stocks
+    if (isStock && (timestamp.getDay() === 0 || timestamp.getDay() === 6)) {
+      continue;
+    }
     
     data.push({
       symbol,
       timestamp: timestamp.toISOString(),
-      open,
-      high,
-      low,
-      close,
+      open: Math.round(open * 100) / 100,
+      high: Math.round(high * 100) / 100,
+      low: Math.round(low * 100) / 100,
+      close: Math.round(close * 100) / 100,
       volume
-    })
+    });
     
-    price = close
+    price = close;
   }
   
-  return data
+  console.log(`Generated ${data.length} realistic data points for ${symbol}`);
+  return data;
 }
 
 // Historical data fetcher - uses Bybit for crypto, mock for stocks
