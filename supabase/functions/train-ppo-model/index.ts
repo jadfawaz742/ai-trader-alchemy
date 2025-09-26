@@ -405,49 +405,137 @@ class PPOTrainer {
   }
 }
 
-// Historical data fetcher
-async function fetchHistoricalData(symbol: string): Promise<TrainingData[]> {
-  console.log(`Fetching 2 years of data for ${symbol}`)
+// Fetch real cryptocurrency data from Bybit
+async function fetchBybitData(symbol: string): Promise<TrainingData[]> {
+  console.log(`Fetching Bybit data for ${symbol}`)
   
-  // Simulate fetching historical data
-  const data: TrainingData[] = []
-  const startDate = new Date('2022-01-01')
-  const endDate = new Date('2024-01-01')
-  
-  let currentDate = new Date(startDate)
-  let price = 100 + Math.random() * 50 // Starting price
-  
-  while (currentDate <= endDate) {
-    // Skip weekends for stocks
-    if (symbol.includes('USD') || currentDate.getDay() !== 0 && currentDate.getDay() !== 6) {
-      const volatility = 0.02 + Math.random() * 0.03
-      const drift = (Math.random() - 0.5) * 0.002
+  try {
+    // Convert symbol format for Bybit API
+    const bybitSymbol = symbol.includes('BTC') ? 'BTCUSDT' : 
+                        symbol.includes('ETH') ? 'ETHUSDT' : 
+                        symbol.includes('SOL') ? 'SOLUSDT' :
+                        symbol.includes('ADA') ? 'ADAUSDT' :
+                        symbol.includes('DOT') ? 'DOTUSDT' :
+                        symbol + 'USDT';
+    
+    // Fetch 200 klines (4-hour intervals for more data points)
+    const response = await fetch(`https://api.bybit.com/v5/market/kline?category=spot&symbol=${bybitSymbol}&interval=240&limit=200`, {
+      method: 'GET',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+    });
+
+    if (!response.ok) {
+      console.log(`⚠️ Bybit API error for ${symbol}, falling back to mock data`);
+      return generateMockData(symbol);
+    }
+
+    const data = await response.json();
+    
+    if (data.result && data.result.list && data.result.list.length > 0) {
+      console.log(`✅ Fetched ${data.result.list.length} real data points for ${symbol} from Bybit`);
       
-      const open = price
-      const change = (drift + (Math.random() - 0.5) * volatility) * price
-      const close = Math.max(1, price + change)
-      
-      const high = Math.max(open, close) * (1 + Math.random() * 0.02)
-      const low = Math.min(open, close) * (1 - Math.random() * 0.02)
-      const volume = Math.floor(1000000 + Math.random() * 5000000)
-      
-      data.push({
+      const trainingData: TrainingData[] = data.result.list.reverse().map((kline: any[]) => ({
         symbol,
-        timestamp: currentDate.toISOString(),
-        open,
-        high,
-        low,
-        close,
-        volume
-      })
+        timestamp: new Date(parseInt(kline[0])).toISOString(),
+        open: parseFloat(kline[1]),
+        high: parseFloat(kline[2]),
+        low: parseFloat(kline[3]),
+        close: parseFloat(kline[4]),
+        volume: parseFloat(kline[5])
+      }));
       
-      price = close
+      return trainingData;
     }
     
-    currentDate.setDate(currentDate.getDate() + 1)
+    console.log(`⚠️ No data found for ${symbol} on Bybit, using mock data`);
+    return generateMockData(symbol);
+    
+  } catch (error) {
+    console.error(`❌ Error fetching Bybit data for ${symbol}:`, error);
+    return generateMockData(symbol);
+  }
+}
+
+// Generate mock data for stocks or when Bybit fails
+function generateMockData(symbol: string): TrainingData[] {
+  console.log(`Generating enhanced mock data for ${symbol}`)
+  
+  const data: TrainingData[] = []
+  const dataPoints = 200 // Match Bybit data length
+  
+  // Different base prices and volatilities for different assets
+  let price = symbol.includes('BTC') ? 45000 + Math.random() * 20000 :
+              symbol.includes('ETH') ? 2500 + Math.random() * 1000 :
+              symbol.includes('AAPL') ? 150 + Math.random() * 50 :
+              symbol.includes('TSLA') ? 200 + Math.random() * 100 :
+              symbol.includes('NVDA') ? 400 + Math.random() * 200 :
+              100 + Math.random() * 50;
+  
+  const baseVolatility = symbol.includes('USD') ? 0.03 : 0.02; // Crypto more volatile
+  
+  // Create more realistic market phases
+  let marketPhase = 'bull'; // bull, bear, sideways
+  let phaseLength = 0;
+  let maxPhaseLength = 30 + Math.random() * 20;
+  
+  for (let i = 0; i < dataPoints; i++) {
+    // Change market phase periodically
+    phaseLength++;
+    if (phaseLength > maxPhaseLength) {
+      const phases = ['bull', 'bear', 'sideways'];
+      marketPhase = phases[Math.floor(Math.random() * phases.length)];
+      phaseLength = 0;
+      maxPhaseLength = 20 + Math.random() * 30;
+    }
+    
+    // Phase-based drift
+    let drift = 0;
+    if (marketPhase === 'bull') drift = 0.001 + Math.random() * 0.002;
+    else if (marketPhase === 'bear') drift = -0.001 - Math.random() * 0.002;
+    else drift = (Math.random() - 0.5) * 0.0005; // sideways
+    
+    // Add some momentum and mean reversion
+    const momentum = Math.sin(i * 0.1) * 0.001;
+    const volatility = baseVolatility * (0.8 + Math.random() * 0.4);
+    
+    const open = price
+    const change = (drift + momentum + (Math.random() - 0.5) * volatility) * price
+    const close = Math.max(price * 0.1, price + change) // Prevent negative prices
+    
+    const high = Math.max(open, close) * (1 + Math.random() * 0.015)
+    const low = Math.min(open, close) * (1 - Math.random() * 0.015)
+    const volume = Math.floor(500000 + Math.random() * 2000000)
+    
+    // Use 4-hour intervals to match Bybit
+    const timestamp = new Date(Date.now() - (dataPoints - i) * 4 * 60 * 60 * 1000)
+    
+    data.push({
+      symbol,
+      timestamp: timestamp.toISOString(),
+      open,
+      high,
+      low,
+      close,
+      volume
+    })
+    
+    price = close
   }
   
   return data
+}
+
+// Historical data fetcher - uses Bybit for crypto, mock for stocks
+async function fetchHistoricalData(symbol: string): Promise<TrainingData[]> {
+  // Use Bybit for cryptocurrency pairs
+  if (symbol.includes('USD') || symbol.includes('BTC') || symbol.includes('ETH')) {
+    return await fetchBybitData(symbol);
+  }
+  
+  // Use enhanced mock data for stocks
+  return generateMockData(symbol);
 }
 
 // ============= Serverless Function Handler =============
