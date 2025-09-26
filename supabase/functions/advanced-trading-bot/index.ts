@@ -199,6 +199,322 @@ interface AdaptiveParameters {
   averageProfit: number;
 }
 
+// PPO Reinforcement Learning Reward Function
+interface PPORewardComponents {
+  plPercent: number;          // P/L percentage normalized to capital
+  positionSize: number;       // Position size multiplier
+  confluenceBonus: number;    // Bonus for high-probability setups
+  stopLossPenalty: number;    // Penalty for unnecessary losses
+  riskPenalty: number;        // Penalty for violating risk constraints
+  totalReward: number;        // Final calculated reward
+}
+
+function calculatePPOReward(
+  tradeResult: any,
+  confluenceScore: number,
+  portfolioBalance: number,
+  riskLevel: RiskLevel
+): PPORewardComponents {
+  // P/L % normalized to capital
+  const plPercent = tradeResult.profit / portfolioBalance;
+  
+  // Position size component (reward scales with position size)
+  const positionSize = tradeResult.quantity * tradeResult.price / portfolioBalance;
+  
+  // Confluence bonus: encourage high-probability setups
+  const confluenceBonus = confluenceScore > 0.75 ? 0.2 * confluenceScore : 
+                         confluenceScore > 0.6 ? 0.1 * confluenceScore : 0;
+  
+  // Stop loss penalty: discourage unnecessary losses
+  const stopLossPenalty = tradeResult.outcome === 'LOSS' ? 
+                         Math.abs(plPercent) * 0.5 : 0;
+  
+  // Risk penalty: enforce user risk constraints
+  const maxRiskPerTrade = 0.02; // 2% max risk per trade
+  const actualRisk = Math.abs(plPercent);
+  const riskPenalty = actualRisk > maxRiskPerTrade ? 
+                     (actualRisk - maxRiskPerTrade) * 2 : 0;
+  
+  // Calculate total reward
+  const totalReward = (plPercent * positionSize) + confluenceBonus - stopLossPenalty - riskPenalty;
+  
+  console.log(`🎯 PPO Reward Breakdown:
+    P/L%: ${(plPercent * 100).toFixed(2)}%
+    Position Size: ${(positionSize * 100).toFixed(2)}%
+    Confluence Bonus: ${confluenceBonus.toFixed(4)}
+    Stop Loss Penalty: ${stopLossPenalty.toFixed(4)}
+    Risk Penalty: ${riskPenalty.toFixed(4)}
+    Total Reward: ${totalReward.toFixed(4)}`);
+  
+  return {
+    plPercent,
+    positionSize,
+    confluenceBonus,
+    stopLossPenalty,
+    riskPenalty,
+    totalReward
+  };
+}
+
+// Weighted Indicator Confidence Scoring System
+interface IndicatorWeights {
+  ema200: number;           // 0.15 - Trend direction & strength
+  macd: number;             // 0.20 - Momentum, crossover signals
+  atr: number;              // 0.10 - Volatility measure
+  obv: number;              // 0.10 - Volume-based momentum
+  ichimokuCloud: number;    // 0.20 - Trend, support/resistance
+  bollingerBands: number;   // 0.15 - Price volatility
+  newsSentiment: number;    // 0.10 - External market influence
+}
+
+const INDICATOR_WEIGHTS: IndicatorWeights = {
+  ema200: 0.15,
+  macd: 0.20,
+  atr: 0.10,
+  obv: 0.10,
+  ichimokuCloud: 0.20,
+  bollingerBands: 0.15,
+  newsSentiment: 0.10
+};
+
+interface IndicatorScore {
+  indicator: string;
+  score: number;            // Individual indicator score (0-1)
+  weight: number;           // Weight of this indicator
+  weightedScore: number;    // score * weight
+  signal: 'BUY' | 'SELL' | 'NEUTRAL';
+  reasoning: string;
+}
+
+function calculateWeightedIndicatorConfidence(
+  state: TradingState, 
+  newsScore: number,
+  riskLevel: RiskLevel
+): { 
+  totalConfidence: number; 
+  indicatorScores: IndicatorScore[];
+  filteredSignals: boolean;
+} {
+  const indicatorScores: IndicatorScore[] = [];
+  
+  // 1. EMA 200 - Trend Direction & Strength (Weight: 0.15)
+  const emaScore = calculateEMAScore(state.price, state.indicators.ema200);
+  indicatorScores.push({
+    indicator: 'EMA200',
+    score: emaScore.score,
+    weight: INDICATOR_WEIGHTS.ema200,
+    weightedScore: emaScore.score * INDICATOR_WEIGHTS.ema200,
+    signal: emaScore.signal,
+    reasoning: emaScore.reasoning
+  });
+  
+  // 2. MACD - Momentum & Crossover Signals (Weight: 0.20)
+  const macdScore = calculateMACDScore(state.indicators.macd);
+  indicatorScores.push({
+    indicator: 'MACD',
+    score: macdScore.score,
+    weight: INDICATOR_WEIGHTS.macd,
+    weightedScore: macdScore.score * INDICATOR_WEIGHTS.macd,
+    signal: macdScore.signal,
+    reasoning: macdScore.reasoning
+  });
+  
+  // 3. ATR - Volatility Measure (Weight: 0.10)
+  const atrScore = calculateATRScore(state.indicators.atr, state.price);
+  indicatorScores.push({
+    indicator: 'ATR',
+    score: atrScore.score,
+    weight: INDICATOR_WEIGHTS.atr,
+    weightedScore: atrScore.score * INDICATOR_WEIGHTS.atr,
+    signal: atrScore.signal,
+    reasoning: atrScore.reasoning
+  });
+  
+  // 4. OBV - Volume-Based Momentum (Weight: 0.10)
+  const obvScore = calculateOBVScore(state.indicators.obv, state.volume);
+  indicatorScores.push({
+    indicator: 'OBV',
+    score: obvScore.score,
+    weight: INDICATOR_WEIGHTS.obv,
+    weightedScore: obvScore.score * INDICATOR_WEIGHTS.obv,
+    signal: obvScore.signal,
+    reasoning: obvScore.reasoning
+  });
+  
+  // 5. Ichimoku Cloud - Trend & Support/Resistance (Weight: 0.20)
+  const ichimokuScore = calculateIchimokuScore(state.indicators.ichimoku, state.price);
+  indicatorScores.push({
+    indicator: 'Ichimoku',
+    score: ichimokuScore.score,
+    weight: INDICATOR_WEIGHTS.ichimokuCloud,
+    weightedScore: ichimokuScore.score * INDICATOR_WEIGHTS.ichimokuCloud,
+    signal: ichimokuScore.signal,
+    reasoning: ichimokuScore.reasoning
+  });
+  
+  // 6. Bollinger Bands - Price Volatility (Weight: 0.15)
+  const bbScore = calculateBollingerScore(state.indicators.bollinger, state.price);
+  indicatorScores.push({
+    indicator: 'Bollinger',
+    score: bbScore.score,
+    weight: INDICATOR_WEIGHTS.bollingerBands,
+    weightedScore: bbScore.score * INDICATOR_WEIGHTS.bollingerBands,
+    signal: bbScore.signal,
+    reasoning: bbScore.reasoning
+  });
+  
+  // 7. News/Sentiment - External Market Influence (Weight: 0.10)
+  const newsScoreResult = calculateNewsScore(newsScore);
+  indicatorScores.push({
+    indicator: 'News',
+    score: newsScoreResult.score,
+    weight: INDICATOR_WEIGHTS.newsSentiment,
+    weightedScore: newsScoreResult.score * INDICATOR_WEIGHTS.newsSentiment,
+    signal: newsScoreResult.signal,
+    reasoning: newsScoreResult.reasoning
+  });
+  
+  // Calculate total weighted confidence
+  const totalWeightedScore = indicatorScores.reduce((sum, ind) => sum + ind.weightedScore, 0);
+  const totalConfidence = totalWeightedScore; // Already normalized since weights sum to 1.0
+  
+  // Signal filtering - reject weak or noisy signals
+  const strongSignals = indicatorScores.filter(ind => ind.score > 0.6);
+  const filteredSignals = strongSignals.length >= 4; // At least 4 strong indicators
+  
+  console.log(`🎯 Weighted Indicator Confidence Analysis:`);
+  indicatorScores.forEach(ind => {
+    console.log(`   ${ind.indicator}: ${(ind.score * 100).toFixed(1)}% (weight: ${ind.weight}) = ${(ind.weightedScore * 100).toFixed(1)}% | ${ind.signal} - ${ind.reasoning}`);
+  });
+  console.log(`📊 Total Confidence: ${(totalConfidence * 100).toFixed(1)}% | Signal Quality: ${filteredSignals ? 'STRONG' : 'WEAK'}`);
+  
+  return {
+    totalConfidence,
+    indicatorScores,
+    filteredSignals
+  };
+}
+
+// Individual indicator scoring functions
+function calculateEMAScore(price: number, ema200: number): { score: number; signal: 'BUY' | 'SELL' | 'NEUTRAL'; reasoning: string } {
+  const deviation = (price - ema200) / ema200;
+  const absDeviation = Math.abs(deviation);
+  
+  if (absDeviation > 0.05) { // Strong trend
+    return {
+      score: Math.min(1.0, absDeviation * 10),
+      signal: deviation > 0 ? 'BUY' : 'SELL',
+      reasoning: `Strong ${deviation > 0 ? 'uptrend' : 'downtrend'} (${(absDeviation * 100).toFixed(1)}% from EMA200)`
+    };
+  } else if (absDeviation > 0.02) { // Moderate trend
+    return {
+      score: 0.6,
+      signal: deviation > 0 ? 'BUY' : 'SELL',
+      reasoning: `Moderate ${deviation > 0 ? 'uptrend' : 'downtrend'}`
+    };
+  }
+  
+  return { score: 0.3, signal: 'NEUTRAL', reasoning: 'Price near EMA200, no clear trend' };
+}
+
+function calculateMACDScore(macd: any): { score: number; signal: 'BUY' | 'SELL' | 'NEUTRAL'; reasoning: string } {
+  const histogram = macd.histogram;
+  const macdLine = macd.macd;
+  const signalLine = macd.signal;
+  
+  // Check for crossover and momentum
+  const isBullishCrossover = macdLine > signalLine && histogram > 0;
+  const isBearishCrossover = macdLine < signalLine && histogram < 0;
+  
+  if (isBullishCrossover && histogram > 0.5) {
+    return { score: 0.9, signal: 'BUY', reasoning: 'Strong bullish MACD crossover with positive momentum' };
+  } else if (isBearishCrossover && histogram < -0.5) {
+    return { score: 0.9, signal: 'SELL', reasoning: 'Strong bearish MACD crossover with negative momentum' };
+  } else if (isBullishCrossover) {
+    return { score: 0.7, signal: 'BUY', reasoning: 'Bullish MACD crossover' };
+  } else if (isBearishCrossover) {
+    return { score: 0.7, signal: 'SELL', reasoning: 'Bearish MACD crossover' };
+  }
+  
+  return { score: 0.4, signal: 'NEUTRAL', reasoning: 'MACD in consolidation' };
+}
+
+function calculateATRScore(atr: number, price: number): { score: number; signal: 'BUY' | 'SELL' | 'NEUTRAL'; reasoning: string } {
+  const atrPercent = atr / price;
+  
+  if (atrPercent > 0.02 && atrPercent < 0.06) {
+    return { score: 0.8, signal: 'NEUTRAL', reasoning: 'Optimal volatility for trading' };
+  } else if (atrPercent > 0.06) {
+    return { score: 0.3, signal: 'NEUTRAL', reasoning: 'High volatility - increased risk' };
+  } else {
+    return { score: 0.5, signal: 'NEUTRAL', reasoning: 'Low volatility - limited opportunity' };
+  }
+}
+
+function calculateOBVScore(obv: number, volume: number): { score: number; signal: 'BUY' | 'SELL' | 'NEUTRAL'; reasoning: string } {
+  const obvNormalized = Math.abs(obv) / 1000000;
+  
+  if (obvNormalized > 2 && obv > 0) {
+    return { score: 0.8, signal: 'BUY', reasoning: 'Strong positive volume flow' };
+  } else if (obvNormalized > 2 && obv < 0) {
+    return { score: 0.8, signal: 'SELL', reasoning: 'Strong negative volume flow' };
+  } else if (obvNormalized > 1) {
+    return { score: 0.6, signal: obv > 0 ? 'BUY' : 'SELL', reasoning: 'Moderate volume flow' };
+  }
+  
+  return { score: 0.4, signal: 'NEUTRAL', reasoning: 'Weak volume confirmation' };
+}
+
+function calculateIchimokuScore(ichimoku: any, price: number): { score: number; signal: 'BUY' | 'SELL' | 'NEUTRAL'; reasoning: string } {
+  const signal = ichimoku.signal;
+  
+  if (signal > 0.8) {
+    return { score: 0.9, signal: 'BUY', reasoning: 'Strong bullish Ichimoku signal' };
+  } else if (signal < -0.8) {
+    return { score: 0.9, signal: 'SELL', reasoning: 'Strong bearish Ichimoku signal' };
+  } else if (signal > 0.3) {
+    return { score: 0.6, signal: 'BUY', reasoning: 'Moderate bullish Ichimoku signal' };
+  } else if (signal < -0.3) {
+    return { score: 0.6, signal: 'SELL', reasoning: 'Moderate bearish Ichimoku signal' };
+  }
+  
+  return { score: 0.4, signal: 'NEUTRAL', reasoning: 'Ichimoku cloud consolidation' };
+}
+
+function calculateBollingerScore(bollinger: any, price: number): { score: number; signal: 'BUY' | 'SELL' | 'NEUTRAL'; reasoning: string } {
+  const position = bollinger.position;
+  
+  if (position < -0.8) {
+    return { score: 0.8, signal: 'BUY', reasoning: 'Oversold at lower Bollinger band' };
+  } else if (position > 0.8) {
+    return { score: 0.8, signal: 'SELL', reasoning: 'Overbought at upper Bollinger band' };
+  } else if (Math.abs(position) > 0.5) {
+    return { score: 0.6, signal: position < 0 ? 'BUY' : 'SELL', reasoning: 'Approaching Bollinger band extremes' };
+  }
+  
+  return { score: 0.5, signal: 'NEUTRAL', reasoning: 'Price within normal Bollinger range' };
+}
+
+function calculateNewsScore(newsScore: number): { score: number; signal: 'BUY' | 'SELL' | 'NEUTRAL'; reasoning: string } {
+  const absScore = Math.abs(newsScore);
+  
+  if (absScore > 0.7) {
+    return { 
+      score: 0.9, 
+      signal: newsScore > 0 ? 'BUY' : 'SELL', 
+      reasoning: `Strong ${newsScore > 0 ? 'positive' : 'negative'} news sentiment` 
+    };
+  } else if (absScore > 0.4) {
+    return { 
+      score: 0.6, 
+      signal: newsScore > 0 ? 'BUY' : 'SELL', 
+      reasoning: `Moderate ${newsScore > 0 ? 'positive' : 'negative'} news sentiment` 
+    };
+  }
+  
+  return { score: 0.5, signal: 'NEUTRAL', reasoning: 'Neutral news sentiment' };
+}
+
 // Learning system functions
 async function getAdaptiveParameters(userId: string, symbol: string): Promise<AdaptiveParameters> {
   try {
@@ -1602,19 +1918,26 @@ async function analyzeMarketStateWithConfluence(
   symbol: string, 
   trainingResult: TrainingResult,
   riskLevel: RiskLevel
-): Promise<TradingState & { newsScore: number }> {
+): Promise<TradingState & { 
+  newsScore: number; 
+  weightedIndicatorScores?: IndicatorScore[]; 
+  signalQuality?: 'STRONG' | 'WEAK' 
+}> {
   const baseState = await analyzeMarketStateWithFibonacci(data, symbol);
   
   // Get news sentiment score
   const newsScore = await getNewsSentimentScore(symbol);
   
-  // Calculate enhanced confluence score with news
-  const confluenceScore = calculateEnhancedConfluenceWithNews(baseState, riskLevel, newsScore);
+  // Calculate enhanced confluence score with news using weighted indicators
+  const weightedConfidence = calculateWeightedIndicatorConfidence(baseState, newsScore, riskLevel);
+  const confluenceScore = weightedConfidence.totalConfidence;
   
   return {
     ...baseState,
     confluenceScore,
     newsScore,
+    weightedIndicatorScores: weightedConfidence.indicatorScores,
+    signalQuality: weightedConfidence.filteredSignals ? 'STRONG' : 'WEAK',
     historicalPerformance: [
       trainingResult.performance.accuracy,
       trainingResult.performance.winRate,
@@ -1780,7 +2103,7 @@ async function getNewsSentimentScore(symbol: string): Promise<number> {
 
 // Enhanced Multi-Indicator Decision System with News and ATR Risk Management
 async function generateAdaptivePPODecision(
-  state: TradingState & { newsScore: number },
+  state: TradingState & { newsScore: number; weightedIndicatorScores?: IndicatorScore[]; signalQuality?: 'STRONG' | 'WEAK' },
   trainingResult: TrainingResult,
   portfolioBalance: number,
   riskLevel: RiskLevel,
@@ -1788,8 +2111,46 @@ async function generateAdaptivePPODecision(
   testingData: HistoricalData[]
 ): Promise<TradingAction> {
   
-  // Multi-indicator decision using systematic approach
+  // Use weighted confidence system if available, otherwise fallback to legacy
+  let finalConfidence = state.confluenceScore;
+  let signalFiltering = true; // Default to allowing signals
+  
+  if (state.weightedIndicatorScores && state.signalQuality) {
+    finalConfidence = state.confluenceScore;
+    signalFiltering = state.signalQuality === 'STRONG';
+    
+    console.log(`🎯 Using Weighted Indicator System - Confidence: ${(finalConfidence * 100).toFixed(1)}% | Quality: ${state.signalQuality}`);
+    
+    // Signal filtering: reject weak or noisy signals
+    if (!signalFiltering && riskLevel.name === 'low') {
+      console.log(`⚠️ Signal rejected due to insufficient quality for ${riskLevel.name} risk level`);
+      return {
+        type: 'HOLD',
+        quantity: 0,
+        stopLoss: 0,
+        takeProfit: 0,
+        confidence: finalConfidence * 100,
+        reasoning: `Signal filtered out - insufficient indicator alignment for ${riskLevel.name} risk tolerance`,
+        confluenceLevel: 'WEAK'
+      };
+    }
+  }
+  
+  // Multi-indicator decision using systematic approach with PPO considerations
   const decision = await calculateMultiIndicatorDecision(state, enableShorts, trainingResult, riskLevel);
+  
+  // Only proceed if confidence meets threshold
+  if (decision.confidence < riskLevel.minConfluence * 100) {
+    return {
+      type: 'HOLD',
+      quantity: 0,
+      stopLoss: 0,
+      takeProfit: 0,
+      confidence: decision.confidence,
+      reasoning: `PPO confidence ${decision.confidence.toFixed(1)}% below threshold ${(riskLevel.minConfluence * 100).toFixed(1)}%`,
+      confluenceLevel: 'WEAK'
+    };
+  }
   
   // ATR-based position sizing with risk management
   const atrBasedPositionSize = calculateATRBasedPositionSize(
@@ -1802,13 +2163,25 @@ async function generateAdaptivePPODecision(
   
   // News sentiment adjustment to position size
   const newsAdjustment = 1 + (state.newsScore * 0.2); // ±20% based on news
-  const finalQuantity = Math.floor(atrBasedPositionSize * newsAdjustment * state.confluenceScore);
+  const finalQuantity = Math.floor(atrBasedPositionSize * newsAdjustment * finalConfidence);
   
   // Determine confluence level
   let confluenceLevel: 'STRONG' | 'MODERATE' | 'WEAK';
-  if (state.confluenceScore >= 0.75) confluenceLevel = 'STRONG';
-  else if (state.confluenceScore >= 0.55) confluenceLevel = 'MODERATE';
+  if (finalConfidence >= 0.75) confluenceLevel = 'STRONG';
+  else if (finalConfidence >= 0.55) confluenceLevel = 'MODERATE';
   else confluenceLevel = 'WEAK';
+  
+  // Calculate expected PPO reward for this decision (for learning)
+  const mockTradeResult = {
+    profit: (decision.confidence / 100) * 0.02 * portfolioBalance, // Simulated 2% return based on confidence
+    quantity: finalQuantity,
+    price: state.price,
+    outcome: decision.confidence > 70 ? 'WIN' : 'LOSS'
+  };
+  
+  const ppoReward = calculatePPOReward(mockTradeResult, finalConfidence, portfolioBalance, riskLevel);
+  
+  console.log(`🤖 PPO Decision Analysis: Expected Reward: ${ppoReward.totalReward.toFixed(4)} | Action: ${decision.action}`);
   
   return {
     type: decision.action,
@@ -1816,7 +2189,7 @@ async function generateAdaptivePPODecision(
     stopLoss: 0, // Will be calculated with ATR-based risk management
     takeProfit: 0, // Will be calculated with ATR-based risk management
     confidence: decision.confidence,
-    reasoning: `Multi-Indicator Analysis: ${decision.reasoning}. News: ${(state.newsScore * 100).toFixed(0)}%. Confluence: ${confluenceLevel} (${(state.confluenceScore * 100).toFixed(1)}%)`,
+    reasoning: `PPO Analysis: ${decision.reasoning}. News: ${(state.newsScore * 100).toFixed(0)}%. Confluence: ${confluenceLevel} (${(finalConfidence * 100).toFixed(1)}%). Expected Reward: ${ppoReward.totalReward.toFixed(4)}`,
     confluenceLevel
   };
 }
