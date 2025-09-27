@@ -1167,7 +1167,8 @@ async function storeLearningData(userId: string, learningData: LearningData, tra
     if (error) {
       console.error('Error storing learning data:', error);
     } else {
-      console.log(`📚 Stored learning data for ${learningData.symbol} - ${learningData.outcome}`);
+      const learningMsg = `📚 Learning: Stored ${learningData.outcome} trade for ${learningData.symbol} (${learningData.profitLoss > 0 ? '+' : ''}$${learningData.profitLoss.toFixed(2)})`;
+      console.log(learningMsg);
       
       // Trigger model retraining every 5 trades
       const { count } = await supabase
@@ -1177,6 +1178,7 @@ async function storeLearningData(userId: string, learningData: LearningData, tra
         .eq('symbol', learningData.symbol);
       
       if (count && count > 0 && count % 5 === 0) {
+        console.log(`🧠 RETRAINING: ${learningData.symbol} model after ${count} trades`);
         await retrainModelFromLearningData(userId, learningData.symbol);
       }
     }
@@ -1335,7 +1337,8 @@ async function retrainModelFromLearningData(userId: string, symbol: string): Pro
     };
 
     await updateAssetModel(userId, symbol, modelWeights, performanceMetrics);
-    console.log(`🎯 Retrained model for ${symbol}: Win rate ${(winRate * 100).toFixed(1)}%, Confidence adj: ${modelWeights.confidenceAdjustment.toFixed(3)}`);
+    const retrainMsg = `🎯 RETRAINED ${symbol} model: ${(winRate * 100).toFixed(1)}% win rate, confidence adj: ${modelWeights.confidenceAdjustment > 0 ? '+' : ''}${(modelWeights.confidenceAdjustment * 100).toFixed(1)}%`;
+    console.log(retrainMsg);
     
   } catch (error) {
     console.error(`Error retraining model for ${symbol}:`, error);
@@ -1852,7 +1855,7 @@ serve(async (req) => {
             const learningData = simulateTradeOutcome(signal, adaptiveParams);
             await updateAdaptiveParameters(user.id, symbol, learningData);
             await storeLearningData(user.id, learningData, signal);
-            console.log(`🎓 Simulated ${learningData.outcome} trade for learning: ${learningData.profitLoss > 0 ? '+' : ''}$${learningData.profitLoss.toFixed(2)}`);
+            console.log(`🎓 LEARNING: Simulated ${learningData.outcome} trade for ${symbol} (${learningData.profitLoss > 0 ? '+' : ''}$${learningData.profitLoss.toFixed(2)})`);
           } else if (mode === 'live') {
             // Store initial trade data - outcome will be updated later when trade closes
             const initialLearningData: LearningData = {
