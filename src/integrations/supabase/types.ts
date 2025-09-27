@@ -32,6 +32,39 @@ export type Database = {
         }
         Relationships: []
       }
+      asset_models: {
+        Row: {
+          created_at: string | null
+          id: string
+          model_type: string
+          model_weights: Json
+          performance_metrics: Json | null
+          symbol: string
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          model_type: string
+          model_weights: Json
+          performance_metrics?: Json | null
+          symbol: string
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          model_type?: string
+          model_weights?: Json
+          performance_metrics?: Json | null
+          symbol?: string
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: []
+      }
       bot_adaptive_parameters: {
         Row: {
           average_profit: number | null
@@ -506,6 +539,36 @@ export type Database = {
           trade_duration_hours?: number | null
           updated_at?: string
           user_id?: string
+        }
+        Relationships: []
+      }
+      trading_metrics: {
+        Row: {
+          created_at: string | null
+          id: string
+          metrics: Json
+          model_type: string
+          model_weights: Json | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          created_at?: string | null
+          id?: string
+          metrics: Json
+          model_type: string
+          model_weights?: Json | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          created_at?: string | null
+          id?: string
+          metrics?: Json
+          model_type?: string
+          model_weights?: Json | null
+          updated_at?: string | null
+          user_id?: string | null
         }
         Relationships: []
       }

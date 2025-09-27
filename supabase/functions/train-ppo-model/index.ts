@@ -1,58 +1,114 @@
-// ============= Supabase Edge Function: PPO Model Training =============
+import "https://deno.land/x/xhr@0.1.0/mod.ts";
+import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
 
-import { serve } from "https://deno.land/std@0.168.0/http/server.ts"
-import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
+// Initialize Supabase client
+const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
+const supabase = createClient(supabaseUrl, supabaseKey);
 
+// Interface for training data
 interface TrainingData {
-  symbol: string
-  timestamp: string
+  timestamp: number
+  price: number
+  volume: number
   open: number
   high: number
   low: number
   close: number
-  volume: number
 }
 
+// Interface for training metrics
+interface TrainingMetrics {
+  symbol: string
+  winRate: number
+  avgReturn: number
+  totalTrades: number
+  sharpeRatio?: number
+  trainingDuration: number
+}
+
+// Interface for PPO state and action
 interface PPOState {
   features: number[]
+  reward: number
+  done: boolean
 }
 
 interface PPOAction {
-  action: 'BUY' | 'SELL' | 'HOLD'
-  confidence: number
-  stopLoss?: number
-  targets?: number[]
-  positionSize?: number
+  actionIndex: number
+  actionProbs: number[]
+  value: number
 }
 
-interface TrainingMetrics {
-  episode: number
-  totalReturn: number // Actual portfolio return percentage
-  avgTradeReturn: number // Average return per trade
-  winRate: number
-  sharpeRatio: number
-  maxDrawdown: number
-  totalTrades: number
-  profitableTrades: number
-  finalPortfolioValue: number
-}
-
-class PPOTrainer {
-  private learningRate = 0.001
-  private gamma = 0.99
-  private lambda = 0.95
-  private episodes = 10
-  
+// Asset-specific PPO Trainer class implementing Proximal Policy Optimization
+class AssetSpecificPPOTrainer {
   private actor!: { weights: number[][], bias: number[][] }
   private critic!: { weights: number[][], bias: number[][] }
   private trainingHistory: TrainingMetrics[] = []
+  private assetType: string
+  private assetCharacteristics: any
+  private learningRate = 0.001
+  private gamma = 0.99
+  private lambda = 0.95
 
-  constructor() {
-    this.initializeNetworks()
+  constructor(assetType: string = 'GENERAL', baseModel?: any) {
+    this.assetType = assetType
+    this.assetCharacteristics = this.getAssetCharacteristics(assetType)
+    
+    if (baseModel) {
+      // Fine-tune from base model
+      this.actor = JSON.parse(JSON.stringify(baseModel.actor))
+      this.critic = JSON.parse(JSON.stringify(baseModel.critic))
+      // Adjust learning rate for fine-tuning
+      this.learningRate = 0.0005
+    } else {
+      this.initializeNetworks()
+    }
+  }
+
+  private getAssetCharacteristics(assetType: string) {
+    const crypto = ['BTC', 'ETH', 'SOL', 'ADA', 'DOT']
+    const stocks = ['AAPL', 'GOOGL', 'MSFT', 'NVDA', 'TSLA', 'META', 'NFLX', 'AMD', 'CRM', 'UBER']
+    const etfs = ['SPY', 'QQQ', 'VTI', 'GLD']
+    
+    if (crypto.some(c => assetType.includes(c))) {
+      return {
+        volatility: 'high',
+        liquidity: 'high',
+        correlation: 'crypto',
+        tradingHours: '24/7',
+        sensitivity: 'high'
+      }
+    } else if (stocks.some(s => assetType.includes(s))) {
+      return {
+        volatility: 'medium',
+        liquidity: 'high',
+        correlation: 'equity',
+        tradingHours: 'market',
+        sensitivity: 'medium'
+      }
+    } else if (etfs.some(e => assetType.includes(e))) {
+      return {
+        volatility: 'low',
+        liquidity: 'high',
+        correlation: 'market', 
+        tradingHours: 'market',
+        sensitivity: 'low'
+      }
+    }
+    
+    return {
+      volatility: 'medium',
+      liquidity: 'medium',
+      correlation: 'general',
+      tradingHours: 'market',
+      sensitivity: 'medium'
+    }
   }
 
   private initializeNetworks() {
-    const inputSize = 15 // Number of features
+    const inputSize = 15 // Number of features including asset-specific ones
     const actorOutputSize = 3 // BUY, SELL, HOLD
     const criticOutputSize = 1
 
@@ -69,340 +125,307 @@ class PPOTrainer {
 
   private randomWeights(rows: number, cols: number): number[][] {
     return Array.from({ length: rows }, () =>
-      Array.from({ length: cols }, () => (Math.random() - 0.5) * 0.1)
+      Array.from({ length: cols }, () => (Math.random() - 0.5) * 0.2)
     )
   }
 
-  private extractFeatures(data: TrainingData[], index: number): number[] {
-    if (index < 20) return new Array(15).fill(0)
-
+  extractFeatures(data: TrainingData[], index: number): number[] {
     const current = data[index]
-    const prev = data[index - 1]
+    const prev = index > 0 ? data[index - 1] : current
+    const prev5 = index >= 5 ? data[index - 5] : current
+    const prev20 = index >= 20 ? data[index - 20] : current
     
-    // Price features
-    const priceChange = (current.close - prev.close) / prev.close
-    const volatility = this.calculateVolatility(data, index, 10)
+    const baseFeatures = [
+      current.price / 100,                    // Normalized price
+      current.volume / 1000000,               // Normalized volume
+      (current.price - prev.price) / prev.price, // Price change
+      (current.price - prev5.price) / prev5.price, // 5-period momentum
+      (current.price - prev20.price) / prev20.price, // 20-period momentum
+      current.price > this.calculateSMA(data, index, 10) ? 1 : 0, // Above SMA10
+      current.price > this.calculateSMA(data, index, 20) ? 1 : 0, // Above SMA20
+      this.calculateRSI(data, index),         // RSI
+      this.calculateMACD(data, index),        // MACD
+      this.calculateVolatility(data, index),  // Volatility
+      this.calculateATR(data, index),         // ATR
+      this.calculateOBV(data, index),         // OBV
+      this.calculateBollingerPosition(data, index) // Bollinger position
+    ]
     
-    // Volume features
-    const volumeChange = (current.volume - prev.volume) / prev.volume
-    const avgVolume = data.slice(Math.max(0, index - 10), index + 1)
-      .reduce((sum, d) => sum + d.volume, 0) / Math.min(11, index + 1)
-    const volumeRatio = current.volume / avgVolume
-
-    // Technical indicators
-    const sma5 = this.calculateSMA(data, index, 5)
-    const sma20 = data.slice(Math.max(0, index - 19), index + 1)
-      .reduce((sum, d) => sum + d.close, 0) / Math.min(20, index + 1)
-    const smaRatio = current.close / sma20
-
-    // RSI calculation
-    const rsi = this.calculateRSI(data, index, 14)
+    // Add asset-specific features
+    const assetFeatures = this.getAssetSpecificFeatures(data, index)
     
-    // Momentum
-    const momentum = this.calculateMomentum(data, index, 10)
+    return [...baseFeatures, ...assetFeatures]
+  }
+  
+  private getAssetSpecificFeatures(data: TrainingData[], index: number): number[] {
+    const { volatility, sensitivity } = this.assetCharacteristics
+    const current = data[index]
     
-    // Trend
-    const trend = this.calculateTrend(data, index, 10)
-
+    // Asset-specific feature adjustments
+    const volatilityMultiplier = volatility === 'high' ? 1.5 : volatility === 'low' ? 0.5 : 1.0
+    const sensitivityScore = sensitivity === 'high' ? 0.8 : sensitivity === 'low' ? 0.2 : 0.5
+    
     return [
-      priceChange,
-      volatility,
-      volumeChange,
-      volumeRatio,
-      smaRatio,
-      rsi / 100, // Normalize RSI
-      momentum,
-      trend,
-      (current.high - current.low) / current.close, // Daily range
-      (current.close - current.open) / current.open, // Daily change
-      Math.log(current.volume / avgVolume), // Log volume ratio
-      current.close / sma5 - 1, // Price vs SMA5
-      (current.high - current.close) / current.close, // Upper shadow
-      (current.close - current.low) / current.close, // Lower shadow
-      Math.min(1, Math.max(-1, priceChange * 10)) // Normalized price change
+      volatilityMultiplier * this.calculateVolatility(data, index), // Adjusted volatility
+      sensitivityScore // Asset sensitivity score
     ]
   }
 
   private calculateSMA(data: TrainingData[], index: number, period: number): number {
     const start = Math.max(0, index - period + 1)
-    const prices = data.slice(start, index + 1).map(d => d.close)
+    const prices = data.slice(start, index + 1).map(d => d.price)
     return prices.reduce((sum, price) => sum + price, 0) / prices.length
   }
 
-  private calculateRSI(data: TrainingData[], index: number, period: number): number {
-    if (index < period) return 50
-
-    const gains = []
-    const losses = []
+  private calculateRSI(data: TrainingData[], index: number, period = 14): number {
+    if (index < period) return 50 // Neutral RSI for insufficient data
     
-    for (let i = Math.max(1, index - period + 1); i <= index; i++) {
-      const change = data[i].close - data[i - 1].close
-      gains.push(Math.max(0, change))
-      losses.push(Math.max(0, -change))
+    let gains = 0, losses = 0
+    for (let i = index - period + 1; i <= index; i++) {
+      const change = data[i].price - data[i - 1].price
+      if (change > 0) gains += change
+      else losses -= change
     }
-
-    const avgGain = gains.reduce((sum, gain) => sum + gain, 0) / gains.length
-    const avgLoss = losses.reduce((sum, loss) => sum + loss, 0) / losses.length
-
+    
+    const avgGain = gains / period
+    const avgLoss = losses / period
     if (avgLoss === 0) return 100
+    
     const rs = avgGain / avgLoss
     return 100 - (100 / (1 + rs))
   }
 
-  private calculateVolatility(data: TrainingData[], index: number, period: number): number {
-    const start = Math.max(0, index - period + 1)
-    const returns = []
-    
-    for (let i = start + 1; i <= index; i++) {
-      const ret = (data[i].close - data[i - 1].close) / data[i - 1].close
-      returns.push(ret)
-    }
+  private calculateMACD(data: TrainingData[], index: number): number {
+    const ema12 = this.calculateEMA(data, index, 12)
+    const ema26 = this.calculateEMA(data, index, 26)
+    return (ema12 - ema26) / ema26 // Normalized MACD
+  }
 
-    if (returns.length === 0) return 0
+  private calculateEMA(data: TrainingData[], index: number, period: number): number {
+    if (index < period - 1) return data[index].price
     
-    const mean = returns.reduce((sum, ret) => sum + ret, 0) / returns.length
-    const variance = returns.reduce((sum, ret) => sum + Math.pow(ret - mean, 2), 0) / returns.length
+    const multiplier = 2 / (period + 1)
+    let ema = data[Math.max(0, index - period + 1)].price
     
+    for (let i = Math.max(1, index - period + 2); i <= index; i++) {
+      ema = (data[i].price - ema) * multiplier + ema
+    }
+    
+    return ema
+  }
+
+  private calculateVolatility(data: TrainingData[], index: number, period = 20): number {
+    if (index < period) return 0.1
+    
+    const prices = data.slice(index - period + 1, index + 1).map(d => d.price)
+    const mean = prices.reduce((sum, p) => sum + p, 0) / prices.length
+    const variance = prices.reduce((sum, p) => sum + Math.pow(p - mean, 2), 0) / prices.length
+    return Math.sqrt(variance) / mean // Normalized volatility
+  }
+
+  private calculateATR(data: TrainingData[], index: number, period = 14): number {
+    if (index < 1) return 0.01
+    
+    const current = data[index]
+    const previous = data[index - 1]
+    
+    const tr = Math.max(
+      current.high - current.low,
+      Math.abs(current.high - previous.close),
+      Math.abs(current.low - previous.close)
+    )
+    
+    // Simple ATR approximation
+    return tr / current.price // Normalized ATR
+  }
+
+  private calculateOBV(data: TrainingData[], index: number): number {
+    if (index < 1) return 0
+    
+    let obv = 0
+    for (let i = 1; i <= index; i++) {
+      if (data[i].price > data[i - 1].price) {
+        obv += data[i].volume
+      } else if (data[i].price < data[i - 1].price) {
+        obv -= data[i].volume
+      }
+    }
+    
+    return obv / 1000000 // Normalized OBV
+  }
+
+  private calculateBollingerPosition(data: TrainingData[], index: number, period = 20): number {
+    if (index < period) return 0.5
+    
+    const sma = this.calculateSMA(data, index, period)
+    const std = this.calculateStandardDeviation(data, index, period)
+    
+    const upperBand = sma + (2 * std)
+    const lowerBand = sma - (2 * std)
+    
+    // Position within Bollinger Bands (0 = lower band, 1 = upper band)
+    return (data[index].price - lowerBand) / (upperBand - lowerBand)
+  }
+
+  private calculateStandardDeviation(data: TrainingData[], index: number, period: number): number {
+    const sma = this.calculateSMA(data, index, period)
+    const start = Math.max(0, index - period + 1)
+    const prices = data.slice(start, index + 1).map(d => d.price)
+    
+    const variance = prices.reduce((sum, price) => sum + Math.pow(price - sma, 2), 0) / prices.length
     return Math.sqrt(variance)
   }
 
-  private calculateMomentum(data: TrainingData[], index: number, period: number): number {
-    if (index < period) return 0
-    return (data[index].close - data[index - period].close) / data[index - period].close
-  }
-
-  private calculateTrend(data: TrainingData[], index: number, period: number): number {
-    const start = Math.max(0, index - period + 1)
-    const prices = data.slice(start, index + 1).map(d => d.close)
+  async trainOnSymbol(symbol: string, data: TrainingData[]): Promise<TrainingMetrics> {
+    console.log(`🎯 Training asset-specific PPO model for ${symbol} (${this.assetType})...`)
+    const startTime = Date.now()
     
-    if (prices.length < 2) return 0
+    let totalReward = 0
+    let totalTrades = 0
+    let winningTrades = 0
+    const buffer: any[] = []
     
-    // Simple linear regression slope
-    const n = prices.length
-    const sumX = n * (n - 1) / 2
-    const sumY = prices.reduce((a, b) => a + b, 0)
-    const sumXY = prices.reduce((acc, price, i) => acc + i * price, 0)
-    const sumX2 = n * (n - 1) * (2 * n - 1) / 6
-    
-    const slope = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX)
-    return slope / prices[prices.length - 1] // Normalized slope
-  }
-  
-  private forwardActor(features: number[]): number[] {
-    const output = [0, 0, 0] // BUY, SELL, HOLD probabilities
-    
-    for (let j = 0; j < 3; j++) {
-      let sum = this.actor.bias[0][j]
-      for (let i = 0; i < features.length; i++) {
-        sum += features[i] * this.actor.weights[i][j]
-      }
-      output[j] = 1 / (1 + Math.exp(-sum)) // Sigmoid activation
-    }
-    
-    // Softmax
-    const expSum = output.reduce((acc, val) => acc + Math.exp(val), 0)
-    return output.map(val => Math.exp(val) / expSum)
-  }
-  
-  private forwardCritic(features: number[]): number {
-    let sum = this.critic.bias[0][0]
-    for (let i = 0; i < features.length; i++) {
-      sum += features[i] * this.critic.weights[i][0]
-    }
-    return sum // Linear output for value function
-  }
-  
-  async trainOnSymbol(symbol: string, data: TrainingData[]): Promise<TrainingMetrics[]> {
-    console.log(`Training PPO model on ${symbol} with ${data.length} data points`)
-    
-    const episodeMetrics: TrainingMetrics[] = []
-    
-    for (let episode = 0; episode < this.episodes; episode++) {
-      // Initialize trading simulation
-      let portfolio = {
-        cash: 10000,
-        shares: 0,
-        totalValue: 10000,
-        trades: [] as Array<{entry: number, exit: number, profit: number, type: string}>
-      }
+    // Simulate trading episodes with asset-specific behavior
+    const episodes = 5
+    for (let episode = 0; episode < episodes; episode++) {
+      let position = 0 // -1: short, 0: neutral, 1: long
+      let balance = 10000
+      let shares = 0
       
-      let inPosition = false
-      let entryPrice = 0
-      let profitableTrades = 0
-      let maxValue = 10000
-      let maxDrawdown = 0
-      
-      const episodeBuffer: any[] = []
-      
-      // Run episode with improved trading simulation
-      for (let i = 50; i < data.length - 1; i++) {
+      for (let i = 20; i < data.length - 1; i++) {
         const features = this.extractFeatures(data, i)
-        const actionProbs = this.forwardActor(features)
-        const value = this.forwardCritic(features)
-        const currentPrice = data[i].close
+        const action = this.selectSmartAction(features, data, i, position > 0)
+        const nextPrice = data[i + 1].price
+        const currentPrice = data[i].price
         
-        // Enhanced action selection with technical analysis
-        const actionIndex = this.selectSmartAction(features, actionProbs, inPosition)
-        const actionName = ['BUY', 'SELL', 'HOLD'][actionIndex] as 'BUY' | 'SELL' | 'HOLD'
+        let reward = 0
+        let traded = false
         
-        // Execute trades with improved logic
-        let stepReward = 0
-        
-        if (actionName === 'BUY' && !inPosition && portfolio.cash > 0) {
-          // Enter long position with confidence-based sizing
-          const confidence = Math.max(...actionProbs)
-          const positionSize = confidence > 0.6 ? 0.8 : 0.5 // Risk management
-          const investAmount = portfolio.cash * positionSize
-          
-          portfolio.shares = investAmount / currentPrice
-          portfolio.cash -= investAmount
-          entryPrice = currentPrice
-          inPosition = true
-          
-          // Small reward for taking action in good conditions
-          stepReward = confidence > 0.7 ? 0.01 : 0
-          
-        } else if (actionName === 'SELL' && inPosition) {
-          // Exit position
-          const exitValue = portfolio.shares * currentPrice
-          portfolio.cash += exitValue
-          const tradeReturn = (currentPrice - entryPrice) / entryPrice
-          
-          portfolio.trades.push({
-            entry: entryPrice,
-            exit: currentPrice,
-            profit: tradeReturn,
-            type: 'LONG'
-          })
-          
-          if (tradeReturn > 0) profitableTrades++
-          
-          // Enhanced reward based on trade quality
-          if (tradeReturn > 0.02) {
-            stepReward = tradeReturn * 2 // Bonus for good trades
-          } else if (tradeReturn > 0) {
-            stepReward = tradeReturn
-          } else {
-            stepReward = tradeReturn * 0.5 // Reduce penalty for small losses
+        // Execute trading action with asset-specific considerations
+        if (action === 0 && position <= 0) { // BUY
+          const tradeSize = Math.floor(balance * 0.95 / currentPrice)
+          if (tradeSize > 0) {
+            shares += tradeSize
+            balance -= tradeSize * currentPrice
+            position = 1
+            traded = true
+            totalTrades++
           }
-          
-          portfolio.shares = 0
-          inPosition = false
-          
-        } else if (actionName === 'HOLD') {
-          // Reward for holding in position when trending up
-          if (inPosition && i > 0) {
-            const priceChange = (currentPrice - data[i-1].close) / data[i-1].close
-            stepReward = priceChange > 0 ? priceChange * 0.3 : priceChange * 0.1
-          } else if (!inPosition) {
-            // Small penalty for cash sitting idle in trending market
-            const momentum = features[3] // Momentum indicator
-            stepReward = momentum > 0.02 ? -0.001 : 0.001 // Slight penalty for missing opportunities
+        } else if (action === 1 && position >= 0) { // SELL
+          if (shares > 0) {
+            const saleValue = shares * currentPrice
+            balance += saleValue
+            
+            // Calculate reward based on performance
+            const returnRate = (currentPrice - (balance + saleValue - 10000) / shares) / currentPrice
+            reward = returnRate * 100 // Scale reward
+            
+            if (reward > 0) winningTrades++
+            
+            shares = 0
+            position = -1
+            traded = true
+            totalTrades++
           }
         }
         
-        // Calculate current portfolio value
-        portfolio.totalValue = portfolio.cash + (portfolio.shares * currentPrice)
+        // Enhanced reward function for asset-specific training
+        if (traded) {
+          // Asset-specific reward adjustments
+          const volatilityBonus = this.assetCharacteristics.volatility === 'high' ? 1.2 : 1.0
+          const liquidityBonus = this.assetCharacteristics.liquidity === 'high' ? 1.1 : 1.0
+          reward *= volatilityBonus * liquidityBonus
+          
+          totalReward += reward
+        }
         
-        // Track drawdown
-        if (portfolio.totalValue > maxValue) maxValue = portfolio.totalValue
-        const currentDrawdown = (maxValue - portfolio.totalValue) / maxValue
-        if (currentDrawdown > maxDrawdown) maxDrawdown = currentDrawdown
+        // Store experience for PPO update
+        const value = this.forward(this.critic, features)[0]
+        const actionProbs = this.forward(this.actor, features)
         
-        // Add portfolio growth component to reward
-        const portfolioGrowth = (portfolio.totalValue - 10000) / 10000
-        const totalStepReward = stepReward + portfolioGrowth * 0.01
-        
-        episodeBuffer.push({
+        buffer.push({
           features,
-          actionIndex,
-          actionProbs,
+          actionIndex: action,
+          actionProbs: [...actionProbs],
+          reward,
           value,
-          reward: totalStepReward,
-          done: i === data.length - 2
+          traded
         })
       }
       
-      // Close any remaining position
-      if (inPosition && data.length > 0) {
-        const finalPrice = data[data.length - 1].close
-        portfolio.cash += portfolio.shares * finalPrice
-        const tradeReturn = (finalPrice - entryPrice) / entryPrice
-        
-        portfolio.trades.push({
-          entry: entryPrice,
-          exit: finalPrice,
-          profit: tradeReturn,
-          type: 'LONG'
-        })
-        
-        if (tradeReturn > 0) profitableTrades++
-        portfolio.shares = 0
-        portfolio.totalValue = portfolio.cash
+      // Update networks every episode
+      if (buffer.length > 0) {
+        this.updateNetworks(buffer.filter(b => b.traded))
       }
-      
-      // Calculate episode metrics
-      const totalReturn = (portfolio.totalValue - 10000) / 10000
-      const avgTradeReturn = portfolio.trades.length > 0 
-        ? portfolio.trades.reduce((sum, trade) => sum + trade.profit, 0) / portfolio.trades.length
-        : 0
-      
-      // Update networks with better learning
-      this.updateNetworks(episodeBuffer)
-      
-      const metrics: TrainingMetrics = {
-        episode: episode + 1,
-        totalReturn,
-        avgTradeReturn,
-        winRate: portfolio.trades.length > 0 ? profitableTrades / portfolio.trades.length : 0,
-        sharpeRatio: this.calculateSharpeRatio(episodeBuffer),
-        maxDrawdown,
-        totalTrades: portfolio.trades.length,
-        profitableTrades,
-        finalPortfolioValue: portfolio.totalValue
-      }
-      
-      episodeMetrics.push(metrics)
-      this.trainingHistory.push(metrics)
-      
-      console.log(`Episode ${episode + 1}/${this.episodes} - Return: ${(totalReturn * 100).toFixed(2)}%, Win Rate: ${(metrics.winRate * 100).toFixed(2)}%`)
     }
     
-    return episodeMetrics
+    const avgReturn = totalTrades > 0 ? totalReward / totalTrades : 0
+    const winRate = totalTrades > 0 ? winningTrades / totalTrades : 0
+    const trainingDuration = Date.now() - startTime
+    
+    const metrics: TrainingMetrics = {
+      symbol,
+      winRate,
+      avgReturn: avgReturn / 100, // Convert back to percentage
+      totalTrades,
+      sharpeRatio: this.calculateSharpeRatio(buffer),
+      trainingDuration
+    }
+    
+    this.trainingHistory.push(metrics)
+    
+    console.log(`✅ ${symbol} training complete: ${(winRate * 100).toFixed(1)}% win rate, ${totalTrades} trades`)
+    
+    return metrics
   }
-  
-  private selectSmartAction(features: number[], actionProbs: number[], inPosition: boolean): number {
-    // Enhanced action selection using technical indicators
-    const rsi = features[1]
-    const macdSignal = features[2] 
-    const momentum = features[3]
-    const trend = features[4]
+
+  private forward(network: { weights: number[][], bias: number[][] }, input: number[]): number[] {
+    const result = network.weights.map((weights, i) => {
+      const sum = weights.reduce((acc, weight, j) => acc + weight * input[j], 0) + network.bias[0][i]
+      return Math.tanh(sum) // Activation function
+    })
     
-    // Apply technical analysis filters
-    let buySignal = 0
-    let sellSignal = 0
+    // Softmax for actor, linear for critic
+    if (network === this.actor) {
+      const max = Math.max(...result)
+      const exp = result.map(x => Math.exp(x - max))
+      const sum = exp.reduce((a, b) => a + b, 0)
+      return exp.map(x => x / sum)
+    }
     
-    // RSI signals
-    if (rsi < 0.3) buySignal += 0.3 // Oversold
-    if (rsi > 0.7) sellSignal += 0.3 // Overbought
+    return result
+  }
+
+  private selectSmartAction(features: number[], data: TrainingData[], index: number, inPosition: boolean): number {
+    const actionProbs = this.forward(this.actor, features)
     
-    // MACD signals
-    if (macdSignal > 0.02) buySignal += 0.2
-    if (macdSignal < -0.02) sellSignal += 0.2
+    // Enhanced action selection with technical indicators and asset-specific logic
+    const rsi = features[7] * 100 // RSI feature
+    const macd = features[8] // MACD feature
+    const volatility = features[9] // Volatility feature
     
-    // Momentum and trend alignment
-    if (momentum > 0.01 && trend > 0.01) buySignal += 0.3
-    if (momentum < -0.01 && trend < -0.01) sellSignal += 0.3
+    // Asset-specific signal strength adjustments
+    const { sensitivity, volatility: assetVolatility } = this.assetCharacteristics
+    const sensitivityMultiplier = sensitivity === 'high' ? 1.3 : sensitivity === 'low' ? 0.7 : 1.0
+    const volatilityThreshold = assetVolatility === 'high' ? 0.8 : assetVolatility === 'low' ? 0.3 : 0.5
     
-    // Modify action probabilities based on technical signals
+    // Calculate technical signals
+    const buySignal = (rsi < 30 ? 0.3 : 0) + (macd > 0 ? 0.2 : 0) + (volatility > volatilityThreshold ? 0.1 : 0)
+    const sellSignal = (rsi > 70 ? 0.3 : 0) + (macd < 0 ? 0.2 : 0) + (volatility > volatilityThreshold ? 0.1 : 0)
+    
+    // Apply asset-specific adjustments
+    const adjustedBuySignal = buySignal * sensitivityMultiplier
+    const adjustedSellSignal = sellSignal * sensitivityMultiplier
+    
+    // Modify action probabilities based on technical analysis
     const modifiedProbs = [...actionProbs]
     
     if (!inPosition) {
-      modifiedProbs[0] *= (1 + buySignal) // BUY
-      modifiedProbs[2] *= (1 + sellSignal * 0.5) // Reduce HOLD when sell signals
+      modifiedProbs[0] *= (1 + adjustedBuySignal) // BUY
+      modifiedProbs[2] *= (1 + adjustedSellSignal * 0.5) // Reduce HOLD when sell signals
     } else {
-      modifiedProbs[1] *= (1 + sellSignal) // SELL
-      modifiedProbs[2] *= (1 - sellSignal * 0.3) // Reduce HOLD during sell signals
+      modifiedProbs[1] *= (1 + adjustedSellSignal) // SELL
+      modifiedProbs[2] *= (1 - adjustedSellSignal * 0.3) // Reduce HOLD during sell signals
     }
     
     // Normalize probabilities
@@ -434,23 +457,25 @@ class PPOTrainer {
   }
   
   private updateNetworks(buffer: any[]) {
-    // Simplified PPO update
+    // Simplified PPO update with asset-specific considerations
     const advantages = this.calculateAdvantages(buffer)
     
     for (let i = 0; i < buffer.length; i++) {
       const { features, actionIndex, actionProbs } = buffer[i]
       const advantage = advantages[i]
       
+      // Asset-specific learning rate adjustment
+      const assetLearningRate = this.learningRate * (this.assetCharacteristics.sensitivity === 'high' ? 1.2 : 1.0)
+      
       // Update actor (policy)
-      const lr = this.learningRate
       for (let j = 0; j < features.length; j++) {
-        this.actor.weights[j][actionIndex] += lr * advantage * features[j] * 0.01
+        this.actor.weights[j][actionIndex] += assetLearningRate * advantage * features[j] * 0.01
       }
       
       // Update critic (value function)
       const valueError = buffer[i].reward - buffer[i].value
       for (let j = 0; j < features.length; j++) {
-        this.critic.weights[j][0] += lr * valueError * features[j] * 0.01
+        this.critic.weights[j][0] += assetLearningRate * valueError * features[j] * 0.01
       }
     }
   }
@@ -501,311 +526,285 @@ async function fetchBybitData(symbol: string): Promise<TrainingData[]> {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
-      },
+      }
     });
 
     if (!response.ok) {
-      console.log(`⚠️ Bybit API error for ${symbol}, falling back to mock data`);
-      return generateMockData(symbol);
+      throw new Error(`Bybit API error: ${response.status}`);
     }
 
     const data = await response.json();
     
-    if (data.result && data.result.list && data.result.list.length > 0) {
-      console.log(`✅ Fetched ${data.result.list.length} real data points for ${symbol} from Bybit`);
-      
-      const trainingData: TrainingData[] = data.result.list.reverse().map((kline: any[]) => ({
-        symbol,
-        timestamp: new Date(parseInt(kline[0])).toISOString(),
-        open: parseFloat(kline[1]),
-        high: parseFloat(kline[2]),
-        low: parseFloat(kline[3]),
-        close: parseFloat(kline[4]),
-        volume: parseFloat(kline[5])
-      }));
-      
-      return trainingData;
+    if (data.retCode !== 0 || !data.result?.list) {
+      throw new Error(`Bybit API error: ${data.retMsg || 'No data'}`);
     }
+
+    console.log(`✅ Successfully fetched ${data.result.list.length} data points for ${symbol} from Bybit`);
     
-    console.log(`⚠️ No data found for ${symbol} on Bybit, using mock data`);
-    return generateMockData(symbol);
+    // Convert Bybit data format to our TrainingData interface
+    // Bybit returns: [startTime, openPrice, highPrice, lowPrice, closePrice, volume, turnover]
+    return data.result.list.map((item: any[]) => ({
+      timestamp: parseInt(item[0]),
+      open: parseFloat(item[1]),
+      high: parseFloat(item[2]),
+      low: parseFloat(item[3]),
+      close: parseFloat(item[4]),
+      price: parseFloat(item[4]), // Use close price as main price
+      volume: parseFloat(item[5])
+    })).reverse(); // Bybit returns newest first, we want oldest first
     
   } catch (error) {
-    console.error(`❌ Error fetching Bybit data for ${symbol}:`, error);
-    return generateMockData(symbol);
+    console.error(`❌ Failed to fetch Bybit data for ${symbol}:`, error);
+    return [];
   }
 }
 
-// Generate realistic mock data for stocks or when Bybit fails
+// Generate realistic mock data for stocks and fallback
 function generateMockData(symbol: string): TrainingData[] {
   console.log(`Generating realistic mock data for ${symbol}`)
   
+  // Asset-specific parameters for realistic simulation
+  const assetParams = {
+    'AAPL': { basePrice: 150, volatility: 0.02, trend: 0.0001 },
+    'GOOGL': { basePrice: 2500, volatility: 0.025, trend: 0.0002 },
+    'MSFT': { basePrice: 300, volatility: 0.018, trend: 0.0001 },
+    'NVDA': { basePrice: 500, volatility: 0.04, trend: 0.0003 },
+    'TSLA': { basePrice: 800, volatility: 0.05, trend: 0.0001 },
+    'META': { basePrice: 350, volatility: 0.03, trend: 0.0001 },
+    'NFLX': { basePrice: 450, volatility: 0.035, trend: 0.0001 },
+    'AMD': { basePrice: 120, volatility: 0.04, trend: 0.0002 },
+    'CRM': { basePrice: 200, volatility: 0.03, trend: 0.0001 },
+    'UBER': { basePrice: 45, volatility: 0.04, trend: 0.0001 },
+    'SPY': { basePrice: 420, volatility: 0.015, trend: 0.0001 },
+    'QQQ': { basePrice: 350, volatility: 0.02, trend: 0.0001 },
+    'VTI': { basePrice: 220, volatility: 0.012, trend: 0.0001 },
+    'GLD': { basePrice: 180, volatility: 0.008, trend: 0.00005 },
+    'BTC': { basePrice: 45000, volatility: 0.06, trend: 0.0002 },
+    'ETH': { basePrice: 3000, volatility: 0.05, trend: 0.0003 },
+    'SOL': { basePrice: 100, volatility: 0.08, trend: 0.0004 },
+    'ADA': { basePrice: 0.5, volatility: 0.06, trend: 0.0002 },
+    'DOT': { basePrice: 8, volatility: 0.07, trend: 0.0003 }
+  }
+  
+  const params = assetParams[symbol as keyof typeof assetParams] || { basePrice: 100, volatility: 0.03, trend: 0.0001 }
+  
   const data: TrainingData[] = []
-  const dataPoints = 200
+  let currentPrice = params.basePrice
+  const now = Date.now()
   
-  // Realistic stock parameters based on actual market characteristics
-  const stockParams: Record<string, { basePrice: number; volatility: number; avgVolume: number; sector: string }> = {
-    'AAPL': { basePrice: 180, volatility: 0.025, avgVolume: 50000000, sector: 'tech' },
-    'TSLA': { basePrice: 250, volatility: 0.045, avgVolume: 40000000, sector: 'auto' },
-    'NVDA': { basePrice: 450, volatility: 0.035, avgVolume: 30000000, sector: 'tech' },
-    'GOOGL': { basePrice: 140, volatility: 0.028, avgVolume: 25000000, sector: 'tech' },
-    'MSFT': { basePrice: 380, volatility: 0.022, avgVolume: 20000000, sector: 'tech' },
-    'AMZN': { basePrice: 145, volatility: 0.030, avgVolume: 35000000, sector: 'tech' },
-    'META': { basePrice: 320, volatility: 0.035, avgVolume: 18000000, sector: 'tech' },
-    'NFLX': { basePrice: 450, volatility: 0.040, avgVolume: 8000000, sector: 'tech' },
-    'JPM': { basePrice: 160, volatility: 0.025, avgVolume: 15000000, sector: 'financial' },
-    'JNJ': { basePrice: 160, volatility: 0.018, avgVolume: 12000000, sector: 'healthcare' },
-    'PG': { basePrice: 155, volatility: 0.015, avgVolume: 8000000, sector: 'consumer' },
-    'V': { basePrice: 260, volatility: 0.022, avgVolume: 7000000, sector: 'financial' },
-    'WMT': { basePrice: 160, volatility: 0.020, avgVolume: 10000000, sector: 'retail' },
-    'UNH': { basePrice: 520, volatility: 0.025, avgVolume: 3000000, sector: 'healthcare' },
-    'HD': { basePrice: 360, volatility: 0.023, avgVolume: 4000000, sector: 'retail' },
-    'SPY': { basePrice: 450, volatility: 0.015, avgVolume: 80000000, sector: 'etf' },
-    'QQQ': { basePrice: 380, volatility: 0.020, avgVolume: 40000000, sector: 'etf' },
-    'IWM': { basePrice: 200, volatility: 0.025, avgVolume: 25000000, sector: 'etf' },
-    'VTI': { basePrice: 240, volatility: 0.015, avgVolume: 5000000, sector: 'etf' }
-  };
-  
-  // Get stock parameters or defaults
-  const params = stockParams[symbol] || { 
-    basePrice: 100 + Math.random() * 100, 
-    volatility: 0.025, 
-    avgVolume: 10000000,
-    sector: 'general'
-  };
-  
-  let price = params.basePrice + (Math.random() - 0.5) * params.basePrice * 0.2;
-  
-  // Support and resistance levels
-  const supportLevel = price * 0.85;
-  const resistanceLevel = price * 1.15;
-  let prevPrice = price;
-  
-  // Market regime simulation
-  let marketRegime = Math.random() > 0.5 ? 'bull' : 'bear';
-  let regimeStrength = 0.3 + Math.random() * 0.4; // 0.3 to 0.7
-  let regimeDuration = 0;
-  const maxRegimeDuration = 40 + Math.random() * 60;
-  
-  // Volatility clustering parameters
-  let currentVolCluster = params.volatility;
-  let volClusterDirection = Math.random() > 0.5 ? 1 : -1;
-  
-  for (let i = 0; i < dataPoints; i++) {
-    // Change market regime periodically
-    regimeDuration++;
-    if (regimeDuration > maxRegimeDuration) {
-      const regimes = ['bull', 'bear', 'sideways'];
-      marketRegime = regimes[Math.floor(Math.random() * regimes.length)];
-      regimeStrength = 0.2 + Math.random() * 0.6;
-      regimeDuration = 0;
-    }
+  // Generate 200 data points (matching Bybit fetch)
+  for (let i = 0; i < 200; i++) {
+    const timestamp = now - (200 - i) * 4 * 60 * 60 * 1000 // 4-hour intervals
     
-    // Calculate trend based on regime
-    let trend = 0;
-    if (marketRegime === 'bull') {
-      trend = 0.0008 * regimeStrength + Math.random() * 0.001;
-    } else if (marketRegime === 'bear') {
-      trend = -0.0008 * regimeStrength - Math.random() * 0.001;
-    } else {
-      trend = (Math.random() - 0.5) * 0.0003; // sideways with small drift
-    }
+    // Generate realistic OHLCV data
+    const trend = params.trend * (Math.random() - 0.5) * 2
+    const volatility = params.volatility * (0.5 + Math.random())
     
-    // Volatility clustering - periods of high/low volatility
-    currentVolCluster += volClusterDirection * Math.random() * 0.002;
-    if (currentVolCluster > params.volatility * 2) volClusterDirection = -1;
-    if (currentVolCluster < params.volatility * 0.3) volClusterDirection = 1;
-    currentVolCluster = Math.max(0.005, Math.min(0.08, currentVolCluster));
+    const open = currentPrice
+    const priceChange = currentPrice * (trend + volatility * (Math.random() - 0.5))
+    const close = Math.max(0.01, open + priceChange)
     
-    // Mean reversion around support/resistance
-    let meanReversion = 0;
-    if (price < supportLevel) {
-      meanReversion = 0.002 * Math.random(); // Bounce off support
-    } else if (price > resistanceLevel) {
-      meanReversion = -0.002 * Math.random(); // Rejection at resistance
-    }
+    const high = Math.max(open, close) * (1 + Math.random() * 0.02)
+    const low = Math.min(open, close) * (1 - Math.random() * 0.02)
     
-    // Momentum component
-    const momentum = (price - prevPrice) / prevPrice * 0.3; // 30% momentum carry-over
-    
-    // News/earnings simulation (random spikes)
-    let newsImpact = 0;
-    if (Math.random() < 0.02) { // 2% chance of news event
-      newsImpact = (Math.random() - 0.5) * 0.05; // ±5% news impact
-    }
-    
-    // Combine all factors
-    const totalReturn = trend + meanReversion + momentum + newsImpact + 
-                       (Math.random() - 0.5) * currentVolCluster;
-    
-    prevPrice = price;
-    const open = price;
-    const change = totalReturn * price;
-    const close = Math.max(1, price + change);
-    
-    // Realistic intraday range
-    const dailyRange = currentVolCluster * price * (0.5 + Math.random() * 0.5);
-    const high = Math.max(open, close) + dailyRange * Math.random() * 0.6;
-    const low = Math.min(open, close) - dailyRange * Math.random() * 0.6;
-    
-    // Realistic volume with correlation to price movement and volatility
-    const priceChangeAbs = Math.abs(change / price);
-    const volumeMultiplier = 1 + priceChangeAbs * 3; // Higher volume on big moves
-    const volume = Math.floor(params.avgVolume * volumeMultiplier * (0.3 + Math.random() * 1.4));
-    
-    // Use daily intervals for stocks (not 4-hour like crypto)
-    const isStock = !symbol.includes('USD') && !symbol.includes('BTC') && !symbol.includes('ETH');
-    const intervalHours = isStock ? 24 : 4;
-    const timestamp = new Date(Date.now() - (dataPoints - i) * intervalHours * 60 * 60 * 1000);
-    
-    // Skip weekends for stocks
-    if (isStock && (timestamp.getDay() === 0 || timestamp.getDay() === 6)) {
-      continue;
-    }
+    const volume = Math.floor((100000 + Math.random() * 900000) * (1 + volatility))
     
     data.push({
-      symbol,
-      timestamp: timestamp.toISOString(),
-      open: Math.round(open * 100) / 100,
-      high: Math.round(high * 100) / 100,
-      low: Math.round(low * 100) / 100,
-      close: Math.round(close * 100) / 100,
+      timestamp,
+      open,
+      high,
+      low,
+      close,
+      price: close,
       volume
-    });
+    })
     
-    price = close;
+    currentPrice = close
   }
   
-  console.log(`Generated ${data.length} realistic data points for ${symbol}`);
-  return data;
+  return data
 }
 
-// Historical data fetcher - uses Bybit for crypto, mock for stocks
+// Fetch historical data with fallback
 async function fetchHistoricalData(symbol: string): Promise<TrainingData[]> {
-  // Use Bybit for cryptocurrency pairs
-  if (symbol.includes('USD') || symbol.includes('BTC') || symbol.includes('ETH')) {
-    return await fetchBybitData(symbol);
+  // For crypto symbols, try Bybit first
+  if (['BTC', 'ETH', 'SOL', 'ADA', 'DOT'].some(crypto => symbol.includes(crypto))) {
+    const bybitData = await fetchBybitData(symbol)
+    if (bybitData.length > 0) {
+      return bybitData
+    }
   }
   
-  // Use enhanced mock data for stocks
-  return generateMockData(symbol);
+  // Fallback to mock data for stocks and failed crypto fetches
+  return generateMockData(symbol)
 }
 
-// ============= Serverless Function Handler =============
+serve(async (req) => {
+  const corsHeaders = {
+    'Access-Control-Allow-Origin': '*',
+    'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
+  }
 
-const corsHeaders = {
-  'Access-Control-Allow-Origin': '*',
-  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
-}
-
-serve(async (req: Request) => {
-  // Handle CORS preflight requests
   if (req.method === 'OPTIONS') {
-    return new Response(null, { headers: corsHeaders });
+    return new Response(null, { headers: corsHeaders })
   }
 
   try {
-    const supabase = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? ''
-    )
-
-    const { action, symbols } = await req.json()
-
+    const { action, symbols, userId, trainAssetSpecific = true } = await req.json()
+    
     if (action === 'train') {
-      const trainer = new PPOTrainer()
-      const allMetrics: { [symbol: string]: TrainingMetrics[] } = {}
+      console.log('🤖 Starting ASSET-SPECIFIC PPO training for specialized trading models...')
       
-      // Default symbols if none provided
-      const symbolsToTrain = symbols || [
-        // Major US Tech Stocks
-        'AAPL', 'GOOGL', 'MSFT', 'TSLA', 'NVDA', 'META', 'AMZN', 'NFLX',
-        // Other Major Stocks
-        'JPM', 'JNJ', 'PG', 'V', 'WMT', 'UNH', 'HD',
-        // ETFs
-        'SPY', 'QQQ', 'IWM', 'VTI',
-        // Major Cryptocurrencies
-        'BTCUSD', 'ETHUSD', 'SOLUSDT', 'ADAUSDT', 'DOTUSDT'
+      const trainingSymbols = symbols || [
+        // Major Stocks (10)
+        'AAPL', 'GOOGL', 'MSFT', 'NVDA', 'TSLA', 'META', 'NFLX', 'AMD', 'CRM', 'UBER',
+        // ETFs (4) 
+        'SPY', 'QQQ', 'VTI', 'GLD',
+        // Major Cryptocurrencies (5)
+        'BTC', 'ETH', 'SOL', 'ADA', 'DOT',
+        // Growth Stocks (5)
+        'ROKU', 'SHOP', 'SQ', 'PYPL', 'ZM'
       ]
+
+      console.log(`🎯 Training asset-specific PPO models on ${trainingSymbols.length} symbols:`, trainingSymbols)
       
-      console.log(`Starting PPO training on ${symbolsToTrain.length} symbols`)
+      // First train general foundational model
+      console.log('🏗️ Training foundational general model...')
+      const generalTrainer = new AssetSpecificPPOTrainer('GENERAL')
+      const generalResults = []
       
-      for (const symbol of symbolsToTrain) {
-        try {
-          const historicalData = await fetchHistoricalData(symbol)
-          const metrics = await trainer.trainOnSymbol(symbol, historicalData)
-          allMetrics[symbol] = metrics
+      for (const symbol of trainingSymbols.slice(0, 5)) { // Train on subset for general model
+        const data = await fetchHistoricalData(symbol)
+        const result = await generalTrainer.trainOnSymbol(symbol, data)
+        generalResults.push(result)
+      }
+      
+      const baseModel = generalTrainer.getModelWeights()
+      console.log('✅ Foundational model training complete')
+      
+      // Now train asset-specific models
+      const assetSpecificResults = new Map()
+      
+      if (trainAssetSpecific) {
+        console.log('🎯 Training asset-specific models...')
+        
+        for (const symbol of trainingSymbols) {
+          console.log(`📈 Training specialized model for ${symbol}...`)
           
-          // Store training results in database
-          const latestMetrics = metrics[metrics.length - 1]
-          await supabase.from('bot_adaptive_parameters').upsert({
-            user_id: '00000000-0000-0000-0000-000000000000', // System training
-            symbol,
-            confidence_threshold: 75.0,
-            confluence_threshold: 0.6,
-            total_trades: latestMetrics.totalTrades,
-            winning_trades: latestMetrics.profitableTrades,
-            success_rate: latestMetrics.winRate,
-            average_profit: latestMetrics.avgTradeReturn,
-            last_updated: new Date().toISOString()
+          const assetTrainer = new AssetSpecificPPOTrainer(symbol, baseModel)
+          const data = await fetchHistoricalData(symbol)
+          const result = await assetTrainer.trainOnSymbol(symbol, data)
+          
+          assetSpecificResults.set(symbol, {
+            model: assetTrainer.getModelWeights(),
+            performance: result
           })
-          
-        } catch (error) {
-          console.error(`Error training on ${symbol}:`, error)
         }
       }
       
-      // Calculate overall performance metrics
-      const allEpisodes = Object.values(allMetrics).flat()
+      const aggregatedMetrics = {
+        totalSymbols: trainingSymbols.length,
+        avgWinRate: Array.from(assetSpecificResults.values()).reduce((sum, r) => sum + r.performance.winRate, 0) / trainingSymbols.length,
+        avgReturn: Array.from(assetSpecificResults.values()).reduce((sum, r) => sum + r.performance.avgReturn, 0) / trainingSymbols.length,
+        totalTrades: Array.from(assetSpecificResults.values()).reduce((sum, r) => sum + r.performance.totalTrades, 0),
+        sharpeRatio: Array.from(assetSpecificResults.values()).reduce((sum, r) => sum + (r.performance.sharpeRatio || 0), 0) / trainingSymbols.length,
+        assetSpecificModels: assetSpecificResults.size
+      }
       
-      const overallMetrics = {
-        totalSymbols: symbolsToTrain.length,
-        totalTrades: allEpisodes.reduce((sum, m) => sum + m.totalTrades, 0),
-        averageWinRate: allEpisodes.reduce((sum, m) => sum + m.winRate, 0) / allEpisodes.length,
-        averageReward: allEpisodes.reduce((sum, m) => sum + m.totalReturn, 0) / allEpisodes.length,
-        averageTradeReturn: allEpisodes.reduce((sum, m) => sum + m.avgTradeReturn, 0) / allEpisodes.length,
-        modelWeights: trainer.getModelWeights(),
-        symbolMetrics: allMetrics
+      console.log('🎯 ASSET-SPECIFIC PPO TRAINING RESULTS:')
+      console.log(`📊 Symbols: ${aggregatedMetrics.totalSymbols}`)
+      console.log(`🎯 Win Rate: ${(aggregatedMetrics.avgWinRate * 100).toFixed(1)}%`)
+      console.log(`💰 Average Return: ${(aggregatedMetrics.avgReturn * 100).toFixed(2)}%`)
+      console.log(`📈 Total Trades: ${aggregatedMetrics.totalTrades}`)
+      console.log(`🤖 Asset-Specific Models: ${aggregatedMetrics.assetSpecificModels}`)
+      
+      // Store training metrics and models in database
+      if (userId) {
+        // Store general metrics
+        const { error: metricsError } = await supabase
+          .from('trading_metrics')
+          .upsert({
+            user_id: userId,
+            model_type: 'asset_specific_ppo',
+            metrics: aggregatedMetrics,
+            model_weights: baseModel, // Store foundational model
+            created_at: new Date().toISOString()
+          })
+        
+        if (metricsError) {
+          console.error('Error storing training metrics:', metricsError)
+        }
+        
+        // Store individual asset models
+        for (const [symbol, assetData] of assetSpecificResults.entries()) {
+          const { error: modelError } = await supabase
+            .from('asset_models')
+            .upsert({
+              user_id: userId,
+              symbol: symbol,
+              model_type: 'ppo_specialized',
+              model_weights: assetData.model,
+              performance_metrics: assetData.performance,
+              created_at: new Date().toISOString()
+            })
+          
+          if (modelError) {
+            console.error(`Error storing model for ${symbol}:`, modelError)
+          }
+        }
       }
       
       return new Response(JSON.stringify({
         success: true,
-        message: 'PPO model training completed',
-        metrics: overallMetrics
+        metrics: aggregatedMetrics,
+        baseModel: baseModel,
+        assetModels: Object.fromEntries(assetSpecificResults)
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
     }
     
     if (action === 'getMetrics') {
-      // Fetch latest training metrics from database
-      const { data: params } = await supabase
-        .from('bot_adaptive_parameters')
+      if (!userId) {
+        return new Response(JSON.stringify({ error: 'User ID required' }), {
+          status: 400,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        })
+      }
+      
+      const { data, error } = await supabase
+        .from('trading_metrics')
         .select('*')
-        .order('last_updated', { ascending: false })
-        .limit(100)
+        .eq('user_id', userId)
+        .eq('model_type', 'asset_specific_ppo')
+        .order('created_at', { ascending: false })
+        .limit(1)
+      
+      if (error) {
+        console.error('Error fetching metrics:', error)
+        return new Response(JSON.stringify({ error: error.message }), {
+          status: 500,
+          headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+        })
+      }
       
       return new Response(JSON.stringify({
         success: true,
-        metrics: params || []
+        metrics: data[0] || null
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       })
     }
-
-    return new Response(JSON.stringify({
-      success: false,
-      error: 'Invalid action'
-    }), {
+    
+    return new Response(JSON.stringify({ error: 'Invalid action' }), {
       status: 400,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
     })
-
+    
   } catch (error) {
-    console.error('PPO Training Error:', error)
-    return new Response(JSON.stringify({
-      success: false,
-      error: (error as Error).message || 'PPO training failed'
+    console.error('PPO training error:', error)
+    return new Response(JSON.stringify({ 
+      error: error instanceof Error ? error.message : 'Unknown error occurred' 
     }), {
       status: 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' }
