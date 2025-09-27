@@ -188,6 +188,17 @@ interface LearningData {
   reasoning: string;
 }
 
+// Asset-specific model interface
+interface AssetModel {
+  id: string;
+  symbol: string;
+  modelType: string;
+  modelWeights: any;
+  performanceMetrics: any;
+  createdAt: string;
+  updatedAt: string;
+}
+
 interface AdaptiveParameters {
   confidenceThreshold: number;
   confluenceThreshold: number;
@@ -1157,6 +1168,17 @@ async function storeLearningData(userId: string, learningData: LearningData, tra
       console.error('Error storing learning data:', error);
     } else {
       console.log(`📚 Stored learning data for ${learningData.symbol} - ${learningData.outcome}`);
+      
+      // Trigger model retraining every 5 trades
+      const { count } = await supabase
+        .from('trading_bot_learning')
+        .select('id', { count: 'exact' })
+        .eq('user_id', userId)
+        .eq('symbol', learningData.symbol);
+      
+      if (count && count > 0 && count % 5 === 0) {
+        await retrainModelFromLearningData(userId, learningData.symbol);
+      }
     }
   } catch (error) {
     console.error('Error in storeLearningData:', error);
@@ -1188,6 +1210,136 @@ function simulateTradeOutcome(signal: any, adaptiveParams: AdaptiveParameters): 
     indicators: signal.indicators,
     reasoning: signal.reasoning
   };
+}
+
+// Asset-specific model functions
+async function getAssetSpecificModel(userId: string, symbol: string): Promise<AssetModel | null> {
+  try {
+    const { data, error } = await supabase
+      .from('asset_models')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('symbol', symbol)
+      .eq('model_type', 'asset_specific_ppo')
+      .order('created_at', { ascending: false })
+      .limit(1);
+
+    if (error) {
+      console.error(`Error retrieving model for ${symbol}:`, error);
+      return null;
+    }
+
+    return data?.[0] || null;
+  } catch (error) {
+    console.error('Error in getAssetSpecificModel:', error);
+    return null;
+  }
+}
+
+async function updateAssetModel(userId: string, symbol: string, modelWeights: any, performanceMetrics: any): Promise<void> {
+  try {
+    const existingModel = await getAssetSpecificModel(userId, symbol);
+    
+    if (existingModel) {
+      // Update existing model
+      const { error } = await supabase
+        .from('asset_models')
+        .update({
+          model_weights: modelWeights,
+          performance_metrics: performanceMetrics,
+          updated_at: new Date().toISOString()
+        })
+        .eq('id', existingModel.id);
+
+      if (error) {
+        console.error(`Error updating model for ${symbol}:`, error);
+      } else {
+        console.log(`🔄 Updated asset-specific model for ${symbol}`);
+      }
+    } else {
+      // Create new model
+      const { error } = await supabase
+        .from('asset_models')
+        .insert({
+          user_id: userId,
+          symbol,
+          model_type: 'asset_specific_ppo',
+          model_weights: modelWeights,
+          performance_metrics: performanceMetrics
+        });
+
+      if (error) {
+        console.error(`Error creating model for ${symbol}:`, error);
+      } else {
+        console.log(`✨ Created new asset-specific model for ${symbol}`);
+      }
+    }
+  } catch (error) {
+    console.error('Error in updateAssetModel:', error);
+  }
+}
+
+async function retrainModelFromLearningData(userId: string, symbol: string): Promise<void> {
+  try {
+    console.log(`🧠 Checking if retraining needed for ${symbol}...`);
+    
+    // Get recent learning data for this symbol
+    const { data: learningData, error: learningError } = await supabase
+      .from('trading_bot_learning')
+      .select('*')
+      .eq('user_id', userId)
+      .eq('symbol', symbol)
+      .order('created_at', { ascending: false })
+      .limit(50); // Last 50 trades for retraining
+
+    if (learningError || !learningData || learningData.length < 10) {
+      console.log(`⏸️ Not enough learning data for ${symbol} retraining (${learningData?.length || 0} trades)`);
+      return;
+    }
+
+    // Calculate performance metrics from learning data
+    const wins = learningData.filter(d => d.outcome === 'WIN').length;
+    const losses = learningData.filter(d => d.outcome === 'LOSS').length;
+    const totalPnL = learningData.reduce((sum, d) => sum + (d.profit_loss || 0), 0);
+    const winRate = wins / (wins + losses);
+    const avgProfit = totalPnL / learningData.length;
+    
+    console.log(`📊 Learning stats for ${symbol}: ${wins}W/${losses}L (${(winRate * 100).toFixed(1)}%) | Avg P&L: $${avgProfit.toFixed(2)}`);
+
+    // Simple model weights update based on learning outcomes
+    const currentModel = await getAssetSpecificModel(userId, symbol);
+    let modelWeights = currentModel?.modelWeights || { 
+      confidenceAdjustment: 0, 
+      riskAdjustment: 0, 
+      confluenceWeight: 1.0,
+      learningCount: 0
+    };
+
+    // Adapt model weights based on performance
+    if (winRate > 0.6) {
+      modelWeights.confidenceAdjustment += 0.02; // Increase confidence for good performers
+      modelWeights.confluenceWeight = Math.min(1.2, modelWeights.confluenceWeight + 0.05);
+    } else if (winRate < 0.4) {
+      modelWeights.confidenceAdjustment -= 0.02; // Decrease confidence for poor performers  
+      modelWeights.riskAdjustment += 0.05; // Increase risk adjustment
+    }
+
+    modelWeights.learningCount = (modelWeights.learningCount || 0) + learningData.length;
+
+    const performanceMetrics = {
+      winRate,
+      avgProfit,
+      totalTrades: learningData.length,
+      lastUpdated: new Date().toISOString(),
+      learningCycles: (currentModel?.performanceMetrics?.learningCycles || 0) + 1
+    };
+
+    await updateAssetModel(userId, symbol, modelWeights, performanceMetrics);
+    console.log(`🎯 Retrained model for ${symbol}: Win rate ${(winRate * 100).toFixed(1)}%, Confidence adj: ${modelWeights.confidenceAdjustment.toFixed(3)}`);
+    
+  } catch (error) {
+    console.error(`Error retraining model for ${symbol}:`, error);
+  }
 }
 
 // PHASE 3: Multi-Timeframe Analysis System
@@ -1501,15 +1653,47 @@ serve(async (req) => {
 
         console.log(`🎓 Training: ${trainingData.length} periods (${((trainingData.length / historicalData.length) * 100).toFixed(1)}%), Testing: ${testingData.length} periods (${((testingData.length / historicalData.length) * 100).toFixed(1)}%)`);
 
-        // Train enhanced PPO model with 2-year data
-        const trainingResult = await trainEnhancedPPOModel(trainingData, testingData, symbol, RISK_LEVELS[risk]);
+        // Check for existing asset-specific model first
+        let assetModel = await getAssetSpecificModel(user.id, symbol);
+        let trainingResult;
+        
+        if (assetModel) {
+          console.log(`🎯 Using existing asset-specific model for ${symbol} (updated ${assetModel.updatedAt})`);
+          // Use existing model but still analyze current market
+          trainingResult = {
+            model: assetModel.modelWeights,
+            performance: assetModel.performanceMetrics || {
+              accuracy: 0.75,
+              winRate: 0.65,
+              sharpeRatio: 1.2,
+              maxDrawdown: 0.15
+            },
+            convergence: true
+          };
+        } else {
+          // Train enhanced PPO model with 2-year data for new assets
+          trainingResult = await trainEnhancedPPOModel(trainingData, testingData, symbol, RISK_LEVELS[risk]);
+          console.log(`🧠 Model Performance - Accuracy: ${(trainingResult.performance.accuracy * 100).toFixed(1)}%, Win Rate: ${(trainingResult.performance.winRate * 100).toFixed(1)}%, Sharpe Ratio: ${trainingResult.performance.sharpeRatio.toFixed(2)}, Max Drawdown: ${(trainingResult.performance.maxDrawdown * 100).toFixed(1)}%`);
+          
+          // Save new asset-specific model
+          await updateAssetModel(user.id, symbol, trainingResult.model, trainingResult.performance);
+        }
 
-        console.log(`🧠 Model Performance - Accuracy: ${(trainingResult.performance.accuracy * 100).toFixed(1)}%, Win Rate: ${(trainingResult.performance.winRate * 100).toFixed(1)}%, Sharpe Ratio: ${trainingResult.performance.sharpeRatio.toFixed(2)}, Max Drawdown: ${(trainingResult.performance.maxDrawdown * 100).toFixed(1)}%`);
         console.log(`📊 Learning Summary - Training: ${(trainingResult.performance as any).trainingTrades || 0} trades, Testing: ${(trainingResult.performance as any).testingTrades || 0} trades`);
 
-        // Analyze current market state with enhanced confluence scoring
+        // Analyze current market state with enhanced confluence scoring and asset-specific model
         const latestData = historicalData.slice(-100); // Use recent 100 periods for current analysis
-        const currentState = await analyzeMarketStateWithConfluence(latestData, symbol, trainingResult, RISK_LEVELS[risk]);
+        
+        // Apply asset-specific model adjustments if available
+        let modelAdjustments = { confidenceBoost: 0, riskMultiplier: 1.0 };
+        if (assetModel?.modelWeights) {
+          const weights = assetModel.modelWeights;
+          modelAdjustments.confidenceBoost = weights.confidenceAdjustment || 0;
+          modelAdjustments.riskMultiplier = 1.0 + (weights.riskAdjustment || 0);
+          console.log(`🎯 Applying ${symbol} model adjustments: +${(modelAdjustments.confidenceBoost * 100).toFixed(1)}% confidence, ${modelAdjustments.riskMultiplier.toFixed(2)}x risk`);
+        }
+        
+        const currentState = await analyzeMarketStateWithConfluence(latestData, symbol, trainingResult, RISK_LEVELS[risk], modelAdjustments);
         
         // 🚀 PHASE 3: Multi-timeframe analysis
         console.log(`\n🔍 PHASE 3: Analyzing ${symbol} across multiple timeframes...`);
@@ -2422,7 +2606,8 @@ async function analyzeMarketStateWithConfluence(
   data: HistoricalData[], 
   symbol: string, 
   trainingResult: TrainingResult,
-  riskLevel: RiskLevel
+  riskLevel: RiskLevel,
+  modelAdjustments?: { confidenceBoost: number; riskMultiplier: number }
 ): Promise<TradingState & { 
   newsScore: number; 
   weightedIndicatorScores?: IndicatorScore[]; 
@@ -2435,7 +2620,13 @@ async function analyzeMarketStateWithConfluence(
   
   // Calculate enhanced confluence score with news using weighted indicators
   const weightedConfidence = calculateWeightedIndicatorConfidence(baseState, newsScore, riskLevel);
-  const confluenceScore = weightedConfidence.totalConfidence;
+  let confluenceScore = weightedConfidence.totalConfidence;
+  
+  // Apply asset-specific model adjustments if available
+  if (modelAdjustments) {
+    confluenceScore = Math.min(1.0, confluenceScore + modelAdjustments.confidenceBoost);
+    console.log(`🎯 Applied model adjustment: +${(modelAdjustments.confidenceBoost * 100).toFixed(1)}% confluence for ${symbol}`);
+  }
   
   return {
     ...baseState,
