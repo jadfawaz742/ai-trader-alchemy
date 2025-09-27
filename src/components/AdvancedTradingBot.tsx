@@ -73,7 +73,7 @@ interface BotStats {
   backtestResults: any;
 }
 
-export const AdvancedTradingBot: React.FC = () => {
+const AdvancedTradingBot: React.FC = () => {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState("config");
 
