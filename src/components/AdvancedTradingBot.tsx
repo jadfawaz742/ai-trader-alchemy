@@ -252,9 +252,9 @@ export default function AdvancedTradingBot() {
         };
         setBotStats(newStats);
 
-        // Enhanced PPO Results Display
+        // Enhanced PPO Results Display with Trade Logs
         if (botConfig.backtestMode && data.backtestResults) {
-          console.log('🎯 PPO ENHANCED BACKTEST RESULTS:');
+          console.log('🎯 ASSET-SPECIFIC PPO BACKTEST RESULTS:');
           console.log('=====================================');
           console.log(`📊 Total Trades: ${data.backtestResults.totalTrades}`);
           console.log(`🎯 Win Rate: ${(data.backtestResults.winRate * 100).toFixed(1)}%`);
@@ -262,23 +262,53 @@ export default function AdvancedTradingBot() {
           console.log(`📈 Sharpe Ratio: ${data.backtestResults.sharpeRatio?.toFixed(2) || 'N/A'}`);
           console.log(`🧠 Average Confidence: ${(data.backtestResults.avgConfidence * 100).toFixed(1)}%`);
           
-          if (data.backtestResults.enhancedFeatures) {
-            console.log('🚀 PPO ENHANCEMENTS ACTIVE:');
+          // Display trade decision logs in chat
+          if (data.backtestResults.tradeDecisionLogs && data.backtestResults.tradeDecisionLogs.length > 0) {
+            console.log('\n📊 DETAILED TRADE DECISION ANALYSIS:');
+            console.log('=====================================');
+            data.backtestResults.tradeDecisionLogs.forEach((log: any, index: number) => {
+              console.log(`\n${index + 1}. ${log.symbol} - ${log.action} @ $${log.price.toFixed(2)}`);
+              console.log(`   🎯 Confidence: ${log.confidence.toFixed(1)}% | Result: ${log.result} | P&L: $${log.pnl?.toFixed(2) || 'N/A'}`);
+              console.log(`   🛡️ Stop Loss: $${log.stopLoss?.toFixed(2)} | Take Profit: $${log.takeProfit?.toFixed(2)}`);
+              console.log(`   📈 Indicators - RSI: ${log.indicators.rsi.toFixed(1)} | MACD: ${log.indicators.macd.toFixed(2)} | ATR: ${log.indicators.atr.toFixed(2)}`);
+              console.log(`   🧠 Decision: ${log.decisionReasoning}`);
+            });
+            
+            // Update trade logs state for UI display
+            setTradeDecisionLogs(data.backtestResults.tradeDecisionLogs);
+          }
+          
+          // Display trade decision logs in chat
+          if (data.backtestResults.tradeDecisionLogs && data.backtestResults.tradeDecisionLogs.length > 0) {
+            console.log('\n📊 DETAILED TRADE DECISION ANALYSIS:');
+            console.log('=====================================');
+            data.backtestResults.tradeDecisionLogs.forEach((log: any, index: number) => {
+              console.log(`\n${index + 1}. ${log.symbol} - ${log.action} @ $${log.price.toFixed(2)}`);
+              console.log(`   🎯 Confidence: ${log.confidence.toFixed(1)}% | Result: ${log.result} | P&L: $${log.pnl?.toFixed(2) || 'N/A'}`);
+              console.log(`   🛡️ Stop Loss: $${log.stopLoss?.toFixed(2)} | Take Profit: $${log.takeProfit?.toFixed(2)}`);
+              console.log(`   📈 Indicators - RSI: ${log.indicators.rsi.toFixed(1)} | MACD: ${log.indicators.macd.toFixed(2)} | ATR: ${log.indicators.atr.toFixed(2)}`);
+              console.log(`   🧠 Decision: ${log.decisionReasoning}`);
+            });
+            
+            // Update trade logs state for UI display
+            setTradeDecisionLogs(data.backtestResults.tradeDecisionLogs);
+          }
+            console.log('\n🚀 ASSET-SPECIFIC MODEL FEATURES:');
+            console.log(`  🤖 Asset-Specific Models: ${data.backtestResults.enhancedFeatures.assetSpecificModels ? 'ENABLED' : 'DISABLED'}`);
+            console.log(`  📋 Trade Decision Logging: ${data.backtestResults.enhancedFeatures.tradeDecisionLogging ? 'ENABLED' : 'DISABLED'}`);
             console.log(`  🎲 PPO Reward Function: ENABLED`);
             console.log(`  ⚖️ Weighted Indicator System: ENABLED`);
             console.log(`  🔍 Signal Filtering: ${data.backtestResults.enhancedFeatures.signalFiltering ? 'ACTIVE' : 'DISABLED'}`);
-            console.log(`  📊 Indicator Weights:`);
-            console.log(`    - EMA200: 15% | MACD: 20% | ATR: 10%`);
-            console.log(`    - OBV: 10% | Ichimoku: 20% | Bollinger: 15%`);
-            console.log(`    - News/Sentiment: 10%`);
+            console.log(`  📊 Multi-timeframe Analysis: ${data.backtestResults.enhancedFeatures.multiTimeframeAnalysis ? 'ACTIVE' : 'DISABLED'}`);
+            console.log(`  🛡️ ATR Trailing Stops: ${data.backtestResults.enhancedFeatures.atrTrailingStops ? 'ACTIVE' : 'DISABLED'}`);
           }
           
-          const enhancedMessage = data.backtestResults.enhancedFeatures ? 
-            `🚀 PPO ENHANCED Backtest Complete: ${data.backtestResults.totalTrades} trades over ${botConfig.backtestPeriod}` :
+          const enhancedMessage = data.backtestResults.enhancedFeatures?.assetSpecificModels ? 
+            `🤖 ASSET-SPECIFIC MODEL Backtest: ${data.backtestResults.totalTrades} trades over ${botConfig.backtestPeriod}` :
             `🔬 Backtest Complete: ${data.backtestResults.totalTrades} trades over ${botConfig.backtestPeriod}`;
             
           toast.success(enhancedMessage, {
-            description: `Win Rate: ${(data.backtestResults.winRate * 100).toFixed(1)}%, Return: ${(data.backtestResults.totalReturn * 100).toFixed(2)}%${data.backtestResults.enhancedFeatures ? ' (PPO + Weighted Indicators)' : ''}`
+            description: `Win Rate: ${(data.backtestResults.winRate * 100).toFixed(1)}%, Return: ${(data.backtestResults.totalReturn * 100).toFixed(2)}%${data.backtestResults.enhancedFeatures?.assetSpecificModels ? ' (Asset-Specific Models)' : ''}`
           });
         } else {
           console.log('🤖 PPO LIVE TRADING SIGNALS:');

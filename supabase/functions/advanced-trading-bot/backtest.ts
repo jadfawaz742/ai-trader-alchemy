@@ -1,10 +1,33 @@
-// Enhanced Backtesting with Phase 1-3 ROI Improvements
+// Trade Decision Log Interface
+interface TradeDecisionLog {
+  symbol: string;
+  timestamp: string;
+  action: 'BUY' | 'SELL' | 'HOLD';
+  price: number;
+  quantity: number;
+  confidence: number;
+  stopLoss?: number;
+  takeProfit?: number;
+  indicators: {
+    rsi: number;
+    macd: number;
+    ema: number;
+    atr: number;
+    sentiment: number;
+  };
+  decisionReasoning: string;
+  pnl?: number;
+  result?: 'WIN' | 'LOSS';
+}
+
+// Enhanced Backtesting with Phase 1-3 ROI Improvements + Trade Logging
 export async function runBacktestSimulation(
   symbols: string[],
   period: string,
   riskLevel: string,
   initialBalance: number,
-  userId?: string
+  userId?: string,
+  showLogs: boolean = true
 ) {
   console.log(`🔬 Starting ENHANCED backtest simulation with Phase 1-3 improvements for ${symbols.length} symbols over ${period}`);
   console.log(`🚀 Including: Dynamic position sizing, ATR trailing stops, multi-timeframe analysis, and market regime detection`);
@@ -36,6 +59,7 @@ export async function runBacktestSimulation(
   let totalConfidence = 0;
   let currentBalance = initialBalance;
   const trades = [];
+  const tradeDecisionLogs: TradeDecisionLog[] = [];
   const learningData = new Map(); // Track learning per symbol
 
   // 🚀 PHASE 1-3 ENHANCED SIMULATION

@@ -475,7 +475,10 @@ class PPOTrainer {
   getModelWeights() {
     return {
       actor: this.actor,
-      critic: this.critic
+      critic: this.critic,
+      assetType: this.assetType,
+      assetCharacteristics: this.assetCharacteristics,
+      trainingHistory: this.trainingHistory
     }
   }
 }
