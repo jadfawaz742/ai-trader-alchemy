@@ -25,7 +25,17 @@ export const MarketActivityFeed: React.FC<MarketActivityFeedProps> = ({ isActive
     if (!isActive) return;
 
     const generateActivity = () => {
-      const symbols = ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'TSLA', 'META', 'NVDA', 'AMD', 'NFLX', 'CRM'];
+      // Use the same expanded symbol list as PPO training
+      const symbols = [
+        // Major US Tech Stocks
+        'AAPL', 'GOOGL', 'MSFT', 'TSLA', 'NVDA', 'META', 'AMZN', 'NFLX',
+        // Other Major Stocks  
+        'JPM', 'JNJ', 'PG', 'V', 'WMT', 'UNH', 'HD',
+        // ETFs
+        'SPY', 'QQQ', 'IWM', 'VTI',
+        // Major Cryptocurrencies
+        'BTCUSD', 'ETHUSD', 'SOLUSDT', 'ADAUSDT', 'DOTUSDT'
+      ];
       const actions = ['BUY', 'SELL', 'ALERT'] as const;
       const reasons = [
         'Strong momentum detected',
@@ -40,8 +50,45 @@ export const MarketActivityFeed: React.FC<MarketActivityFeedProps> = ({ isActive
 
       const symbol = symbols[Math.floor(Math.random() * symbols.length)];
       const action = actions[Math.floor(Math.random() * actions.length)];
-      const basePrice = symbol === 'NVDA' ? 500 : symbol === 'GOOGL' ? 2800 : 150 + Math.random() * 200;
-      const change = (Math.random() - 0.5) * 5;
+      
+      // Enhanced price generation based on asset type
+      let basePrice;
+      if (symbol.includes('USD')) {
+        // Cryptocurrencies
+        basePrice = symbol === 'BTCUSD' ? 42000 + Math.random() * 8000 :
+                   symbol === 'ETHUSD' ? 2200 + Math.random() * 600 :
+                   symbol === 'SOLUSDT' ? 80 + Math.random() * 40 :
+                   symbol === 'ADAUSDT' ? 0.35 + Math.random() * 0.15 :
+                   0.25 + Math.random() * 0.15; // DOTUSDT
+      } else if (['SPY', 'QQQ', 'IWM', 'VTI'].includes(symbol)) {
+        // ETFs
+        basePrice = symbol === 'SPY' ? 420 + Math.random() * 60 :
+                   symbol === 'QQQ' ? 350 + Math.random() * 50 :
+                   symbol === 'IWM' ? 180 + Math.random() * 40 :
+                   220 + Math.random() * 40; // VTI
+      } else {
+        // Stocks - realistic price ranges
+        const stockPrices = {
+          'NVDA': 850 + Math.random() * 100,
+          'GOOGL': 135 + Math.random() * 20,
+          'TSLA': 240 + Math.random() * 40,
+          'AAPL': 170 + Math.random() * 20,
+          'MSFT': 330 + Math.random() * 30,
+          'META': 295 + Math.random() * 30,
+          'AMZN': 125 + Math.random() * 15,
+          'NFLX': 450 + Math.random() * 50,
+          'JPM': 140 + Math.random() * 20,
+          'JNJ': 160 + Math.random() * 15,
+          'PG': 150 + Math.random() * 10,
+          'V': 250 + Math.random() * 25,
+          'WMT': 155 + Math.random() * 10,
+          'UNH': 520 + Math.random() * 40,
+          'HD': 320 + Math.random() * 30
+        };
+        basePrice = stockPrices[symbol as keyof typeof stockPrices] || 150 + Math.random() * 200;
+      }
+      
+      const change = (Math.random() - 0.5) * (symbol.includes('USD') ? 8 : 5); // Higher volatility for crypto
       
       const newActivity: MarketActivity = {
         id: Math.random().toString(36).substr(2, 9),

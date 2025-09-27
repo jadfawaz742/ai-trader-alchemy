@@ -9,9 +9,9 @@ import { ArrowLeft, Search, TrendingUp, TrendingDown, Activity, DollarSign } fro
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
-// Stock data with real market info structure
+// Enhanced stock data with PPO training symbols included
 const STOCK_DATA = [
-  // Large Cap
+  // Large Cap - PPO Training Stocks
   { symbol: 'AAPL', name: 'Apple Inc.', sector: 'Technology', cap: 'Large', price: 175.43, change: 2.34, changePercent: 1.35, volume: 45234567 },
   { symbol: 'MSFT', name: 'Microsoft Corporation', sector: 'Technology', cap: 'Large', price: 334.89, change: -1.23, changePercent: -0.37, volume: 23456789 },
   { symbol: 'GOOGL', name: 'Alphabet Inc.', sector: 'Technology', cap: 'Large', price: 138.21, change: 3.45, changePercent: 2.56, volume: 34567890 },
@@ -21,7 +21,29 @@ const STOCK_DATA = [
   { symbol: 'META', name: 'Meta Platforms Inc.', sector: 'Social Media', cap: 'Large', price: 298.76, change: -4.56, changePercent: -1.51, volume: 23456789 },
   { symbol: 'NFLX', name: 'Netflix Inc.', sector: 'Entertainment', cap: 'Large', price: 456.78, change: 7.89, changePercent: 1.76, volume: 34567890 },
   
-  // Medium Cap
+  // Additional PPO Training Stocks - Major Financials & Healthcare
+  { symbol: 'JPM', name: 'JPMorgan Chase & Co.', sector: 'Financial', cap: 'Large', price: 148.52, change: 1.87, changePercent: 1.28, volume: 12345678 },
+  { symbol: 'JNJ', name: 'Johnson & Johnson', sector: 'Healthcare', cap: 'Large', price: 162.34, change: -0.45, changePercent: -0.28, volume: 8765432 },
+  { symbol: 'PG', name: 'Procter & Gamble Co.', sector: 'Consumer Goods', cap: 'Large', price: 155.67, change: 0.78, changePercent: 0.50, volume: 6543210 },
+  { symbol: 'V', name: 'Visa Inc.', sector: 'Financial', cap: 'Large', price: 258.91, change: 3.21, changePercent: 1.26, volume: 9876543 },
+  { symbol: 'WMT', name: 'Walmart Inc.', sector: 'Retail', cap: 'Large', price: 159.84, change: -1.12, changePercent: -0.70, volume: 11223344 },
+  { symbol: 'UNH', name: 'UnitedHealth Group', sector: 'Healthcare', cap: 'Large', price: 547.23, change: 4.67, changePercent: 0.86, volume: 3456789 },
+  { symbol: 'HD', name: 'The Home Depot Inc.', sector: 'Retail', cap: 'Large', price: 334.45, change: 2.89, changePercent: 0.87, volume: 7890123 },
+  
+  // ETFs - PPO Training Assets
+  { symbol: 'SPY', name: 'SPDR S&P 500 ETF Trust', sector: 'ETF', cap: 'Large', price: 445.67, change: 2.34, changePercent: 0.53, volume: 87654321 },
+  { symbol: 'QQQ', name: 'Invesco QQQ Trust', sector: 'ETF', cap: 'Large', price: 378.92, change: 1.87, changePercent: 0.50, volume: 56789012 },
+  { symbol: 'IWM', name: 'iShares Russell 2000 ETF', sector: 'ETF', cap: 'Medium', price: 194.56, change: -0.89, changePercent: -0.46, volume: 23456789 },
+  { symbol: 'VTI', name: 'Vanguard Total Stock Market ETF', sector: 'ETF', cap: 'Large', price: 243.78, change: 1.23, changePercent: 0.51, volume: 12345678 },
+  
+  // Cryptocurrencies - PPO Training Assets
+  { symbol: 'BTCUSD', name: 'Bitcoin', sector: 'Crypto', cap: 'Large', price: 43287.65, change: 1234.56, changePercent: 2.94, volume: 1234567890 },
+  { symbol: 'ETHUSD', name: 'Ethereum', sector: 'Crypto', cap: 'Large', price: 2456.78, change: -87.32, changePercent: -3.43, volume: 567890123 },
+  { symbol: 'SOLUSDT', name: 'Solana', sector: 'Crypto', cap: 'Medium', price: 98.45, change: 4.32, changePercent: 4.59, volume: 234567890 },
+  { symbol: 'ADAUSDT', name: 'Cardano', sector: 'Crypto', cap: 'Medium', price: 0.387, change: -0.023, changePercent: -5.61, volume: 789012345 },
+  { symbol: 'DOTUSDT', name: 'Polkadot', sector: 'Crypto', cap: 'Medium', price: 6.78, change: 0.34, changePercent: 5.28, volume: 345678901 },
+  
+  // Additional Medium Cap Stocks
   { symbol: 'SHOP', name: 'Shopify Inc.', sector: 'E-commerce', cap: 'Medium', price: 78.92, change: 1.23, changePercent: 1.58, volume: 4567890 },
   { symbol: 'TWLO', name: 'Twilio Inc.', sector: 'Technology', cap: 'Medium', price: 67.45, change: -0.98, changePercent: -1.43, volume: 5678901 },
   { symbol: 'ROKU', name: 'Roku Inc.', sector: 'Entertainment', cap: 'Medium', price: 89.34, change: 2.76, changePercent: 3.19, volume: 6789012 },
