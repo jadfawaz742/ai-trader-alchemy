@@ -1857,18 +1857,26 @@ serve(async (req) => {
             await storeLearningData(user.id, learningData, signal);
             console.log(`🎓 LEARNING: Simulated ${learningData.outcome} trade for ${symbol} (${learningData.profitLoss > 0 ? '+' : ''}$${learningData.profitLoss.toFixed(2)})`);
           } else if (mode === 'live') {
-            // Store initial trade data - outcome will be updated later when trade closes
-            const initialLearningData: LearningData = {
+            // For live trading, simulate immediate outcome for learning (since we execute trades instantly)
+            const simulatedOutcome = simulateTradeOutcome(signal, adaptiveParams);
+            
+            // Store complete learning data with simulated outcome for immediate learning
+            const liveLearningData: LearningData = {
               symbol,
-              outcome: 'NEUTRAL', // Will be updated when trade closes
+              outcome: simulatedOutcome.outcome,
               confidenceLevel: signal.confidence,
               confluenceScore: signal.confluenceScore,
-              profitLoss: 0, // Will be updated when trade closes
+              profitLoss: simulatedOutcome.profitLoss,
               riskLevel: risk,
               indicators: signal.indicators,
               reasoning: signal.reasoning
             };
-            await storeLearningData(user.id, initialLearningData, signal);
+            
+            // Update adaptive parameters and store learning data for immediate model learning
+            await updateAdaptiveParameters(user.id, symbol, liveLearningData);
+            await storeLearningData(user.id, liveLearningData, signal);
+            
+            console.log(`🎓 LIVE LEARNING: ${liveLearningData.outcome} trade for ${symbol} (${liveLearningData.profitLoss > 0 ? '+' : ''}$${liveLearningData.profitLoss.toFixed(2)}) - Model learning active`);
           }
         } else {
           const adaptiveConfThreshold = Math.min(adaptiveParams.confidenceThreshold, 80); // UPDATED to use new 80% cap
