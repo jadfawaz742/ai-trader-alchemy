@@ -69,7 +69,7 @@ export async function runBacktestSimulation(
       
       // PHASE 1: Enhanced adaptive parameters with improved thresholds
       let adaptiveParams = {
-        confidenceThreshold: 70.0, // PHASE 1: Lowered from 75 
+        confidenceThreshold: 45.0, // 🚀 ULTRA-AGGRESSIVE: Reduced from 70 to 45% 
         confluenceThreshold: 0.55,  // PHASE 1: Lowered from 0.6
         stopLossMultiplier: 1.0,
         takeProfitMultiplier: 1.0,
@@ -229,12 +229,12 @@ export async function runBacktestSimulation(
           
           // Lower threshold if consistently winning
           if (adaptiveParams.winningTrades / adaptiveParams.totalTrades > 0.7) {
-            adaptiveParams.confidenceThreshold = Math.max(65, adaptiveParams.confidenceThreshold - 0.5);
+            adaptiveParams.confidenceThreshold = Math.max(30, adaptiveParams.confidenceThreshold - 0.5); // 🚀 Floor at 30%
           }
         } else {
           // Raise threshold if losing
           if (adaptiveParams.winningTrades / adaptiveParams.totalTrades < 0.4) {
-            adaptiveParams.confidenceThreshold = Math.min(80, adaptiveParams.confidenceThreshold + 1);
+            adaptiveParams.confidenceThreshold = Math.min(65, adaptiveParams.confidenceThreshold + 1); // 🚀 Cap at 65%
           }
         }
         

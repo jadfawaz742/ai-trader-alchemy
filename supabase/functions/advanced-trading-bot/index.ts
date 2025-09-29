@@ -232,22 +232,28 @@ function calculatePPOReward(
   // Position size component (reward scales with position size)
   const positionSize = tradeResult.quantity * tradeResult.price / portfolioBalance;
   
-  // Confluence bonus: encourage high-probability setups
-  const confluenceBonus = confluenceScore > 0.75 ? 0.2 * confluenceScore : 
-                         confluenceScore > 0.6 ? 0.1 * confluenceScore : 0;
+  // 🚀 AGGRESSIVE CONFLUENCE BONUS: Heavily reward high-confidence trades
+  const confluenceBonus = confluenceScore > 0.85 ? 0.8 * confluenceScore : 
+                         confluenceScore > 0.75 ? 0.6 * confluenceScore :
+                         confluenceScore > 0.65 ? 0.4 * confluenceScore :
+                         confluenceScore > 0.55 ? 0.2 * confluenceScore : 0;
   
-  // Stop loss penalty: discourage unnecessary losses
+  // 💪 REDUCED STOP LOSS PENALTY: More risk tolerance for higher returns
   const stopLossPenalty = tradeResult.outcome === 'LOSS' ? 
-                         Math.abs(plPercent) * 0.5 : 0;
+                         Math.abs(plPercent) * 0.2 : 0;
   
-  // Risk penalty: enforce user risk constraints
-  const maxRiskPerTrade = 0.02; // 2% max risk per trade
+  // 💰 RETURN MULTIPLIER: Exponentially reward profitable trades
+  const returnMultiplier = tradeResult.profit > 0 ? 
+                          Math.pow(Math.abs(plPercent) * 100, 1.3) : 1;
+  
+  // 🎯 RELAXED RISK PENALTY: Allow more aggressive position sizing
+  const maxRiskPerTrade = 0.05; // Increased to 5% for asset-specific models
   const actualRisk = Math.abs(plPercent);
   const riskPenalty = actualRisk > maxRiskPerTrade ? 
-                     (actualRisk - maxRiskPerTrade) * 2 : 0;
+                     (actualRisk - maxRiskPerTrade) * 1 : 0;
   
-  // Calculate total reward
-  const totalReward = (plPercent * positionSize) + confluenceBonus - stopLossPenalty - riskPenalty;
+  // 🏆 AGGRESSIVE TOTAL REWARD: Prioritize high returns
+  const totalReward = (plPercent * positionSize * returnMultiplier * 3) + confluenceBonus - stopLossPenalty - riskPenalty;
   
   console.log(`🎯 PPO Reward Breakdown:
     P/L%: ${(plPercent * 100).toFixed(2)}%
@@ -1046,7 +1052,7 @@ async function getAdaptiveParameters(userId: string, symbol: string): Promise<Ad
     }
 
     return data || {
-      confidenceThreshold: 75.0,
+      confidenceThreshold: 50.0, // 🚀 ULTRA-AGGRESSIVE: Start at 50% instead of 75%
       confluenceThreshold: 0.6,
       stopLossMultiplier: 1.0,
       takeProfitMultiplier: 1.0,
@@ -1058,7 +1064,7 @@ async function getAdaptiveParameters(userId: string, symbol: string): Promise<Ad
   } catch (error) {
     console.error('Error in getAdaptiveParameters:', error);
     return {
-      confidenceThreshold: 75.0,
+      confidenceThreshold: 45.0, // 🚀 ULTRA-AGGRESSIVE: Start at 45% for high risk
       confluenceThreshold: 0.6,
       stopLossMultiplier: 1.0,
       takeProfitMultiplier: 1.0,
@@ -1091,13 +1097,13 @@ async function updateAdaptiveParameters(userId: string, symbol: string, learning
     
     if (learningData.outcome === 'LOSS') {
       // GENTLE threshold increases after losses to maintain trading volume
-      newConfidenceThreshold = Math.min(70, current.confidenceThreshold + 0.5); // REDUCED CAP to 70% and smaller increase
+      newConfidenceThreshold = Math.min(60, current.confidenceThreshold + 0.5); // 🚀 REDUCED CAP to 60% (was 70%)
       newConfluenceThreshold = Math.min(0.60, current.confluenceThreshold + 0.01); // REDUCED CAP to 60% and smaller increase  
       newStopLossMultiplier = Math.max(0.5, current.stopLossMultiplier - 0.05); // Floor at 0.5
       console.log(`📉 GENTLE adjustment after loss - Confidence: ${newConfidenceThreshold.toFixed(1)}% (capped at 70%), Confluence: ${(newConfluenceThreshold * 100).toFixed(1)}% (capped at 60%)`);
     } else if (learningData.outcome === 'WIN' && newSuccessRate > 0.6) { // REDUCED from 0.7 to 0.6
       // More aggressive threshold relaxation after wins for higher ROI
-      newConfidenceThreshold = Math.max(55, current.confidenceThreshold - 1.0); // REDUCED floor to 55% and bigger decrease
+      newConfidenceThreshold = Math.max(35, current.confidenceThreshold - 1.0); // 🚀 REDUCED floor to 35% (was 55%)
       newConfluenceThreshold = Math.max(0.35, current.confluenceThreshold - 0.02); // REDUCED floor to 35% and bigger decrease
       newTakeProfitMultiplier = Math.min(2.0, current.takeProfitMultiplier + 0.02); // Cap at 2.0
       console.log(`📈 AGGRESSIVE optimization after wins - Success Rate: ${(newSuccessRate * 100).toFixed(1)}% → More opportunities!`);
@@ -1765,7 +1771,7 @@ serve(async (req) => {
         
         if (tradingDecision.type !== 'HOLD' && 
             currentState.confluenceScore >= Math.min(adaptiveParams.confluenceThreshold, RISK_LEVELS[risk].minConfluence * 1.1) &&
-            tradingDecision.confidence > Math.min(adaptiveParams.confidenceThreshold, 60)) { // DRAMATICALLY REDUCED from 80% to 60%
+            tradingDecision.confidence > Math.min(adaptiveParams.confidenceThreshold, 45)) { // 🚀 ULTRA-AGGRESSIVE: Reduced from 60% to 45%
           
           console.log(`✅ Signal passed filters - Confidence: ${tradingDecision.confidence.toFixed(1)}% (threshold: ${Math.min(adaptiveParams.confidenceThreshold, 80).toFixed(1)}%), Confluence: ${(currentState.confluenceScore * 100).toFixed(1)}% (threshold: ${(Math.min(adaptiveParams.confluenceThreshold, RISK_LEVELS[risk].minConfluence * 1.2) * 100).toFixed(1)}%)`);
           
@@ -1883,7 +1889,7 @@ serve(async (req) => {
             console.log(`🎓 LIVE LEARNING: ${liveLearningData.outcome} trade for ${symbol} (${liveLearningData.profitLoss > 0 ? '+' : ''}$${liveLearningData.profitLoss.toFixed(2)}) - Model learning active`);
           }
         } else {
-          const adaptiveConfThreshold = Math.min(adaptiveParams.confidenceThreshold, 55); // MASSIVELY REDUCED from 68% to 55%
+          const adaptiveConfThreshold = Math.min(adaptiveParams.confidenceThreshold, 40); // 🚀 ULTRA-AGGRESSIVE: Reduced from 55% to 40%
           const adaptiveConfluenceThreshold = Math.min(adaptiveParams.confluenceThreshold, RISK_LEVELS[risk].minConfluence * 1.0); // REMOVED multiplier
           
           const reason = tradingDecision.type === 'HOLD' ? 'Neutral conditions' : 
@@ -3865,15 +3871,16 @@ async function calculatePPOAction(stateVector: number[], state: TradingState, en
     }
   }
   
-  // Calculate confidence and determine action
+  // 🚀 ASSET-SPECIFIC AGGRESSIVE SCORING: Lower thresholds for more trades
   const totalScore = bullishScore + bearishScore;
   const scoreDiff = Math.abs(bullishScore - bearishScore);
-  const confidence = totalScore > 0 ? Math.min(95, (scoreDiff / totalScore) * 100 + 20) : 50;
+  const confidence = totalScore > 0 ? Math.min(98, (scoreDiff / totalScore) * 100 + 30) : 50;
   
   let action = 'HOLD';
-  if (bullishScore > bearishScore && scoreDiff > 15) {
+  // 💪 REDUCED ACTION THRESHOLD: From 15 to 8 for more aggressive trading
+  if (bullishScore > bearishScore && scoreDiff > 8) {
     action = 'BUY';
-  } else if (bearishScore > bullishScore && scoreDiff > 15 && enableShorts) {
+  } else if (bearishScore > bullishScore && scoreDiff > 8 && enableShorts) {
     action = 'SELL';
   }
   
@@ -3884,20 +3891,21 @@ async function calculatePPOAction(stateVector: number[], state: TradingState, en
   };
 }
 
-// AI-optimized risk parameters calculation
+  // 🎯 AGGRESSIVE ASSET-SPECIFIC RISK PARAMETERS
 async function calculateAIRiskParameters(state: TradingState, decision: TradingAction, symbol: string) {
   const currentPrice = state.price;
   const atr = state.indicators.atr;
   
-  // Fallback calculation if AI is not available
+  // 🚀 OPTIMIZED STOP LOSS & TAKE PROFIT for higher returns
   let stopLoss, takeProfit;
   
   if (decision.type === 'BUY') {
-    stopLoss = currentPrice - (atr * 2);
-    takeProfit = currentPrice + (atr * 3);
+    // Tighter stops, bigger targets for asset-specific models
+    stopLoss = currentPrice - (atr * 1.5);  // Tighter stop: 1.5 ATR instead of 2
+    takeProfit = currentPrice + (atr * 4.5); // Bigger target: 4.5 ATR instead of 3 
   } else if (decision.type === 'SELL') {
-    stopLoss = currentPrice + (atr * 2);
-    takeProfit = currentPrice - (atr * 3);
+    stopLoss = currentPrice + (atr * 1.5);  // Tighter stop: 1.5 ATR instead of 2
+    takeProfit = currentPrice - (atr * 4.5); // Bigger target: 4.5 ATR instead of 3
   } else {
     return { stopLoss: currentPrice, takeProfit: currentPrice, riskReward: 0 };
   }
@@ -4564,14 +4572,22 @@ function calculateOptimalPositionSize(
   atr: number,
   currentPrice: number
 ): number {
-  const riskAmount = portfolioBalance * riskPerTrade;
-  const stopLossDistance = atr * 2; // 2 ATR stop loss
+  // 🚀 AGGRESSIVE RISK ALLOCATION: Increase base risk for asset-specific models
+  const enhancedRiskPerTrade = riskPerTrade * 2.5; // 2.5x more aggressive
+  const riskAmount = portfolioBalance * enhancedRiskPerTrade;
+  const stopLossDistance = atr * 1.5; // Tighter stops for more position size
   const dollarRisk = stopLossDistance;
   
   if (dollarRisk === 0) return 1;
   
   const baseQuantity = riskAmount / dollarRisk;
-  const confidenceMultiplier = Math.pow(confidence, 2); // Square confidence for position sizing
+  
+  // 💎 EXPONENTIAL CONFIDENCE SCALING: Massive position sizing for high confidence
+  const confidenceMultiplier = confidence > 0.9 ? Math.pow(confidence, 3) * 2.5 :
+                               confidence > 0.8 ? Math.pow(confidence, 2.5) * 2 :
+                               confidence > 0.7 ? Math.pow(confidence, 2) * 1.5 :
+                               Math.pow(confidence, 1.5);
+  
   const quantity = Math.floor(baseQuantity * confidenceMultiplier);
   
   return Math.max(1, quantity); // Minimum 1 share/unit
