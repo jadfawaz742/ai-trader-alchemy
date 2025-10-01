@@ -70,6 +70,33 @@ export const TradeDecisionLogs: React.FC<TradeDecisionLogsProps> = ({
     );
   }
 
+  // Calculate performance metrics
+  const calculatePerformanceMetrics = () => {
+    const completedTrades = logs.filter(log => log.pnl !== undefined && log.result);
+    const totalPnL = completedTrades.reduce((sum, log) => sum + (log.pnl || 0), 0);
+    const winningTrades = completedTrades.filter(log => log.result === 'WIN').length;
+    const winRate = completedTrades.length > 0 ? (winningTrades / completedTrades.length) * 100 : 0;
+    
+    // Calculate total capital deployed
+    const totalCapitalUsed = logs.reduce((sum, log) => sum + (log.price * log.quantity), 0);
+    const dailyROI = totalCapitalUsed > 0 ? (totalPnL / totalCapitalUsed) * 100 : 0;
+    
+    // Group by asset
+    const assetBreakdown = logs.reduce((acc, log) => {
+      if (!acc[log.symbol]) {
+        acc[log.symbol] = { capital: 0, pnl: 0, trades: 0 };
+      }
+      acc[log.symbol].capital += log.price * log.quantity;
+      acc[log.symbol].pnl += log.pnl || 0;
+      acc[log.symbol].trades += 1;
+      return acc;
+    }, {} as Record<string, { capital: number; pnl: number; trades: number }>);
+
+    return { totalPnL, winRate, completedTrades: completedTrades.length, dailyROI, totalCapitalUsed, assetBreakdown };
+  };
+
+  const metrics = calculatePerformanceMetrics();
+
   const formatCurrency = (value: number) => {
     return new Intl.NumberFormat('en-US', {
       style: 'currency',
@@ -111,6 +138,28 @@ export const TradeDecisionLogs: React.FC<TradeDecisionLogsProps> = ({
     return null;
   };
 
+  const explainRiskManagement = (log: TradeDecisionLog) => {
+    if (!log.stopLoss && !log.takeProfit) return null;
+    
+    const stopLossPercent = log.stopLoss ? Math.abs(((log.stopLoss - log.price) / log.price) * 100) : 0;
+    const takeProfitPercent = log.takeProfit ? Math.abs(((log.takeProfit - log.price) / log.price) * 100) : 0;
+    const riskReward = takeProfitPercent > 0 && stopLossPercent > 0 ? (takeProfitPercent / stopLossPercent).toFixed(2) : 'N/A';
+    
+    return (
+      <div className="text-xs text-muted-foreground space-y-1 mt-2">
+        {log.stopLoss && (
+          <div>• Stop Loss set {stopLossPercent.toFixed(2)}% from entry {log.indicators.atr ? `(~${(stopLossPercent / (log.indicators.atr / log.price * 100)).toFixed(1)}x ATR)` : ''}</div>
+        )}
+        {log.takeProfit && (
+          <div>• Take Profit set {takeProfitPercent.toFixed(2)}% from entry (Risk:Reward = 1:{riskReward})</div>
+        )}
+        {log.confidence && (
+          <div>• Levels adjusted for {log.confidence.toFixed(0)}% confidence score</div>
+        )}
+      </div>
+    );
+  };
+
   return (
     <Card>
       <CardHeader>
@@ -121,6 +170,51 @@ export const TradeDecisionLogs: React.FC<TradeDecisionLogsProps> = ({
         <CardDescription>
           Detailed analysis of trading decisions with indicators and reasoning
         </CardDescription>
+        
+        {/* Performance Summary */}
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4 pt-4 border-t">
+          <div>
+            <div className="text-sm text-muted-foreground">Daily ROI</div>
+            <div className={`text-2xl font-bold ${metrics.dailyROI >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              {metrics.dailyROI.toFixed(2)}%
+            </div>
+          </div>
+          <div>
+            <div className="text-sm text-muted-foreground">Total P&L</div>
+            <div className={`text-2xl font-bold ${metrics.totalPnL >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              {formatCurrency(metrics.totalPnL)}
+            </div>
+          </div>
+          <div>
+            <div className="text-sm text-muted-foreground">Win Rate</div>
+            <div className="text-2xl font-bold">{metrics.winRate.toFixed(1)}%</div>
+            <div className="text-xs text-muted-foreground">{metrics.completedTrades} completed</div>
+          </div>
+          <div>
+            <div className="text-sm text-muted-foreground">Capital Used</div>
+            <div className="text-2xl font-bold">{formatCurrency(metrics.totalCapitalUsed)}</div>
+          </div>
+        </div>
+
+        {/* Asset Breakdown */}
+        {Object.keys(metrics.assetBreakdown).length > 0 && (
+          <div className="mt-4 pt-4 border-t">
+            <div className="text-sm font-medium mb-2">Capital by Asset</div>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
+              {Object.entries(metrics.assetBreakdown).map(([symbol, data]) => (
+                <div key={symbol} className="bg-muted/50 p-2 rounded">
+                  <div className="font-mono text-sm font-medium">{symbol}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {formatCurrency(data.capital)} • {data.trades} trades
+                  </div>
+                  <div className={`text-xs font-medium ${data.pnl >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {formatCurrency(data.pnl)}
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+        )}
       </CardHeader>
       <CardContent>
         <ScrollArea className="h-[600px] pr-4">
@@ -164,6 +258,11 @@ export const TradeDecisionLogs: React.FC<TradeDecisionLogsProps> = ({
                     <div className="font-medium">{log.quantity}</div>
                   </div>
                   <div>
+                    <div className="text-sm text-muted-foreground">Position Size</div>
+                    <div className="font-bold text-blue-600">{formatCurrency(log.price * log.quantity)}</div>
+                    <div className="text-xs text-muted-foreground">{formatCurrency(log.price)} × {log.quantity}</div>
+                  </div>
+                  <div>
                     <div className="text-sm text-muted-foreground">Confidence</div>
                     <div className="font-medium">{log.confidence.toFixed(1)}%</div>
                   </div>
@@ -173,35 +272,39 @@ export const TradeDecisionLogs: React.FC<TradeDecisionLogsProps> = ({
                       <div className={`font-medium ${log.pnl >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                         {formatCurrency(log.pnl)}
                       </div>
-                      {log.exitPrice && (
-                        <div className="text-xs text-muted-foreground mt-1">
-                          {log.action === 'BUY' 
-                            ? `(${formatCurrency(log.exitPrice)} - ${formatCurrency(log.price)}) × ${log.quantity}`
-                            : `(${formatCurrency(log.price)} - ${formatCurrency(log.exitPrice)}) × ${log.quantity}`
-                          }
-                        </div>
-                      )}
+                      <div className="text-xs text-muted-foreground mt-1">
+                        {((log.pnl / (log.price * log.quantity)) * 100).toFixed(2)}% ROI
+                      </div>
                     </div>
                   )}
                 </div>
 
                 {/* Risk Management */}
                 {(log.stopLoss || log.takeProfit) && (
-                  <div className="flex items-center gap-4 mb-3 text-sm">
-                    {log.stopLoss && (
-                      <div className="flex items-center gap-1">
-                        <Shield className="h-4 w-4 text-red-500" />
-                        <span className="text-muted-foreground">Stop Loss:</span>
-                        <span className="font-medium">{formatCurrency(log.stopLoss)}</span>
-                      </div>
-                    )}
-                    {log.takeProfit && (
-                      <div className="flex items-center gap-1">
-                        <Target className="h-4 w-4 text-green-500" />
-                        <span className="text-muted-foreground">Take Profit:</span>
-                        <span className="font-medium">{formatCurrency(log.takeProfit)}</span>
-                      </div>
-                    )}
+                  <div className="bg-muted/30 p-3 rounded-lg mb-3">
+                    <div className="flex items-center gap-4 text-sm mb-1">
+                      {log.stopLoss && (
+                        <div className="flex items-center gap-1">
+                          <Shield className="h-4 w-4 text-red-500" />
+                          <span className="text-muted-foreground">Stop Loss:</span>
+                          <span className="font-medium">{formatCurrency(log.stopLoss)}</span>
+                          <span className="text-xs text-red-600">
+                            (-{Math.abs(((log.stopLoss - log.price) / log.price) * 100).toFixed(2)}%)
+                          </span>
+                        </div>
+                      )}
+                      {log.takeProfit && (
+                        <div className="flex items-center gap-1">
+                          <Target className="h-4 w-4 text-green-500" />
+                          <span className="text-muted-foreground">Take Profit:</span>
+                          <span className="font-medium">{formatCurrency(log.takeProfit)}</span>
+                          <span className="text-xs text-green-600">
+                            (+{Math.abs(((log.takeProfit - log.price) / log.price) * 100).toFixed(2)}%)
+                          </span>
+                        </div>
+                      )}
+                    </div>
+                    {explainRiskManagement(log)}
                   </div>
                 )}
 
