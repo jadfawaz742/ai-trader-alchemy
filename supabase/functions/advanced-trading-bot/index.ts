@@ -1624,7 +1624,9 @@ serve(async (req) => {
         risk, 
         portfolioBalance,
         supabase,
-        userId
+        userId,
+        true, // showLogs
+        true  // saveTradesForLearning - ENABLE LEARNING FROM BACKTESTS
       );
       
       return new Response(JSON.stringify({
