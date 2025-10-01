@@ -1615,8 +1615,8 @@ serve(async (req) => {
     if (backtestMode) {
       console.log(`🔬 BACKTESTING MODE: Testing AI performance over ${backtestPeriod} period`);
       
-      // Run backtesting simulation
-      const backtestResults = await runBacktestSimulation(symbols.slice(0, 15), backtestPeriod, risk, portfolioBalance);
+      // Run backtesting simulation on ALL symbols (remove slice limit)
+      const backtestResults = await runBacktestSimulation(symbols, backtestPeriod, risk, portfolioBalance);
       
       return new Response(JSON.stringify({
         success: true,
@@ -1748,21 +1748,22 @@ serve(async (req) => {
         const timeframeAgreement = multiTimeframeAnalysis.overallSignal;
         const regimeRecommendation = marketRegime.recommendation;
         
-        // RELAXED TIMEFRAME FILTER: Accept trades with weaker alignment for more opportunities
+        // ULTRA-RELAXED TIMEFRAME FILTER: Accept trades with minimal timeframe support
         if (timeframeAgreement !== 'HOLD' && timeframeAgreement === tradingDecision.type) {
           console.log(`✅ TIMEFRAME ALIGNMENT: ${timeframeAgreement} signal confirmed across multiple timeframes`);
-        } else if (multiTimeframeAnalysis.alignedTimeframes >= 2) {
-          // ACCEPT trades with 2+ timeframes aligned even if not perfectly matching
-          console.log(`⚡ RELAXED TIMEFRAME: ${multiTimeframeAnalysis.alignedTimeframes}/4 timeframes support trade - PROCEEDING`);
-        } else if (tradingDecision.confidence >= 80) {
-          // ACCEPT high confidence trades even with poor timeframe alignment
+        } else if (multiTimeframeAnalysis.alignedTimeframes >= 1) {
+          // ACCEPT trades with even 1 timeframe aligned for maximum opportunities
+          console.log(`⚡ ULTRA-RELAXED TIMEFRAME: ${multiTimeframeAnalysis.alignedTimeframes}/4 timeframes support trade - PROCEEDING`);
+        } else if (tradingDecision.confidence >= 70) {
+          // ACCEPT high confidence trades regardless of timeframe alignment
           console.log(`💎 HIGH CONFIDENCE OVERRIDE: ${tradingDecision.confidence.toFixed(1)}% confidence overrides timeframe conflict`);
         } else {
-          console.log(`❌ TIMEFRAME CONFLICT: Multi-timeframe says ${timeframeAgreement} but PPO says ${tradingDecision.type} - Setting to HOLD`);
+          // Only reject if confidence is low AND no timeframe support
+          console.log(`❌ LOW CONFIDENCE + NO TIMEFRAME SUPPORT: Setting to HOLD (${tradingDecision.confidence.toFixed(1)}% conf, ${multiTimeframeAnalysis.alignedTimeframes}/4 TF)`);
           tradingDecision = {
             type: 'HOLD',
             confidence: 50,
-            reasoning: `Timeframe conflict: Multi-timeframe analysis (${timeframeAgreement}) conflicts with PPO decision (${tradingDecision.type})`,
+            reasoning: `Low confidence (${tradingDecision.confidence.toFixed(1)}%) with poor timeframe support (${multiTimeframeAnalysis.alignedTimeframes}/4)`,
             quantity: 0,
             stopLoss: 0,
             takeProfit: 0,
@@ -1771,8 +1772,8 @@ serve(async (req) => {
         }
         
         if (tradingDecision.type !== 'HOLD' && 
-            currentState.confluenceScore >= Math.min(adaptiveParams.confluenceThreshold, RISK_LEVELS[risk].minConfluence * 1.1) &&
-            tradingDecision.confidence > Math.min(adaptiveParams.confidenceThreshold, 45)) { // 🚀 ULTRA-AGGRESSIVE: Reduced from 60% to 45%
+            currentState.confluenceScore >= Math.min(adaptiveParams.confluenceThreshold, RISK_LEVELS[risk].minConfluence * 0.7) &&
+            tradingDecision.confidence > Math.min(adaptiveParams.confidenceThreshold, 35)) { // 🚀 ULTRA-AGGRESSIVE: Reduced from 45% to 35%
           
           console.log(`✅ Signal passed filters - Confidence: ${tradingDecision.confidence.toFixed(1)}% (threshold: ${Math.min(adaptiveParams.confidenceThreshold, 80).toFixed(1)}%), Confluence: ${(currentState.confluenceScore * 100).toFixed(1)}% (threshold: ${(Math.min(adaptiveParams.confluenceThreshold, RISK_LEVELS[risk].minConfluence * 1.2) * 100).toFixed(1)}%)`);
           

@@ -25,35 +25,58 @@ async function fetchRealHistoricalData(symbol: string, period: string): Promise<
   try {
     console.log(`📡 Fetching real historical data for ${symbol}...`);
     
-    // Map period to Yahoo Finance range
+    // Map period to Yahoo Finance range - INCREASE data periods for better backtesting
     const rangeMap: Record<string, string> = {
-      '1week': '5d',
-      '2weeks': '1mo',
-      '1month': '1mo',
-      '3months': '3mo'
+      '1week': '1mo',  // Get 1 month instead of 5 days
+      '2weeks': '2mo', // Get 2 months instead of 1
+      '1month': '3mo', // Get 3 months instead of 1
+      '3months': '6mo' // Get 6 months instead of 3
     };
     
-    const range = rangeMap[period] || '1mo';
+    const range = rangeMap[period] || '3mo';
     const interval = '1d'; // Daily data
     
-    // Fetch from Yahoo Finance
-    const response = await fetch(
-      `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?range=${range}&interval=${interval}`,
-      {
-        headers: {
-          'User-Agent': 'Mozilla/5.0'
-        }
-      }
-    );
+    // Fetch from Yahoo Finance with retry logic
+    let attempts = 0;
+    let data;
     
-    if (!response.ok) {
-      throw new Error(`Yahoo Finance API error: ${response.status}`);
+    while (attempts < 2) {
+      try {
+        const response = await fetch(
+          `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?range=${range}&interval=${interval}`,
+          {
+            headers: {
+              'User-Agent': 'Mozilla/5.0'
+            }
+          }
+        );
+        
+        if (!response.ok) {
+          if (attempts === 0) {
+            console.log(`⚠️ First attempt failed for ${symbol}, retrying...`);
+            attempts++;
+            await new Promise(resolve => setTimeout(resolve, 1000));
+            continue;
+          }
+          throw new Error(`Yahoo Finance API error: ${response.status}`);
+        }
+        
+        data = await response.json();
+        break;
+      } catch (error) {
+        if (attempts === 0) {
+          console.log(`⚠️ Error fetching ${symbol}, retrying...`);
+          attempts++;
+          await new Promise(resolve => setTimeout(resolve, 1000));
+          continue;
+        }
+        throw error;
+      }
     }
     
-    const data = await response.json();
-    
-    if (!data.chart?.result?.[0]) {
-      throw new Error('No historical data returned from Yahoo Finance');
+    if (!data?.chart?.result?.[0]) {
+      console.log(`⚠️ No data returned for ${symbol}, may be invalid symbol`);
+      return [];
     }
     
     const result = data.chart.result[0];
@@ -61,7 +84,8 @@ async function fetchRealHistoricalData(symbol: string, period: string): Promise<
     const quotes = result.indicators.quote[0];
     
     if (!timestamps || !quotes) {
-      throw new Error('Invalid data format from Yahoo Finance');
+      console.log(`⚠️ Invalid data format for ${symbol}`);
+      return [];
     }
     
     // Format historical data
@@ -80,12 +104,16 @@ async function fetchRealHistoricalData(symbol: string, period: string): Promise<
       }
     }
     
+    if (historicalData.length < 20) {
+      console.log(`⚠️ Insufficient data for ${symbol}: only ${historicalData.length} points`);
+      return [];
+    }
+    
     console.log(`✅ Fetched ${historicalData.length} data points for ${symbol}`);
     return historicalData;
     
   } catch (error) {
     console.error(`❌ Failed to fetch historical data for ${symbol}:`, error);
-    // Return empty array - will skip this symbol
     return [];
   }
 }
@@ -203,7 +231,8 @@ export async function runBacktestSimulation(
       };
       
       // Iterate through historical data points (skip first 20 for indicators)
-      for (let i = 20; i < historicalData.length - 1; i++) {
+      // Sample every 2nd day for faster processing (still realistic)
+      for (let i = 20; i < historicalData.length - 1; i += 2) {
         const currentBar = historicalData[i];
         const nextBar = historicalData[i + 1];
         const currentPrice = currentBar.close;
