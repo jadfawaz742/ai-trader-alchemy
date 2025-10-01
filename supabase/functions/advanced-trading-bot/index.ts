@@ -1748,32 +1748,50 @@ serve(async (req) => {
         const timeframeAgreement = multiTimeframeAnalysis.overallSignal;
         const regimeRecommendation = marketRegime.recommendation;
         
-        // ULTRA-RELAXED TIMEFRAME FILTER: Accept trades with minimal timeframe support
-        if (timeframeAgreement !== 'HOLD' && timeframeAgreement === tradingDecision.type) {
-          console.log(`✅ TIMEFRAME ALIGNMENT: ${timeframeAgreement} signal confirmed across multiple timeframes`);
-        } else if (multiTimeframeAnalysis.alignedTimeframes >= 1) {
-          // ACCEPT trades with even 1 timeframe aligned for maximum opportunities
-          console.log(`⚡ ULTRA-RELAXED TIMEFRAME: ${multiTimeframeAnalysis.alignedTimeframes}/4 timeframes support trade - PROCEEDING`);
-        } else if (tradingDecision.confidence >= 70) {
-          // ACCEPT high confidence trades regardless of timeframe alignment
-          console.log(`💎 HIGH CONFIDENCE OVERRIDE: ${tradingDecision.confidence.toFixed(1)}% confidence overrides timeframe conflict`);
+        // ULTRA-RELAXED TIMEFRAME FILTER: For live mode, be extremely aggressive
+        const isLiveMode = !backtestMode;
+        
+        if (isLiveMode) {
+          // In live mode, accept almost any signal with minimal confidence
+          if (tradingDecision.confidence >= 25 || multiTimeframeAnalysis.alignedTimeframes >= 1 || timeframeAgreement !== 'HOLD') {
+            console.log(`🚀 LIVE MODE ULTRA-AGGRESSIVE: Accepting trade with ${tradingDecision.confidence.toFixed(1)}% confidence, ${multiTimeframeAnalysis.alignedTimeframes}/4 TF aligned`);
+          } else {
+            console.log(`❌ LIVE MODE REJECTION: Only rejecting extremely low confidence with no timeframe support`);
+            tradingDecision = {
+              type: 'HOLD',
+              confidence: 50,
+              reasoning: `Extremely low confidence (${tradingDecision.confidence.toFixed(1)}%) with no timeframe support`,
+              quantity: 0,
+              stopLoss: 0,
+              takeProfit: 0,
+              confluenceLevel: finalConfluenceScore >= 0.8 ? 'STRONG' : finalConfluenceScore >= 0.6 ? 'MODERATE' : 'WEAK'
+            };
+          }
         } else {
-          // Only reject if confidence is low AND no timeframe support
-          console.log(`❌ LOW CONFIDENCE + NO TIMEFRAME SUPPORT: Setting to HOLD (${tradingDecision.confidence.toFixed(1)}% conf, ${multiTimeframeAnalysis.alignedTimeframes}/4 TF)`);
-          tradingDecision = {
-            type: 'HOLD',
-            confidence: 50,
-            reasoning: `Low confidence (${tradingDecision.confidence.toFixed(1)}%) with poor timeframe support (${multiTimeframeAnalysis.alignedTimeframes}/4)`,
-            quantity: 0,
-            stopLoss: 0,
-            takeProfit: 0,
-            confluenceLevel: finalConfluenceScore >= 0.8 ? 'STRONG' : finalConfluenceScore >= 0.6 ? 'MODERATE' : 'WEAK'
-          };
+          // Backtest mode: use more conservative timeframe filter
+          if (timeframeAgreement !== 'HOLD' && timeframeAgreement === tradingDecision.type) {
+            console.log(`✅ TIMEFRAME ALIGNMENT: ${timeframeAgreement} signal confirmed across multiple timeframes`);
+          } else if (multiTimeframeAnalysis.alignedTimeframes >= 1) {
+            console.log(`⚡ ULTRA-RELAXED TIMEFRAME: ${multiTimeframeAnalysis.alignedTimeframes}/4 timeframes support trade - PROCEEDING`);
+          } else if (tradingDecision.confidence >= 70) {
+            console.log(`💎 HIGH CONFIDENCE OVERRIDE: ${tradingDecision.confidence.toFixed(1)}% confidence overrides timeframe conflict`);
+          } else {
+            console.log(`❌ LOW CONFIDENCE + NO TIMEFRAME SUPPORT: Setting to HOLD (${tradingDecision.confidence.toFixed(1)}% conf, ${multiTimeframeAnalysis.alignedTimeframes}/4 TF)`);
+            tradingDecision = {
+              type: 'HOLD',
+              confidence: 50,
+              reasoning: `Low confidence (${tradingDecision.confidence.toFixed(1)}%) with poor timeframe support (${multiTimeframeAnalysis.alignedTimeframes}/4)`,
+              quantity: 0,
+              stopLoss: 0,
+              takeProfit: 0,
+              confluenceLevel: finalConfluenceScore >= 0.8 ? 'STRONG' : finalConfluenceScore >= 0.6 ? 'MODERATE' : 'WEAK'
+            };
+          }
         }
         
         if (tradingDecision.type !== 'HOLD' && 
-            currentState.confluenceScore >= Math.min(adaptiveParams.confluenceThreshold, RISK_LEVELS[risk].minConfluence * 0.7) &&
-            tradingDecision.confidence > Math.min(adaptiveParams.confidenceThreshold, 35)) { // 🚀 ULTRA-AGGRESSIVE: Reduced from 45% to 35%
+            currentState.confluenceScore >= Math.min(adaptiveParams.confluenceThreshold, RISK_LEVELS[risk].minConfluence * (isLiveMode ? 0.5 : 0.7)) &&
+            tradingDecision.confidence > Math.min(adaptiveParams.confidenceThreshold, isLiveMode ? 20 : 35)) { // 🚀 LIVE MODE: 20%, BACKTEST: 35%
           
           console.log(`✅ Signal passed filters - Confidence: ${tradingDecision.confidence.toFixed(1)}% (threshold: ${Math.min(adaptiveParams.confidenceThreshold, 80).toFixed(1)}%), Confluence: ${(currentState.confluenceScore * 100).toFixed(1)}% (threshold: ${(Math.min(adaptiveParams.confluenceThreshold, RISK_LEVELS[risk].minConfluence * 1.2) * 100).toFixed(1)}%)`);
           
