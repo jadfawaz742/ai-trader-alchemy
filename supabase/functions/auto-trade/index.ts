@@ -2,6 +2,13 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
+// Import multi-timeframe analysis
+import { 
+  fetchMultiTimeframeData, 
+  analyzeMultiTimeframe, 
+  getMultiTimeframeBoost 
+} from '../advanced-trading-bot/multi-timeframe.ts';
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -104,10 +111,15 @@ serve(async (req) => {
 async function generateTrades(symbols: string[], riskLevel: number, maxAmount: number) {
   const trades = [];
   
-  console.log(`🔍 Analyzing ${symbols.length} symbols with advanced technical indicators`);
+  console.log(`🔍 Analyzing ${symbols.length} symbols with advanced multi-timeframe analysis`);
 
   for (const symbol of symbols) {
     try {
+      // 🔍 Fetch multi-timeframe data for comprehensive analysis
+      console.log(`📊 Fetching multi-timeframe data for ${symbol}...`);
+      const multiTimeframeData = await fetchMultiTimeframeData(symbol);
+      const multiTimeframeAnalysis = analyzeMultiTimeframe(multiTimeframeData);
+      
       // Try to fetch real market data from Bybit first
       let historicalData = await fetchBybitMarketData(symbol);
       
@@ -119,28 +131,39 @@ async function generateTrades(symbols: string[], riskLevel: number, maxAmount: n
       // Apply technical analysis strategy
       const analysis = await applyTechnicalStrategy(symbol, historicalData, riskLevel);
       
-      if (analysis.signal !== 'HOLD' && analysis.confidence >= 70) {
+      // 🚀 Apply multi-timeframe boost to confidence
+      const mtfBoost = getMultiTimeframeBoost(multiTimeframeAnalysis, analysis.signal === 'BUY' ? 'BUY' : 'SELL');
+      const adjustedConfidence = Math.max(0, Math.min(100, analysis.confidence + mtfBoost));
+      
+      console.log(`🎯 ${symbol}: Base confidence ${analysis.confidence.toFixed(1)}% → Adjusted ${adjustedConfidence.toFixed(1)}% (MTF: ${multiTimeframeAnalysis.trend})`);
+      
+      if (analysis.signal !== 'HOLD' && adjustedConfidence >= 70) {
         const basePrice = analysis.currentPrice;
         const maxShares = Math.floor(maxAmount / basePrice);
-        const quantity = Math.max(1, Math.floor(maxShares * (analysis.confidence / 100) * 0.3));
+        const quantity = Math.max(1, Math.floor(maxShares * (adjustedConfidence / 100) * 0.3));
         
         const trade = {
           symbol,
           action: analysis.signal,
           quantity,
           price: Math.round(basePrice * 100) / 100,
-          confidence: Math.round(analysis.confidence),
+          confidence: Math.round(adjustedConfidence),
           momentum: analysis.momentum,
           volumeSpike: analysis.volumeSpike,
           rsi: analysis.rsi,
           macd: analysis.macd,
           fibLevel: analysis.fibLevel,
-          strategy: 'RSI+MACD+Volume+Fibonacci',
+          multiTimeframe: {
+            trend: multiTimeframeAnalysis.trend,
+            strength: multiTimeframeAnalysis.strength,
+            confluence: multiTimeframeAnalysis.confluence
+          },
+          strategy: 'Multi-Timeframe+RSI+MACD+Volume+Fibonacci',
           timestamp: new Date().toISOString()
         };
         
         trades.push(trade);
-        console.log(`📊 ${analysis.signal} signal for ${symbol}: RSI=${analysis.rsi.toFixed(1)}, MACD=${analysis.macd.histogram.toFixed(3)}, Fib=${analysis.fibLevel}, Confidence=${analysis.confidence}%`);
+        console.log(`📊 ${analysis.signal} signal for ${symbol}: RSI=${analysis.rsi.toFixed(1)}, MACD=${analysis.macd.histogram.toFixed(3)}, MTF=${multiTimeframeAnalysis.trend}, Confidence=${adjustedConfidence}%`);
       }
     } catch (error) {
       console.error(`Error analyzing ${symbol}:`, error);
@@ -151,7 +174,7 @@ async function generateTrades(symbols: string[], riskLevel: number, maxAmount: n
   const maxTrades = Math.min(5, Math.max(1, Math.floor(riskLevel / 20)));
   const sortedTrades = trades.sort((a, b) => b.confidence - a.confidence).slice(0, maxTrades);
   
-  console.log(`✅ Generated ${sortedTrades.length} high-confidence trades`);
+  console.log(`✅ Generated ${sortedTrades.length} high-confidence trades with multi-timeframe analysis`);
   return sortedTrades;
 }
 

@@ -620,8 +620,16 @@ export async function runBacktestSimulation(
           if (atrPct > 0.02 && atrPct < 0.06) indicatorPerformance.volatility.losses++;
         }
         
-        // Get FULL technical indicators for logging and saving
+        // Get FULL technical indicators for logging and saving, INCLUDING multi-timeframe
         const indicators = extractIndicatorsForSaving(tradingState, historicalData, i);
+        
+        // 🔍 Add multi-timeframe analysis to indicators
+        indicators.multiTimeframe = {
+          trend: multiTimeframeAnalysis.trend,
+          strength: multiTimeframeAnalysis.strength,
+          confluence: multiTimeframeAnalysis.confluence,
+          boost: mtfBoost
+        };
         
         // Log the trade decision
         const tradeLog: TradeDecisionLog = {
@@ -712,8 +720,12 @@ export async function runBacktestSimulation(
         console.log(`${isWin ? '✅' : '❌'} ${symbol} ${aiDecision.type}: $${actualPnL.toFixed(2)} P&L (${aiDecision.confidence.toFixed(1)}% conf, ${currentRegime} market${trainedModel ? ', AI model' : ', rule-based'})`);
       }
       
-      // Store symbol learning data with indicator performance
-      learningData.set(symbol, { ...adaptiveParams, indicatorPerformance });
+      // Store symbol learning data with indicator performance and multi-timeframe analysis
+      learningData.set(symbol, { 
+        ...adaptiveParams, 
+        indicatorPerformance,
+        multiTimeframeAnalysis // Save MTF data for this symbol
+      });
       
     } catch (error) {
       console.error(`Error backtesting ${symbol}:`, error);
