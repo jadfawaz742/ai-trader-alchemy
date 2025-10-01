@@ -2,12 +2,143 @@ import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 
-// Import multi-timeframe analysis
-import { 
-  fetchMultiTimeframeData, 
-  analyzeMultiTimeframe, 
-  getMultiTimeframeBoost 
-} from '../advanced-trading-bot/multi-timeframe.ts';
+// Multi-timeframe analysis (inline for edge function deployment)
+interface MultiTimeframeData {
+  hourly: any[];
+  fourHourly: any[];
+  daily: any[];
+}
+
+interface TimeframeAnalysis {
+  trend: 'bullish' | 'bearish' | 'neutral';
+  strength: number;
+  confluence: number;
+}
+
+async function fetchMultiTimeframeData(symbol: string): Promise<MultiTimeframeData> {
+  const fetchTimeframe = async (interval: string, range: string) => {
+    try {
+      const response = await fetch(
+        `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?range=${range}&interval=${interval}`,
+        { headers: { 'User-Agent': 'Mozilla/5.0' } }
+      );
+      
+      if (!response.ok) return [];
+      
+      const data = await response.json();
+      const result = data.chart?.result?.[0];
+      if (!result) return [];
+      
+      const timestamps = result.timestamp;
+      const quotes = result.indicators.quote[0];
+      
+      const historicalData = [];
+      for (let i = 0; i < timestamps.length; i++) {
+        if (quotes.close[i] !== null) {
+          historicalData.push({
+            timestamp: timestamps[i] * 1000,
+            open: quotes.open[i],
+            high: quotes.high[i],
+            low: quotes.low[i],
+            close: quotes.close[i],
+            volume: quotes.volume[i]
+          });
+        }
+      }
+      return historicalData;
+    } catch (error) {
+      console.log(`❌ Error fetching ${interval} for ${symbol}:`, error);
+      return [];
+    }
+  };
+  
+  const [hourly, fourHourly, daily] = await Promise.all([
+    fetchTimeframe('1h', '1mo'),
+    fetchTimeframe('4h', '3mo'),
+    fetchTimeframe('1d', '1y')
+  ]);
+  
+  return { hourly, fourHourly, daily };
+}
+
+function analyzeTrend(data: any[]): { trend: 'bullish' | 'bearish' | 'neutral', strength: number } {
+  if (data.length < 20) return { trend: 'neutral', strength: 0 };
+  
+  const recentData = data.slice(-50);
+  const prices = recentData.map(d => d.close);
+  
+  const ema20 = prices.slice(-20).reduce((sum, p) => sum + p, 0) / 20;
+  const ema50 = prices.length >= 50 
+    ? prices.slice(-50).reduce((sum, p) => sum + p, 0) / 50
+    : ema20;
+  
+  const currentPrice = prices[prices.length - 1];
+  const oldPrice = prices[0];
+  const priceChange = ((currentPrice - oldPrice) / oldPrice) * 100;
+  
+  let trend: 'bullish' | 'bearish' | 'neutral';
+  let strength = 0;
+  
+  if (currentPrice > ema20 && ema20 > ema50 && priceChange > 2) {
+    trend = 'bullish';
+    strength = Math.min(100, Math.abs(priceChange) * 10);
+  } else if (currentPrice < ema20 && ema20 < ema50 && priceChange < -2) {
+    trend = 'bearish';
+    strength = Math.min(100, Math.abs(priceChange) * 10);
+  } else {
+    trend = 'neutral';
+    strength = 50;
+  }
+  
+  return { trend, strength };
+}
+
+function analyzeMultiTimeframe(data: MultiTimeframeData): TimeframeAnalysis {
+  const hourlyAnalysis = analyzeTrend(data.hourly);
+  const fourHourlyAnalysis = analyzeTrend(data.fourHourly);
+  const dailyAnalysis = analyzeTrend(data.daily);
+  
+  const trends = [hourlyAnalysis.trend, fourHourlyAnalysis.trend, dailyAnalysis.trend];
+  const bullishCount = trends.filter(t => t === 'bullish').length;
+  const bearishCount = trends.filter(t => t === 'bearish').length;
+  
+  let overallTrend: 'bullish' | 'bearish' | 'neutral';
+  let confluence: number;
+  
+  if (bullishCount >= 2) {
+    overallTrend = 'bullish';
+    confluence = bullishCount / 3;
+  } else if (bearishCount >= 2) {
+    overallTrend = 'bearish';
+    confluence = bearishCount / 3;
+  } else {
+    overallTrend = 'neutral';
+    confluence = 0.33;
+  }
+  
+  const avgStrength = (
+    hourlyAnalysis.strength * 0.3 +
+    fourHourlyAnalysis.strength * 0.3 +
+    dailyAnalysis.strength * 0.4
+  );
+  
+  const adjustedStrength = avgStrength * confluence;
+  
+  return { trend: overallTrend, strength: adjustedStrength, confluence };
+}
+
+function getMultiTimeframeBoost(analysis: TimeframeAnalysis, tradeType: 'BUY' | 'SELL'): number {
+  const isAligned = (
+    (tradeType === 'BUY' && analysis.trend === 'bullish') ||
+    (tradeType === 'SELL' && analysis.trend === 'bearish')
+  );
+  
+  if (isAligned) {
+    return analysis.confluence * (analysis.strength / 100) * 20;
+  } else {
+    return analysis.confluence * (analysis.strength / 100) * -15;
+  }
+}
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
