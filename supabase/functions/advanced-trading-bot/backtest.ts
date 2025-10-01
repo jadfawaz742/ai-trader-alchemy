@@ -55,16 +55,23 @@ async function loadTrainedModel(
       .select('model_weights, performance_metrics, updated_at')
       .eq('user_id', userId)
       .eq('symbol', symbol)
+      .eq('model_type', 'adaptive_trading')
       .order('updated_at', { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
     
-    if (error || !data) {
-      console.log(`⚠️ No trained model found for ${symbol}, using rule-based decisions`);
+    if (error) {
+      console.log(`❌ Error loading model for ${symbol}:`, error);
+      return null;
+    }
+    
+    if (!data) {
+      console.log(`⚠️ No trained model found for ${symbol}, will create one after this backtest`);
       return null;
     }
     
     console.log(`✅ Loaded trained model for ${symbol} (updated: ${data.updated_at})`);
+    console.log(`   📊 Win rate: ${(data.performance_metrics?.winRate * 100 || 0).toFixed(1)}% from ${data.performance_metrics?.totalTrades || 0} trades`);
     return data.model_weights;
   } catch (error) {
     console.log(`❌ Error loading model for ${symbol}:`, error);
@@ -385,6 +392,9 @@ export async function runBacktestSimulation(
             adaptiveParams.averageProfit = savedParams.average_profit || 0.0;
             
             console.log(`🧠 ${symbol}: Loaded learned parameters - ${(adaptiveParams.successRate * 100).toFixed(1)}% win rate from ${adaptiveParams.totalTrades} historical trades`);
+            console.log(`   🎯 Using adapted thresholds: Confidence ${adaptiveParams.confidenceThreshold.toFixed(1)}%, Confluence ${adaptiveParams.confluenceThreshold.toFixed(2)}`);
+          } else {
+            console.log(`📝 ${symbol}: No previous learning found, starting fresh with default parameters`);
           }
         } catch (error) {
           console.log(`⚠️ Could not load learned parameters for ${symbol}, using defaults`);
