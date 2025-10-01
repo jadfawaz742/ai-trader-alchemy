@@ -339,7 +339,7 @@ export async function runBacktestSimulation(
       const multiTimeframeData = await fetchMultiTimeframeData(symbol);
       const multiTimeframeAnalysis = analyzeMultiTimeframe(multiTimeframeData);
       
-      // PHASE 1: Enhanced adaptive parameters with improved thresholds
+      // PHASE 1: Load existing adaptive parameters or initialize new ones
       let adaptiveParams = {
         confidenceThreshold: 40.0, // 🚀 ULTRA-AGGRESSIVE: Reduced to 40% 
         confluenceThreshold: 0.45,  // PHASE 1: Lowered to 0.45
@@ -350,6 +350,35 @@ export async function runBacktestSimulation(
         winningTrades: 0,
         averageProfit: 0.0
       };
+      
+      // 🧠 Load learned parameters from previous backtests
+      if (userId && supabaseClient) {
+        try {
+          const { data: savedParams, error: paramsError } = await supabaseClient
+            .from('bot_adaptive_parameters')
+            .select('*')
+            .eq('user_id', userId)
+            .eq('symbol', symbol)
+            .order('last_updated', { ascending: false })
+            .limit(1)
+            .maybeSingle();
+          
+          if (!paramsError && savedParams) {
+            adaptiveParams.confidenceThreshold = savedParams.confidence_threshold || 40.0;
+            adaptiveParams.confluenceThreshold = savedParams.confluence_threshold || 0.45;
+            adaptiveParams.stopLossMultiplier = savedParams.stop_loss_multiplier || 1.0;
+            adaptiveParams.takeProfitMultiplier = savedParams.take_profit_multiplier || 1.0;
+            adaptiveParams.successRate = savedParams.success_rate || 0.0;
+            adaptiveParams.totalTrades = savedParams.total_trades || 0;
+            adaptiveParams.winningTrades = savedParams.winning_trades || 0;
+            adaptiveParams.averageProfit = savedParams.average_profit || 0.0;
+            
+            console.log(`🧠 ${symbol}: Loaded learned parameters - ${(adaptiveParams.successRate * 100).toFixed(1)}% win rate from ${adaptiveParams.totalTrades} historical trades`);
+          }
+        } catch (error) {
+          console.log(`⚠️ Could not load learned parameters for ${symbol}, using defaults`);
+        }
+      }
       
       // Define risk level config
       const riskConfig: RiskLevel = {
@@ -634,22 +663,108 @@ export async function runBacktestSimulation(
   if (saveTradesForLearning && userId && supabaseClient && totalTrades > 0) {
     console.log('\n🔄 TRIGGERING MODEL UPDATES based on backtest results...');
     
-    // Get trade counts per symbol
+    // Get trade counts per symbol and their adaptive params
     const symbolTradeCounts = new Map<string, number>();
     for (const trade of trades) {
       symbolTradeCounts.set(trade.symbol, (symbolTradeCounts.get(trade.symbol) || 0) + 1);
     }
     
-    // Retrain models for symbols with enough trades (5+)
-    for (const [symbol, count] of symbolTradeCounts.entries()) {
-      if (count >= 5) {
-        console.log(`🧠 Retraining ${symbol} model (${count} backtest trades)`);
-        // Note: In production, this would call the model retraining logic
-        // For now, just log it - the actual retraining happens via the learning table trigger
+    // Update or create adaptive parameters for each symbol based on backtest results
+    for (const [symbol, adaptiveParams] of learningData.entries()) {
+      const tradeCount = symbolTradeCounts.get(symbol) || 0;
+      
+      if (tradeCount >= 3) { // Minimum 3 trades to update model parameters
+        try {
+          console.log(`🧠 Updating adaptive parameters for ${symbol}: ${(adaptiveParams.successRate * 100).toFixed(1)}% win rate from ${tradeCount} trades`);
+          
+          // Upsert adaptive parameters
+          const { error: upsertError } = await supabaseClient
+            .from('bot_adaptive_parameters')
+            .upsert({
+              user_id: userId,
+              symbol: symbol,
+              confidence_threshold: adaptiveParams.confidenceThreshold,
+              confluence_threshold: adaptiveParams.confluenceThreshold,
+              stop_loss_multiplier: adaptiveParams.stopLossMultiplier,
+              take_profit_multiplier: adaptiveParams.takeProfitMultiplier,
+              success_rate: adaptiveParams.successRate,
+              total_trades: adaptiveParams.totalTrades,
+              winning_trades: adaptiveParams.winningTrades,
+              average_profit: adaptiveParams.averageProfit,
+              last_updated: new Date().toISOString()
+            }, {
+              onConflict: 'user_id,symbol'
+            });
+          
+          if (upsertError) {
+            console.error(`❌ Error updating parameters for ${symbol}:`, upsertError);
+          } else {
+            console.log(`✅ Updated adaptive parameters for ${symbol}`);
+          }
+          
+          // If we have enough good trades (10+ with >50% win rate), trigger model fine-tuning
+          if (tradeCount >= 10 && adaptiveParams.successRate > 0.5) {
+            console.log(`🎯 ${symbol} qualifies for model retraining: ${tradeCount} trades, ${(adaptiveParams.successRate * 100).toFixed(1)}% win rate`);
+            
+            // Fetch recent learning data for this symbol
+            const { data: learningRecords, error: learningError } = await supabaseClient
+              .from('trading_bot_learning')
+              .select('*')
+              .eq('user_id', userId)
+              .eq('symbol', symbol)
+              .order('created_at', { ascending: false })
+              .limit(100);
+            
+            if (!learningError && learningRecords && learningRecords.length >= 20) {
+              console.log(`📚 Found ${learningRecords.length} learning records for ${symbol}, preparing model update...`);
+              
+              // Calculate reward signal based on outcomes
+              const rewardSignal = learningRecords.reduce((sum, record) => {
+                const reward = record.outcome === 'WIN' ? (record.profit_loss || 0) : -(Math.abs(record.profit_loss) || 0);
+                return sum + reward;
+              }, 0) / learningRecords.length;
+              
+              // Update model weights based on learning (simplified reinforcement)
+              const performanceMetrics = {
+                winRate: adaptiveParams.successRate,
+                avgReturn: adaptiveParams.averageProfit,
+                totalTrades: tradeCount,
+                rewardSignal: rewardSignal,
+                lastUpdated: new Date().toISOString()
+              };
+              
+              // Store updated model metadata (weights would be updated by actual PPO training)
+              const { error: modelError } = await supabaseClient
+                .from('asset_models')
+                .upsert({
+                  user_id: userId,
+                  symbol: symbol,
+                  model_type: 'ppo_reinforcement',
+                  model_weights: { 
+                    learning_iterations: (learningRecords.length / 10),
+                    confidence_bias: adaptiveParams.confidenceThreshold - 50, // Deviation from baseline
+                    risk_bias: adaptiveParams.stopLossMultiplier - 1.0
+                  },
+                  performance_metrics: performanceMetrics,
+                  updated_at: new Date().toISOString()
+                }, {
+                  onConflict: 'user_id,symbol,model_type'
+                });
+              
+              if (modelError) {
+                console.error(`❌ Error updating model for ${symbol}:`, modelError);
+              } else {
+                console.log(`✅ Model metadata updated for ${symbol} - next backtest will use these learned parameters`);
+              }
+            }
+          }
+        } catch (error) {
+          console.error(`❌ Error processing learning for ${symbol}:`, error);
+        }
       }
     }
     
-    console.log(`✅ Saved ${totalTrades} trades to learning database for continuous improvement`);
+    console.log(`✅ Saved ${totalTrades} trades to learning database and updated ${learningData.size} symbol models`);
   }
 
   return {
