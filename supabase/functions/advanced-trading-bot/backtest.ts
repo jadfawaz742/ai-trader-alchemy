@@ -82,46 +82,46 @@ async function loadTrainedModel(
 // Fetch real historical data from Yahoo Finance with OPTIMIZED intervals
 async function fetchRealHistoricalData(symbol: string, period: string): Promise<any[]> {
   try {
-    console.log(`📡 Fetching real historical data for ${symbol} over ${period}...`);
+    console.log(`📡 Fetching multi-timeframe data for ${symbol} over ${period}...`);
     
-    // Map backtest period to Yahoo Finance range and interval
+    // Determine date range based on backtest period
     let range: string;
-    let interval: string;
+    let primaryInterval: string;
     
     switch (period) {
       case '1day':
-        range = '1d';
-        interval = '5m'; // 5-minute candles for intraday
+        range = '5d'; // Need more data for indicators
+        primaryInterval = '5m'; // 5-minute for granular short-term trading
         break;
       case '1week':
-        range = '5d';
-        interval = '15m'; // 15-minute candles
+        range = '1mo'; // Need more data for indicators
+        primaryInterval = '15m'; // 15-minute candles
         break;
       case '2weeks':
         range = '1mo';
-        interval = '30m'; // 30-minute candles
+        primaryInterval = '30m'; // 30-minute candles
         break;
       case '1month':
-        range = '1mo';
-        interval = '1h'; // Hourly candles
+        range = '3mo'; // Need more data for indicators
+        primaryInterval = '1h'; // Hourly candles
         break;
       case '3months':
-        range = '3mo';
-        interval = '1d'; // Daily candles for longer periods
+        range = '6mo'; // Need more data for indicators
+        primaryInterval = '1d'; // Daily candles
         break;
       default:
-        range = '1mo';
-        interval = '1h';
+        range = '3mo';
+        primaryInterval = '1h';
     }
     
-    // Fetch from Yahoo Finance with retry logic
+    // Fetch primary timeframe data from Yahoo Finance with retry logic
     let attempts = 0;
     let data;
     
     while (attempts < 2) {
       try {
         const response = await fetch(
-          `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?range=${range}&interval=${interval}`,
+          `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?range=${range}&interval=${primaryInterval}`,
           {
             headers: {
               'User-Agent': 'Mozilla/5.0'
