@@ -50,11 +50,13 @@ interface TradeDecisionLog {
 interface TradeDecisionLogsProps {
   logs: TradeDecisionLog[];
   title?: string;
+  initialBalance?: number; // Starting capital for ROI calculation
 }
 
 export const TradeDecisionLogs: React.FC<TradeDecisionLogsProps> = ({ 
   logs, 
-  title = "Last 20 Trade Decisions" 
+  title = "Last 20 Trade Decisions",
+  initialBalance = 100000 // Default to $100k if not provided
 }) => {
   if (!logs || logs.length === 0) {
     return (
@@ -77,22 +79,31 @@ export const TradeDecisionLogs: React.FC<TradeDecisionLogsProps> = ({
     const winningTrades = completedTrades.filter(log => log.result === 'WIN').length;
     const winRate = completedTrades.length > 0 ? (winningTrades / completedTrades.length) * 100 : 0;
     
-    // Calculate total capital deployed
-    const totalCapitalUsed = logs.reduce((sum, log) => sum + (log.price * log.quantity), 0);
-    const dailyROI = totalCapitalUsed > 0 ? (totalPnL / totalCapitalUsed) * 100 : 0;
+    // ✅ CORRECT: ROI = (Total P&L / Initial Capital) * 100
+    const totalROI = initialBalance > 0 ? (totalPnL / initialBalance) * 100 : 0;
     
-    // Group by asset
+    // Calculate total capital deployed across all trades (for reference)
+    const totalCapitalDeployed = logs.reduce((sum, log) => sum + (log.price * log.quantity), 0);
+    
+    // Group by asset to show capital allocation
     const assetBreakdown = logs.reduce((acc, log) => {
       if (!acc[log.symbol]) {
-        acc[log.symbol] = { capital: 0, pnl: 0, trades: 0 };
+        acc[log.symbol] = { capitalDeployed: 0, pnl: 0, trades: 0 };
       }
-      acc[log.symbol].capital += log.price * log.quantity;
+      acc[log.symbol].capitalDeployed += log.price * log.quantity;
       acc[log.symbol].pnl += log.pnl || 0;
       acc[log.symbol].trades += 1;
       return acc;
-    }, {} as Record<string, { capital: number; pnl: number; trades: number }>);
+    }, {} as Record<string, { capitalDeployed: number; pnl: number; trades: number }>);
 
-    return { totalPnL, winRate, completedTrades: completedTrades.length, dailyROI, totalCapitalUsed, assetBreakdown };
+    return { 
+      totalPnL, 
+      winRate, 
+      completedTrades: completedTrades.length, 
+      totalROI, 
+      totalCapitalDeployed, 
+      assetBreakdown 
+    };
   };
 
   const metrics = calculatePerformanceMetrics();
@@ -174,10 +185,11 @@ export const TradeDecisionLogs: React.FC<TradeDecisionLogsProps> = ({
         {/* Performance Summary */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4 pt-4 border-t">
           <div>
-            <div className="text-sm text-muted-foreground">Daily ROI</div>
-            <div className={`text-2xl font-bold ${metrics.dailyROI >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-              {metrics.dailyROI.toFixed(2)}%
+            <div className="text-sm text-muted-foreground">Total ROI</div>
+            <div className={`text-2xl font-bold ${metrics.totalROI >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+              {metrics.totalROI.toFixed(2)}%
             </div>
+            <div className="text-xs text-muted-foreground">on {formatCurrency(initialBalance)}</div>
           </div>
           <div>
             <div className="text-sm text-muted-foreground">Total P&L</div>
@@ -191,27 +203,31 @@ export const TradeDecisionLogs: React.FC<TradeDecisionLogsProps> = ({
             <div className="text-xs text-muted-foreground">{metrics.completedTrades} completed</div>
           </div>
           <div>
-            <div className="text-sm text-muted-foreground">Capital Used</div>
-            <div className="text-2xl font-bold">{formatCurrency(metrics.totalCapitalUsed)}</div>
+            <div className="text-sm text-muted-foreground">Capital Deployed</div>
+            <div className="text-2xl font-bold">{formatCurrency(metrics.totalCapitalDeployed)}</div>
+            <div className="text-xs text-muted-foreground">across all trades</div>
           </div>
         </div>
 
         {/* Asset Breakdown */}
         {Object.keys(metrics.assetBreakdown).length > 0 && (
           <div className="mt-4 pt-4 border-t">
-            <div className="text-sm font-medium mb-2">Capital by Asset</div>
+            <div className="text-sm font-medium mb-2">Capital Deployed by Asset</div>
             <div className="grid grid-cols-2 md:grid-cols-3 gap-3">
-              {Object.entries(metrics.assetBreakdown).map(([symbol, data]) => (
-                <div key={symbol} className="bg-muted/50 p-2 rounded">
-                  <div className="font-mono text-sm font-medium">{symbol}</div>
-                  <div className="text-xs text-muted-foreground">
-                    {formatCurrency(data.capital)} • {data.trades} trades
+              {Object.entries(metrics.assetBreakdown).map(([symbol, data]) => {
+                const assetROI = data.capitalDeployed > 0 ? (data.pnl / data.capitalDeployed) * 100 : 0;
+                return (
+                  <div key={symbol} className="bg-muted/50 p-2 rounded">
+                    <div className="font-mono text-sm font-medium">{symbol}</div>
+                    <div className="text-xs text-muted-foreground">
+                      {formatCurrency(data.capitalDeployed)} deployed • {data.trades} trades
+                    </div>
+                    <div className={`text-xs font-medium ${data.pnl >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                      {formatCurrency(data.pnl)} ({assetROI >= 0 ? '+' : ''}{assetROI.toFixed(2)}% ROI)
+                    </div>
                   </div>
-                  <div className={`text-xs font-medium ${data.pnl >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                    {formatCurrency(data.pnl)}
-                  </div>
-                </div>
-              ))}
+                );
+              })}
             </div>
           </div>
         )}
