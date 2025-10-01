@@ -16,11 +16,31 @@ interface TradeDecisionLog {
   stopLoss?: number;
   takeProfit?: number;
   indicators: {
-    rsi: number;
-    macd: number;
-    ema: number;
-    atr: number;
-    sentiment: number;
+    rsi?: number;
+    macd?: number;
+    macdLine?: number;
+    macdSignal?: number;
+    ema?: number;
+    ema200?: number;
+    atr?: number;
+    sentiment?: number;
+    obv?: number;
+    bollingerUpper?: number;
+    bollingerMiddle?: number;
+    bollingerLower?: number;
+    bollingerPosition?: number;
+    ichimokuTenkan?: number;
+    ichimokuKijun?: number;
+    ichimokuSignal?: number;
+    marketCondition?: string;
+    volatility?: number;
+    confluenceScore?: number;
+    multiTimeframe?: {
+      trend: string;
+      strength: number;
+      confluence: number;
+      boost: number;
+    };
   };
   decisionReasoning: string;
   pnl?: number;
@@ -187,35 +207,59 @@ export const TradeDecisionLogs: React.FC<TradeDecisionLogsProps> = ({
 
                 {/* Technical Indicators */}
                 <div className="grid grid-cols-2 md:grid-cols-5 gap-3 mb-3">
-                  <div className="flex items-center gap-1">
-                    {getIndicatorIcon(log.indicators.rsi, 'rsi')}
-                    <div>
-                      <div className="text-xs text-muted-foreground">RSI</div>
-                      <div className="text-sm font-medium">{log.indicators.rsi.toFixed(1)}</div>
+                  {log.indicators.rsi !== undefined && (
+                    <div className="flex items-center gap-1">
+                      {getIndicatorIcon(log.indicators.rsi, 'rsi')}
+                      <div>
+                        <div className="text-xs text-muted-foreground">RSI</div>
+                        <div className="text-sm font-medium">{log.indicators.rsi.toFixed(1)}</div>
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {getIndicatorIcon(log.indicators.macd, 'macd')}
-                    <div>
-                      <div className="text-xs text-muted-foreground">MACD</div>
-                      <div className="text-sm font-medium">{log.indicators.macd.toFixed(2)}</div>
+                  )}
+                  {log.indicators.macd !== undefined && (
+                    <div className="flex items-center gap-1">
+                      {getIndicatorIcon(log.indicators.macd, 'macd')}
+                      <div>
+                        <div className="text-xs text-muted-foreground">MACD</div>
+                        <div className="text-sm font-medium">{log.indicators.macd.toFixed(2)}</div>
+                      </div>
                     </div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-muted-foreground">EMA</div>
-                    <div className="text-sm font-medium">{log.indicators.ema.toFixed(1)}</div>
-                  </div>
-                  <div>
-                    <div className="text-xs text-muted-foreground">ATR</div>
-                    <div className="text-sm font-medium">{log.indicators.atr.toFixed(2)}</div>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {getIndicatorIcon(log.indicators.sentiment, 'sentiment')}
+                  )}
+                  {(log.indicators.ema !== undefined || log.indicators.ema200 !== undefined) && (
                     <div>
-                      <div className="text-xs text-muted-foreground">Sentiment</div>
-                      <div className="text-sm font-medium">{log.indicators.sentiment.toFixed(2)}</div>
+                      <div className="text-xs text-muted-foreground">EMA200</div>
+                      <div className="text-sm font-medium">
+                        {(log.indicators.ema200 || log.indicators.ema || 0).toFixed(1)}
+                      </div>
                     </div>
-                  </div>
+                  )}
+                  {log.indicators.atr !== undefined && (
+                    <div>
+                      <div className="text-xs text-muted-foreground">ATR</div>
+                      <div className="text-sm font-medium">{log.indicators.atr.toFixed(2)}</div>
+                    </div>
+                  )}
+                  {log.indicators.sentiment !== undefined && (
+                    <div className="flex items-center gap-1">
+                      {getIndicatorIcon(log.indicators.sentiment, 'sentiment')}
+                      <div>
+                        <div className="text-xs text-muted-foreground">Sentiment</div>
+                        <div className="text-sm font-medium">{log.indicators.sentiment.toFixed(2)}</div>
+                      </div>
+                    </div>
+                  )}
+                  {log.indicators.confluenceScore !== undefined && (
+                    <div>
+                      <div className="text-xs text-muted-foreground">Confluence</div>
+                      <div className="text-sm font-medium">{(log.indicators.confluenceScore * 100).toFixed(0)}%</div>
+                    </div>
+                  )}
+                  {log.indicators.multiTimeframe && (
+                    <div>
+                      <div className="text-xs text-muted-foreground">MTF Trend</div>
+                      <div className="text-sm font-medium capitalize">{log.indicators.multiTimeframe.trend}</div>
+                    </div>
+                  )}
                 </div>
 
                 <Separator className="my-3" />
