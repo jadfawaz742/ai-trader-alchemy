@@ -2783,6 +2783,12 @@ function determineTrendAlignment(state: TradingState): 'bullish' | 'bearish' | '
 
 // Get news sentiment score for the symbol
 async function getNewsSentimentScore(symbol: string): Promise<number> {
+  // DISABLED: News sentiment temporarily disabled until real news API is integrated
+  // Currently returns neutral (0) to avoid using mock/simulated data
+  console.log(`📰 News sentiment for ${symbol}: DISABLED (neutral 0%) - awaiting real news integration`);
+  return 0; // Neutral sentiment - no news influence
+  
+  /* COMMENTED OUT - Mock news sentiment code
   try {
     // Map crypto symbols to company names for news search
     const companyMap: { [key: string]: string } = {
@@ -2816,6 +2822,7 @@ async function getNewsSentimentScore(symbol: string): Promise<number> {
     console.log(`⚠️ News sentiment fetch failed for ${symbol}, using neutral`);
     return 0; // Neutral sentiment on error
   }
+  */
 }
 
 // Enhanced Multi-Indicator Decision System with News and ATR Risk Management
