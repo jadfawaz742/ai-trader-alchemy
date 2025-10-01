@@ -140,17 +140,81 @@ export async function makeAITradingDecision(
     }
   }
   
-  // Calculate stop loss and take profit based on ATR
+  // Add Fibonacci information to reasoning if available
+  const fibLevels = state.indicators.fibonacci?.levels || [];
+  if (fibLevels.length > 0) {
+    const fibHigh = Math.max(...fibLevels);
+    const fibLow = Math.min(...fibLevels);
+    const fibRange = fibHigh - fibLow;
+    const pricePosition = (state.price - fibLow) / fibRange;
+    
+    if (pricePosition < 0.3) {
+      reasons.push("Near Fib support zone");
+    } else if (pricePosition > 0.7) {
+      reasons.push("Near Fib resistance zone");
+    }
+  }
+  
+  // Calculate stop loss and take profit using Fibonacci retracements/extensions + ATR
   const atr = state.indicators.atr;
   let stopLoss = 0;
   let takeProfit = 0;
   
   if (action === 'BUY') {
-    stopLoss = state.price - (atr * 2);
-    takeProfit = state.price + (atr * 4);
+    // Calculate Fibonacci retracement for stop loss
+    const fibLevels = state.indicators.fibonacci?.levels || [state.price];
+    const priceHigh = Math.max(...fibLevels);
+    const priceLow = Math.min(...fibLevels);
+    const priceRange = priceHigh - priceLow;
+    
+    // Use 38.2% Fibonacci retracement for stop loss (or 50% for lower confidence)
+    const fibRetracementLevel = confidence > 75 ? 0.382 : 0.5;
+    const fibStopLoss = state.price - (priceRange * fibRetracementLevel);
+    
+    // Use ATR-based stop loss as backup
+    const atrStopLoss = state.price - (atr * 2);
+    
+    // Choose the more conservative stop (further from price for safety)
+    stopLoss = Math.min(fibStopLoss, atrStopLoss);
+    
+    // Calculate Fibonacci extension for take profit
+    // Use 161.8% extension for high confidence, 127.2% for moderate
+    const fibExtensionLevel = confidence > 80 ? 1.618 : 1.272;
+    const fibTakeProfit = state.price + (priceRange * (fibExtensionLevel - 1));
+    
+    // Use ATR-based take profit as backup
+    const atrTakeProfit = state.price + (atr * (confidence > 80 ? 5 : 4));
+    
+    // Choose the more aggressive target (further from price for better R:R)
+    takeProfit = Math.max(fibTakeProfit, atrTakeProfit);
+    
   } else if (action === 'SELL') {
-    stopLoss = state.price + (atr * 2);
-    takeProfit = state.price - (atr * 4);
+    // Calculate Fibonacci retracement for stop loss
+    const fibLevels = state.indicators.fibonacci?.levels || [state.price];
+    const priceHigh = Math.max(...fibLevels);
+    const priceLow = Math.min(...fibLevels);
+    const priceRange = priceHigh - priceLow;
+    
+    // Use 38.2% Fibonacci retracement for stop loss (or 50% for lower confidence)
+    const fibRetracementLevel = confidence > 75 ? 0.382 : 0.5;
+    const fibStopLoss = state.price + (priceRange * fibRetracementLevel);
+    
+    // Use ATR-based stop loss as backup
+    const atrStopLoss = state.price + (atr * 2);
+    
+    // Choose the more conservative stop (further from price for safety)
+    stopLoss = Math.max(fibStopLoss, atrStopLoss);
+    
+    // Calculate Fibonacci extension for take profit
+    // Use 161.8% extension for high confidence, 127.2% for moderate
+    const fibExtensionLevel = confidence > 80 ? 1.618 : 1.272;
+    const fibTakeProfit = state.price - (priceRange * (fibExtensionLevel - 1));
+    
+    // Use ATR-based take profit as backup
+    const atrTakeProfit = state.price - (atr * (confidence > 80 ? 5 : 4));
+    
+    // Choose the more aggressive target (further from price for better R:R)
+    takeProfit = Math.min(fibTakeProfit, atrTakeProfit);
   }
   
   return {
@@ -214,7 +278,7 @@ export function calculateConfluenceScore(state: TradingState, riskLevel: RiskLev
   return score;
 }
 
-// Calculate risk parameters
+// Calculate risk parameters using Fibonacci + ATR + Support/Resistance
 export function calculateRiskParameters(
   state: TradingState,
   decision: TradingAction,
@@ -231,15 +295,72 @@ export function calculateRiskParameters(
   let stopLoss = decision.stopLoss;
   let takeProfit = decision.takeProfit;
   
-  // Adjust based on confidence
-  if (decision.confidence > 85) {
-    // Tighter stops, bigger targets for high confidence
+  // Enhance with Fibonacci + Support/Resistance if available
+  if (state.indicators.fibonacci && state.indicators.supportResistance) {
+    const fibLevels = state.indicators.fibonacci.levels || [currentPrice];
+    const priceHigh = Math.max(...fibLevels);
+    const priceLow = Math.min(...fibLevels);
+    const priceRange = priceHigh - priceLow;
+    
     if (decision.type === 'BUY') {
-      stopLoss = currentPrice - (atr * 1.5);
-      takeProfit = currentPrice + (atr * 5);
+      // Find nearest support level for better stop loss
+      const supportLevels = state.indicators.supportResistance
+        .filter(sr => sr.type === 'support' && sr.price < currentPrice)
+        .sort((a, b) => b.price - a.price);
+      
+      if (supportLevels.length > 0) {
+        const nearestSupport = supportLevels[0].price;
+        // Use Fibonacci retracement or support, whichever is closer but still safe
+        const fib382Stop = currentPrice - (priceRange * 0.382);
+        stopLoss = Math.max(nearestSupport, fib382Stop, currentPrice - (atr * 2.5));
+      }
+      
+      // Find nearest resistance for target
+      const resistanceLevels = state.indicators.supportResistance
+        .filter(sr => sr.type === 'resistance' && sr.price > currentPrice)
+        .sort((a, b) => a.price - b.price);
+      
+      if (resistanceLevels.length > 0) {
+        const nearestResistance = resistanceLevels[0].price;
+        // Use Fibonacci extension or resistance, whichever is further for better reward
+        const fib1618Target = currentPrice + (priceRange * 0.618);
+        takeProfit = Math.max(nearestResistance, fib1618Target, currentPrice + (atr * 4));
+      }
+      
     } else if (decision.type === 'SELL') {
-      stopLoss = currentPrice + (atr * 1.5);
-      takeProfit = currentPrice - (atr * 5);
+      // Find nearest resistance for better stop loss
+      const resistanceLevels = state.indicators.supportResistance
+        .filter(sr => sr.type === 'resistance' && sr.price > currentPrice)
+        .sort((a, b) => a.price - b.price);
+      
+      if (resistanceLevels.length > 0) {
+        const nearestResistance = resistanceLevels[0].price;
+        const fib382Stop = currentPrice + (priceRange * 0.382);
+        stopLoss = Math.min(nearestResistance, fib382Stop, currentPrice + (atr * 2.5));
+      }
+      
+      // Find nearest support for target
+      const supportLevels = state.indicators.supportResistance
+        .filter(sr => sr.type === 'support' && sr.price < currentPrice)
+        .sort((a, b) => b.price - a.price);
+      
+      if (supportLevels.length > 0) {
+        const nearestSupport = supportLevels[0].price;
+        const fib1618Target = currentPrice - (priceRange * 0.618);
+        takeProfit = Math.min(nearestSupport, fib1618Target, currentPrice - (atr * 4));
+      }
+    }
+  }
+  
+  // Adjust based on confidence - tighter stops and bigger targets for high confidence
+  if (decision.confidence > 85) {
+    const confidenceMultiplier = 1.2;
+    if (decision.type === 'BUY') {
+      stopLoss = Math.max(stopLoss, currentPrice - (atr * 1.5));
+      takeProfit = currentPrice + (Math.abs(takeProfit - currentPrice) * confidenceMultiplier);
+    } else if (decision.type === 'SELL') {
+      stopLoss = Math.min(stopLoss, currentPrice + (atr * 1.5));
+      takeProfit = currentPrice - (Math.abs(currentPrice - takeProfit) * confidenceMultiplier);
     }
   }
   

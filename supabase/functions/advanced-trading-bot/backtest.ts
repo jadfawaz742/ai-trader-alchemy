@@ -253,6 +253,51 @@ function buildTradingState(historicalData: any[], index: number): TradingState {
   // Calculate volatility
   const volatility = std / mean;
   
+  // Calculate Fibonacci retracement levels (last 50 bars)
+  const fibLookback = Math.min(50, prices.length);
+  const fibPrices = prices.slice(-fibLookback);
+  const fibHigh = Math.max(...fibPrices);
+  const fibLow = Math.min(...fibPrices);
+  const fibLevels = [
+    fibLow,
+    fibLow + (fibHigh - fibLow) * 0.236,
+    fibLow + (fibHigh - fibLow) * 0.382,
+    fibLow + (fibHigh - fibLow) * 0.5,
+    fibLow + (fibHigh - fibLow) * 0.618,
+    fibLow + (fibHigh - fibLow) * 0.786,
+    fibHigh
+  ];
+  
+  // Calculate support/resistance levels using swing highs/lows
+  const supportResistance: any[] = [];
+  const swingLookback = Math.min(20, prices.length - 2);
+  
+  for (let i = prices.length - swingLookback; i < prices.length - 1; i++) {
+    const price = prices[i];
+    const prevPrice = i > 0 ? prices[i - 1] : price;
+    const nextPrice = i < prices.length - 1 ? prices[i + 1] : price;
+    
+    // Swing high (resistance)
+    if (price > prevPrice && price > nextPrice) {
+      supportResistance.push({
+        price: price,
+        type: 'resistance',
+        strength: 0.8, // Base strength
+        touches: 1
+      });
+    }
+    
+    // Swing low (support)
+    if (price < prevPrice && price < nextPrice) {
+      supportResistance.push({
+        price: price,
+        type: 'support',
+        strength: 0.8, // Base strength
+        touches: 1
+      });
+    }
+  }
+  
   return {
     price: currentBar.close,
     volume: currentBar.volume,
@@ -275,7 +320,14 @@ function buildTradingState(historicalData: any[], index: number): TradingState {
         middle: mean,
         lower: lowerBand,
         position: bbPosition
-      }
+      },
+      fibonacci: {
+        levels: fibLevels,
+        high: fibHigh,
+        low: fibLow,
+        range: fibHigh - fibLow
+      },
+      supportResistance: supportResistance
     },
     marketCondition,
     volatility,
@@ -305,10 +357,24 @@ function calculateRSI(prices: number[], period: number = 14): number {
   return 100 - (100 / (1 + rs));
 }
 
-// Convert trading state to full indicator data for saving
-function extractIndicatorsForSaving(state: TradingState, historicalData: any[], index: number): any {
+  // Extract full indicator data including Fibonacci for logging
   const prices = historicalData.slice(Math.max(0, index - 50), index + 1).map(d => d.close);
   const rsi = calculateRSI(prices);
+  
+  const fibLevels = state.indicators.fibonacci || { levels: [], high: 0, low: 0, range: 0 };
+  const currentPrice = state.price;
+  
+  // Calculate which Fibonacci level we're near
+  let nearestFibLevel = 0;
+  let nearestFibDistance = Infinity;
+  [0.236, 0.382, 0.5, 0.618, 0.786].forEach(level => {
+    const fibPrice = fibLevels.low + (fibLevels.range * level);
+    const distance = Math.abs(currentPrice - fibPrice);
+    if (distance < nearestFibDistance) {
+      nearestFibDistance = distance;
+      nearestFibLevel = level;
+    }
+  });
   
   return {
     rsi,
@@ -327,11 +393,14 @@ function extractIndicatorsForSaving(state: TradingState, historicalData: any[], 
     ichimokuSignal: state.indicators.ichimoku.signal,
     marketCondition: state.marketCondition,
     volatility: state.volatility,
-    confluenceScore: state.confluenceScore
+    confluenceScore: state.confluenceScore,
+    fibonacciNearestLevel: nearestFibLevel,
+    fibonacciHigh: fibLevels.high,
+    fibonacciLow: fibLevels.low,
+    fibonacciRange: fibLevels.range
   };
 }
 
-// Enhanced Backtesting with Phase 1-3 ROI Improvements + Trade Logging + LEARNING
 export async function runBacktestSimulation(
   symbols: string[],
   period: string,
@@ -342,8 +411,9 @@ export async function runBacktestSimulation(
   showLogs: boolean = true,
   saveTradesForLearning: boolean = true // NEW: Save trades to learn from backtests
 ) {
-  console.log(`🔬 Starting ENHANCED backtest simulation with Phase 1-3 improvements for ${symbols.length} symbols over ${period}`);
-  console.log(`🚀 Including: Dynamic position sizing, ATR trailing stops, multi-timeframe analysis, and market regime detection`);
+  console.log(`🔬 Starting ENHANCED backtest simulation with Fibonacci + S/R for ${symbols.length} symbols over ${period}`);
+  console.log(`🚀 Features: Dynamic position sizing, ATR trailing stops, multi-timeframe, Fibonacci retracements/extensions, support/resistance`);
+  console.log(`📊 Fibonacci Integration: Using 38.2% & 50% retracements for stops, 127.2% & 161.8% extensions for targets`);
   
   // Calculate date range based on period
   const endDate = new Date();
