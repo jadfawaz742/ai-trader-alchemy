@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { usePortfolioContext } from '@/components/PortfolioProvider';
 import { Activity, Bot, TrendingUp, TrendingDown, Zap, Eye, Play, Square } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
 
 interface LiveTrade {
   symbol: string;
@@ -35,54 +36,77 @@ export const LiveTradingView: React.FC = () => {
   const [botStatus, setBotStatus] = useState<'idle' | 'analyzing' | 'trading'>('idle');
   const { portfolio, updateBalance } = usePortfolioContext();
 
-  // Simulate live market data updates
+  // Fetch real market data updates
   useEffect(() => {
     if (!isActive) return;
 
-    const interval = setInterval(() => {
-      const symbols = ['AAPL', 'GOOGL', 'MSFT', 'TSLA', 'NVDA', 'META', 'AMZN'];
-        const newMarketData: MarketFluctuation[] = symbols.map(symbol => {
-        const basePrice = 100 + (symbol.charCodeAt(0) % 100);
-        const volatility = 0.02 + (Math.random() * 0.03);
-        const priceChange = (Math.random() - 0.5) * volatility * basePrice;
-        const currentPrice = basePrice + priceChange;
-        const priceChangePercent = (priceChange / basePrice) * 100;
-        
-        let trend: 'bullish' | 'bearish' | 'neutral';
-        if (priceChangePercent > 0.5) {
-          trend = 'bullish';
-        } else if (priceChangePercent < -0.5) {
-          trend = 'bearish';
-        } else {
-          trend = 'neutral';
-        }
-        
-        return {
-          symbol,
-          currentPrice: Number(currentPrice.toFixed(2)),
-          priceChange: Number(priceChange.toFixed(2)),
-          priceChangePercent: Number(priceChangePercent.toFixed(2)),
-          trend,
-          timestamp: new Date().toISOString()
-        };
-      });
-      
-      setMarketData(newMarketData);
-      
-      // Simulate bot reactions
-      if (Math.random() > 0.7) { // 30% chance per update
-        setBotStatus('analyzing');
-        setTimeout(() => {
-          if (Math.random() > 0.5) { // 50% chance to execute trade after analysis
-            setBotStatus('trading');
-            simulateTrade(newMarketData);
-            setTimeout(() => setBotStatus('idle'), 2000);
+    const fetchRealMarketData = async () => {
+      const symbols = ['AAPL', 'GOOGL', 'MSFT', 'TSLA', 'NVDA', 'META', 'AMZN', 'BTCUSDT', 'ETHUSDT'];
+      const newMarketData: MarketFluctuation[] = [];
+
+      for (const symbol of symbols) {
+        try {
+          let data;
+          
+          // Check if it's a crypto symbol
+          if (symbol.includes('USDT')) {
+            const { data: cryptoData, error } = await supabase.functions.invoke('fetch-crypto-prices');
+            if (!error && cryptoData?.success && cryptoData?.prices) {
+              const crypto = cryptoData.prices.find((p: any) => p.symbol === symbol);
+              if (crypto) {
+                data = {
+                  price: crypto.price,
+                  change: crypto.change24h,
+                  volume: crypto.volume24h
+                };
+              }
+            }
           } else {
-            setBotStatus('idle');
+            // Fetch stock data from Yahoo Finance
+            const { data: stockData, error } = await supabase.functions.invoke('fetch-stock-price', {
+              body: { symbol }
+            });
+            if (!error && stockData?.success) {
+              data = {
+                price: stockData.price,
+                change: stockData.changePercent,
+                volume: stockData.volume
+              };
+            }
           }
-        }, 1500);
+
+          if (data) {
+            const priceChange = data.change;
+            let trend: 'bullish' | 'bearish' | 'neutral';
+            if (priceChange > 0.5) {
+              trend = 'bullish';
+            } else if (priceChange < -0.5) {
+              trend = 'bearish';
+            } else {
+              trend = 'neutral';
+            }
+
+            newMarketData.push({
+              symbol,
+              currentPrice: data.price,
+              priceChange: (data.price * priceChange) / 100,
+              priceChangePercent: priceChange,
+              trend,
+              timestamp: new Date().toISOString()
+            });
+          }
+        } catch (error) {
+          console.error(`Error fetching price for ${symbol}:`, error);
+        }
       }
-    }, 3000);
+
+      if (newMarketData.length > 0) {
+        setMarketData(newMarketData);
+      }
+    };
+
+    fetchRealMarketData();
+    const interval = setInterval(fetchRealMarketData, 30000); // Update every 30 seconds
 
     return () => clearInterval(interval);
   }, [isActive]);
