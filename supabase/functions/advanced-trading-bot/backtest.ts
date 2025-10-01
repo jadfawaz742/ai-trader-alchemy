@@ -350,6 +350,9 @@ export async function runBacktestSimulation(
   const startDate = new Date();
   
   switch (period) {
+    case '1day':
+      startDate.setDate(endDate.getDate() - 1);
+      break;
     case '1week':
       startDate.setDate(endDate.getDate() - 7);
       break;

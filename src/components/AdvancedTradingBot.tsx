@@ -66,7 +66,7 @@ interface BotConfig {
   tradingFrequency: 'high' | 'medium' | 'low';
   maxDailyTrades: number;
   backtestMode: boolean;
-  backtestPeriod: '1week' | '2weeks' | '1month' | '3months';
+  backtestPeriod: '1day' | '1week' | '2weeks' | '1month' | '3months';
 }
 
 interface BotStats {
@@ -643,7 +643,7 @@ ${data.backtestResults.tradeDecisionLogs?.slice(-5).map((log: any, i: number) =>
                         <Label htmlFor="backtestPeriod">Backtest Period</Label>
                         <Select
                           value={botConfig.backtestPeriod}
-                          onValueChange={(value: '1week' | '2weeks' | '1month' | '3months') =>
+                          onValueChange={(value: '1day' | '1week' | '2weeks' | '1month' | '3months') =>
                             setBotConfig(prev => ({ ...prev, backtestPeriod: value }))
                           }
                         >
@@ -651,6 +651,7 @@ ${data.backtestResults.tradeDecisionLogs?.slice(-5).map((log: any, i: number) =>
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
+                            <SelectItem value="1day">1 Day</SelectItem>
                             <SelectItem value="1week">1 Week</SelectItem>
                             <SelectItem value="2weeks">2 Weeks</SelectItem>
                             <SelectItem value="1month">1 Month</SelectItem>
