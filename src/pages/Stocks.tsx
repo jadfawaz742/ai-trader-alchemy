@@ -9,59 +9,59 @@ import { ArrowLeft, Search, TrendingUp, TrendingDown, Activity, DollarSign } fro
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
-// Enhanced stock data with PPO training symbols included
-const STOCK_DATA = [
+// Stock symbols to fetch - no hardcoded prices
+const STOCK_SYMBOLS = [
   // Large Cap - PPO Training Stocks
-  { symbol: 'AAPL', name: 'Apple Inc.', sector: 'Technology', cap: 'Large', price: 175.43, change: 2.34, changePercent: 1.35, volume: 45234567 },
-  { symbol: 'MSFT', name: 'Microsoft Corporation', sector: 'Technology', cap: 'Large', price: 334.89, change: -1.23, changePercent: -0.37, volume: 23456789 },
-  { symbol: 'GOOGL', name: 'Alphabet Inc.', sector: 'Technology', cap: 'Large', price: 138.21, change: 3.45, changePercent: 2.56, volume: 34567890 },
-  { symbol: 'AMZN', name: 'Amazon.com Inc.', sector: 'E-commerce', cap: 'Large', price: 127.89, change: -2.11, changePercent: -1.62, volume: 56789012 },
-  { symbol: 'TSLA', name: 'Tesla Inc.', sector: 'Automotive', cap: 'Large', price: 242.67, change: 8.94, changePercent: 3.83, volume: 78901234 },
-  { symbol: 'NVDA', name: 'NVIDIA Corporation', sector: 'Technology', cap: 'Large', price: 876.54, change: 12.34, changePercent: 1.43, volume: 12345678 },
-  { symbol: 'META', name: 'Meta Platforms Inc.', sector: 'Social Media', cap: 'Large', price: 298.76, change: -4.56, changePercent: -1.51, volume: 23456789 },
-  { symbol: 'NFLX', name: 'Netflix Inc.', sector: 'Entertainment', cap: 'Large', price: 456.78, change: 7.89, changePercent: 1.76, volume: 34567890 },
+  { symbol: 'AAPL', name: 'Apple Inc.', sector: 'Technology', cap: 'Large' },
+  { symbol: 'MSFT', name: 'Microsoft Corporation', sector: 'Technology', cap: 'Large' },
+  { symbol: 'GOOGL', name: 'Alphabet Inc.', sector: 'Technology', cap: 'Large' },
+  { symbol: 'AMZN', name: 'Amazon.com Inc.', sector: 'E-commerce', cap: 'Large' },
+  { symbol: 'TSLA', name: 'Tesla Inc.', sector: 'Automotive', cap: 'Large' },
+  { symbol: 'NVDA', name: 'NVIDIA Corporation', sector: 'Technology', cap: 'Large' },
+  { symbol: 'META', name: 'Meta Platforms Inc.', sector: 'Social Media', cap: 'Large' },
+  { symbol: 'NFLX', name: 'Netflix Inc.', sector: 'Entertainment', cap: 'Large' },
   
   // Additional PPO Training Stocks - Major Financials & Healthcare
-  { symbol: 'JPM', name: 'JPMorgan Chase & Co.', sector: 'Financial', cap: 'Large', price: 148.52, change: 1.87, changePercent: 1.28, volume: 12345678 },
-  { symbol: 'JNJ', name: 'Johnson & Johnson', sector: 'Healthcare', cap: 'Large', price: 162.34, change: -0.45, changePercent: -0.28, volume: 8765432 },
-  { symbol: 'PG', name: 'Procter & Gamble Co.', sector: 'Consumer Goods', cap: 'Large', price: 155.67, change: 0.78, changePercent: 0.50, volume: 6543210 },
-  { symbol: 'V', name: 'Visa Inc.', sector: 'Financial', cap: 'Large', price: 258.91, change: 3.21, changePercent: 1.26, volume: 9876543 },
-  { symbol: 'WMT', name: 'Walmart Inc.', sector: 'Retail', cap: 'Large', price: 159.84, change: -1.12, changePercent: -0.70, volume: 11223344 },
-  { symbol: 'UNH', name: 'UnitedHealth Group', sector: 'Healthcare', cap: 'Large', price: 547.23, change: 4.67, changePercent: 0.86, volume: 3456789 },
-  { symbol: 'HD', name: 'The Home Depot Inc.', sector: 'Retail', cap: 'Large', price: 334.45, change: 2.89, changePercent: 0.87, volume: 7890123 },
+  { symbol: 'JPM', name: 'JPMorgan Chase & Co.', sector: 'Financial', cap: 'Large' },
+  { symbol: 'JNJ', name: 'Johnson & Johnson', sector: 'Healthcare', cap: 'Large' },
+  { symbol: 'PG', name: 'Procter & Gamble Co.', sector: 'Consumer Goods', cap: 'Large' },
+  { symbol: 'V', name: 'Visa Inc.', sector: 'Financial', cap: 'Large' },
+  { symbol: 'WMT', name: 'Walmart Inc.', sector: 'Retail', cap: 'Large' },
+  { symbol: 'UNH', name: 'UnitedHealth Group', sector: 'Healthcare', cap: 'Large' },
+  { symbol: 'HD', name: 'The Home Depot Inc.', sector: 'Retail', cap: 'Large' },
   
   // ETFs - PPO Training Assets
-  { symbol: 'SPY', name: 'SPDR S&P 500 ETF Trust', sector: 'ETF', cap: 'Large', price: 445.67, change: 2.34, changePercent: 0.53, volume: 87654321 },
-  { symbol: 'QQQ', name: 'Invesco QQQ Trust', sector: 'ETF', cap: 'Large', price: 378.92, change: 1.87, changePercent: 0.50, volume: 56789012 },
-  { symbol: 'IWM', name: 'iShares Russell 2000 ETF', sector: 'ETF', cap: 'Medium', price: 194.56, change: -0.89, changePercent: -0.46, volume: 23456789 },
-  { symbol: 'VTI', name: 'Vanguard Total Stock Market ETF', sector: 'ETF', cap: 'Large', price: 243.78, change: 1.23, changePercent: 0.51, volume: 12345678 },
+  { symbol: 'SPY', name: 'SPDR S&P 500 ETF Trust', sector: 'ETF', cap: 'Large' },
+  { symbol: 'QQQ', name: 'Invesco QQQ Trust', sector: 'ETF', cap: 'Large' },
+  { symbol: 'IWM', name: 'iShares Russell 2000 ETF', sector: 'ETF', cap: 'Medium' },
+  { symbol: 'VTI', name: 'Vanguard Total Stock Market ETF', sector: 'ETF', cap: 'Large' },
   
   // Cryptocurrencies - PPO Training Assets
-  { symbol: 'BTCUSD', name: 'Bitcoin', sector: 'Crypto', cap: 'Large', price: 43287.65, change: 1234.56, changePercent: 2.94, volume: 1234567890 },
-  { symbol: 'ETHUSD', name: 'Ethereum', sector: 'Crypto', cap: 'Large', price: 2456.78, change: -87.32, changePercent: -3.43, volume: 567890123 },
-  { symbol: 'SOLUSDT', name: 'Solana', sector: 'Crypto', cap: 'Medium', price: 98.45, change: 4.32, changePercent: 4.59, volume: 234567890 },
-  { symbol: 'ADAUSDT', name: 'Cardano', sector: 'Crypto', cap: 'Medium', price: 0.387, change: -0.023, changePercent: -5.61, volume: 789012345 },
-  { symbol: 'DOTUSDT', name: 'Polkadot', sector: 'Crypto', cap: 'Medium', price: 6.78, change: 0.34, changePercent: 5.28, volume: 345678901 },
+  { symbol: 'BTCUSD', name: 'Bitcoin', sector: 'Crypto', cap: 'Large' },
+  { symbol: 'ETHUSD', name: 'Ethereum', sector: 'Crypto', cap: 'Large' },
+  { symbol: 'SOLUSDT', name: 'Solana', sector: 'Crypto', cap: 'Medium' },
+  { symbol: 'ADAUSDT', name: 'Cardano', sector: 'Crypto', cap: 'Medium' },
+  { symbol: 'DOTUSDT', name: 'Polkadot', sector: 'Crypto', cap: 'Medium' },
   
   // Additional Medium Cap Stocks
-  { symbol: 'SHOP', name: 'Shopify Inc.', sector: 'E-commerce', cap: 'Medium', price: 78.92, change: 1.23, changePercent: 1.58, volume: 4567890 },
-  { symbol: 'TWLO', name: 'Twilio Inc.', sector: 'Technology', cap: 'Medium', price: 67.45, change: -0.98, changePercent: -1.43, volume: 5678901 },
-  { symbol: 'ROKU', name: 'Roku Inc.', sector: 'Entertainment', cap: 'Medium', price: 89.34, change: 2.76, changePercent: 3.19, volume: 6789012 },
-  { symbol: 'CRWD', name: 'CrowdStrike Holdings', sector: 'Cybersecurity', cap: 'Medium', price: 234.56, change: -3.21, changePercent: -1.35, volume: 7890123 },
-  { symbol: 'OKTA', name: 'Okta Inc.', sector: 'Technology', cap: 'Medium', price: 123.45, change: 4.32, changePercent: 3.63, volume: 8901234 },
-  { symbol: 'DDOG', name: 'Datadog Inc.', sector: 'Technology', cap: 'Medium', price: 156.78, change: 1.87, changePercent: 1.21, volume: 9012345 },
-  { symbol: 'NET', name: 'Cloudflare Inc.', sector: 'Technology', cap: 'Medium', price: 87.65, change: -1.54, changePercent: -1.73, volume: 1234567 },
-  { symbol: 'PLTR', name: 'Palantir Technologies', sector: 'Technology', cap: 'Medium', price: 23.45, change: 0.67, changePercent: 2.94, volume: 2345678 },
+  { symbol: 'SHOP', name: 'Shopify Inc.', sector: 'E-commerce', cap: 'Medium' },
+  { symbol: 'TWLO', name: 'Twilio Inc.', sector: 'Technology', cap: 'Medium' },
+  { symbol: 'ROKU', name: 'Roku Inc.', sector: 'Entertainment', cap: 'Medium' },
+  { symbol: 'CRWD', name: 'CrowdStrike Holdings', sector: 'Cybersecurity', cap: 'Medium' },
+  { symbol: 'OKTA', name: 'Okta Inc.', sector: 'Technology', cap: 'Medium' },
+  { symbol: 'DDOG', name: 'Datadog Inc.', sector: 'Technology', cap: 'Medium' },
+  { symbol: 'NET', name: 'Cloudflare Inc.', sector: 'Technology', cap: 'Medium' },
+  { symbol: 'PLTR', name: 'Palantir Technologies', sector: 'Technology', cap: 'Medium' },
   
   // Small Cap & Emerging
-  { symbol: 'RBLX', name: 'Roblox Corporation', sector: 'Gaming', cap: 'Small', price: 45.67, change: 1.23, changePercent: 2.77, volume: 3456789 },
-  { symbol: 'UPST', name: 'Upstart Holdings', sector: 'Fintech', cap: 'Small', price: 34.89, change: -2.11, changePercent: -5.70, volume: 4567890 },
-  { symbol: 'HOOD', name: 'Robinhood Markets', sector: 'Fintech', cap: 'Small', price: 12.34, change: 0.45, changePercent: 3.78, volume: 5678901 },
-  { symbol: 'COIN', name: 'Coinbase Global', sector: 'Crypto', cap: 'Small', price: 167.89, change: -8.76, changePercent: -4.96, volume: 6789012 },
-  { symbol: 'RIVN', name: 'Rivian Automotive', sector: 'EV', cap: 'Small', price: 18.76, change: 1.34, changePercent: 7.69, volume: 7890123 },
-  { symbol: 'LCID', name: 'Lucid Group Inc.', sector: 'EV', cap: 'Small', price: 3.45, change: -0.12, changePercent: -3.36, volume: 8901234 },
-  { symbol: 'SOFI', name: 'SoFi Technologies', sector: 'Fintech', cap: 'Small', price: 9.87, change: 0.23, changePercent: 2.39, volume: 9012345 },
-  { symbol: 'WISH', name: 'ContextLogic Inc.', sector: 'E-commerce', cap: 'Small', price: 1.23, change: -0.05, changePercent: -3.91, volume: 1234567 },
+  { symbol: 'RBLX', name: 'Roblox Corporation', sector: 'Gaming', cap: 'Small' },
+  { symbol: 'UPST', name: 'Upstart Holdings', sector: 'Fintech', cap: 'Small' },
+  { symbol: 'HOOD', name: 'Robinhood Markets', sector: 'Fintech', cap: 'Small' },
+  { symbol: 'COIN', name: 'Coinbase Global', sector: 'Crypto', cap: 'Small' },
+  { symbol: 'RIVN', name: 'Rivian Automotive', sector: 'EV', cap: 'Small' },
+  { symbol: 'LCID', name: 'Lucid Group Inc.', sector: 'EV', cap: 'Small' },
+  { symbol: 'SOFI', name: 'SoFi Technologies', sector: 'Fintech', cap: 'Small' },
+  { symbol: 'WISH', name: 'ContextLogic Inc.', sector: 'E-commerce', cap: 'Small' },
 ];
 
 const StocksPage: React.FC = () => {
@@ -81,8 +81,8 @@ const StocksPage: React.FC = () => {
       const priceData: Record<string, any> = {};
       
       // Separate stocks and crypto
-      const stocks = STOCK_DATA.filter(s => s.sector !== 'Crypto');
-      const cryptos = STOCK_DATA.filter(s => s.sector === 'Crypto');
+      const stocks = STOCK_SYMBOLS.filter(s => s.sector !== 'Crypto');
+      const cryptos = STOCK_SYMBOLS.filter(s => s.sector === 'Crypto');
       
       // Fetch crypto prices from Bybit
       try {
@@ -130,12 +130,12 @@ const StocksPage: React.FC = () => {
     fetchRealPrices();
   }, []);
 
-  const sectors = ['All', ...Array.from(new Set(STOCK_DATA.map(stock => stock.sector)))];
+  const sectors = ['All', ...Array.from(new Set(STOCK_SYMBOLS.map(stock => stock.sector)))];
   const caps = ['All', 'Large', 'Medium', 'Small'];
 
-  const filteredAndSortedStocks = STOCK_DATA
+  const filteredAndSortedStocks = STOCK_SYMBOLS
     .map(stock => {
-      // Only show stocks with real data
+      // Only show stocks with real data from Yahoo Finance or Bybit
       const realData = stockPrices[stock.symbol];
       if (realData && !realData.error) {
         return {
