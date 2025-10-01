@@ -3184,9 +3184,6 @@ function calculateATRBasedPositionSize(
   
   return quantity;
 }
-  
-  return Math.max(1, quantity);
-}
 
 // Adaptive PPO action calculation with training context
 async function calculateAdaptivePPOAction(
