@@ -1579,7 +1579,9 @@ serve(async (req) => {
       });
     }
 
-    const { 
+    const userId = user.id;
+
+    const {
       symbols = [
         // Cryptocurrencies (42 total)
         'BTC', 'ETH', 'ADA', 'SOL', 'AVAX', 'DOT', 'MATIC', 'ATOM', 'NEAR', 'ALGO',
@@ -1616,7 +1618,14 @@ serve(async (req) => {
       console.log(`🔬 BACKTESTING MODE: Testing AI performance over ${backtestPeriod} period`);
       
       // Run backtesting simulation on ALL symbols (remove slice limit)
-      const backtestResults = await runBacktestSimulation(symbols, backtestPeriod, risk, portfolioBalance);
+      const backtestResults = await runBacktestSimulation(
+        symbols, 
+        backtestPeriod, 
+        risk, 
+        portfolioBalance,
+        supabase,
+        userId
+      );
       
       return new Response(JSON.stringify({
         success: true,

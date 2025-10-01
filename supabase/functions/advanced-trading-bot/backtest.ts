@@ -31,16 +31,37 @@ interface TradeDecisionLog {
 }
 
 // Load trained AI models for a symbol from database
-async function loadTrainedModel(symbol: string, userId?: string): Promise<any> {
-  if (!userId) return null;
+async function loadTrainedModel(
+  symbol: string, 
+  userId: string | undefined, 
+  supabaseClient: any
+): Promise<any> {
+  if (!userId || !supabaseClient) {
+    console.log(`⚠️ No userId or supabase client, using rule-based decisions for ${symbol}`);
+    return null;
+  }
   
   try {
-    // Note: In edge functions, we can't directly import supabase client
-    // This would need to be passed in from the main function
-    // For now, return null and rely on rule-based fallback
-    return null;
+    console.log(`🔍 Loading trained model for ${symbol}...`);
+    
+    const { data, error } = await supabaseClient
+      .from('asset_models')
+      .select('model_weights, performance_metrics, updated_at')
+      .eq('user_id', userId)
+      .eq('symbol', symbol)
+      .order('updated_at', { ascending: false })
+      .limit(1)
+      .single();
+    
+    if (error || !data) {
+      console.log(`⚠️ No trained model found for ${symbol}, using rule-based decisions`);
+      return null;
+    }
+    
+    console.log(`✅ Loaded trained model for ${symbol} (updated: ${data.updated_at})`);
+    return data.model_weights;
   } catch (error) {
-    console.log(`⚠️ No trained model found for ${symbol}, using rule-based decisions`);
+    console.log(`❌ Error loading model for ${symbol}:`, error);
     return null;
   }
 }
@@ -262,6 +283,7 @@ export async function runBacktestSimulation(
   period: string,
   riskLevel: string,
   initialBalance: number,
+  supabaseClient: any,
   userId?: string,
   showLogs: boolean = true
 ) {
@@ -311,7 +333,7 @@ export async function runBacktestSimulation(
       }
       
       // Load trained model for this symbol (if available)
-      const trainedModel = await loadTrainedModel(symbol, userId);
+      const trainedModel = await loadTrainedModel(symbol, userId, supabaseClient);
       
       // PHASE 1: Enhanced adaptive parameters with improved thresholds
       let adaptiveParams = {
