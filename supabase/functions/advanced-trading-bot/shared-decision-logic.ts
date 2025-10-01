@@ -126,10 +126,10 @@ export async function makeAITradingDecision(
   
   const totalScore = bullishScore + bearishScore;
   if (totalScore > 0) {
-    if (bullishScore > bearishScore && bullishScore > 60) {
+    if (bullishScore > bearishScore && bullishScore > 40) {
       action = 'BUY';
       confidence = Math.min(95, 50 + (bullishScore - bearishScore));
-    } else if (bearishScore > bullishScore && bearishScore > 60 && enableShorts) {
+    } else if (bearishScore > bullishScore && bearishScore > 40 && enableShorts) {
       action = 'SELL';
       confidence = Math.min(95, 50 + (bearishScore - bullishScore));
     }

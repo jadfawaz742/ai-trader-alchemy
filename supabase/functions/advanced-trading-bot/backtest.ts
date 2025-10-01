@@ -315,8 +315,8 @@ export async function runBacktestSimulation(
       
       // PHASE 1: Enhanced adaptive parameters with improved thresholds
       let adaptiveParams = {
-        confidenceThreshold: 45.0, // 🚀 ULTRA-AGGRESSIVE: Reduced from 70 to 45% 
-        confluenceThreshold: 0.55,  // PHASE 1: Lowered from 0.6
+        confidenceThreshold: 40.0, // 🚀 ULTRA-AGGRESSIVE: Reduced to 40% 
+        confluenceThreshold: 0.45,  // PHASE 1: Lowered to 0.45
         stopLossMultiplier: 1.0,
         takeProfitMultiplier: 1.0,
         successRate: 0.0,
@@ -358,7 +358,7 @@ export async function runBacktestSimulation(
         const aiDecision = await makeAITradingDecision(
           tradingState,
           symbol,
-          false, // enableShorts
+          true, // enableShorts - enable for backtesting
           trainedModel
         );
         
