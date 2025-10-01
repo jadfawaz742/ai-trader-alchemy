@@ -276,13 +276,14 @@ class AssetSpecificPPOTrainer {
     return Math.sqrt(variance)
   }
 
-  async trainOnSymbol(symbol: string, data: TrainingData[]): Promise<TrainingMetrics> {
+  async trainOnSymbol(symbol: string, trainData: TrainingData[], testData: TrainingData[]): Promise<{ train: TrainingMetrics, test: TrainingMetrics }> {
     console.log(`🎯 Training asset-specific PPO model for ${symbol} (${this.assetType})...`)
     const startTime = Date.now()
     
-    let totalReward = 0
-    let totalTrades = 0
-    let winningTrades = 0
+    // TRAINING PHASE
+    let trainTotalReward = 0
+    let trainTotalTrades = 0
+    let trainWinningTrades = 0
     const buffer: any[] = []
     
     // Simulate trading episodes with asset-specific behavior
@@ -292,11 +293,11 @@ class AssetSpecificPPOTrainer {
       let balance = 10000
       let shares = 0
       
-      for (let i = 20; i < data.length - 1; i++) {
-        const features = this.extractFeatures(data, i)
-        const action = this.selectSmartAction(features, data, i, position > 0)
-        const nextPrice = data[i + 1].price
-        const currentPrice = data[i].price
+      for (let i = 20; i < trainData.length - 1; i++) {
+        const features = this.extractFeatures(trainData, i)
+        const action = this.selectSmartAction(features, trainData, i, position > 0)
+        const nextPrice = trainData[i + 1].price
+        const currentPrice = trainData[i].price
         
         let reward = 0
         let traded = false
@@ -309,7 +310,7 @@ class AssetSpecificPPOTrainer {
             balance -= tradeSize * currentPrice
             position = 1
             traded = true
-            totalTrades++
+            trainTotalTrades++
           }
         } else if (action === 1 && position >= 0) { // SELL
           if (shares > 0) {
@@ -320,12 +321,12 @@ class AssetSpecificPPOTrainer {
             const returnRate = (currentPrice - (balance + saleValue - 10000) / shares) / currentPrice
             reward = returnRate * 100 // Scale reward
             
-            if (reward > 0) winningTrades++
+            if (reward > 0) trainWinningTrades++
             
             shares = 0
             position = -1
             traded = true
-            totalTrades++
+            trainTotalTrades++
           }
         }
         
@@ -336,7 +337,7 @@ class AssetSpecificPPOTrainer {
           const liquidityBonus = this.assetCharacteristics.liquidity === 'high' ? 1.1 : 1.0
           reward *= volatilityBonus * liquidityBonus
           
-          totalReward += reward
+          trainTotalReward += reward
         }
         
         // Store experience for PPO update
@@ -359,24 +360,77 @@ class AssetSpecificPPOTrainer {
       }
     }
     
-    const avgReturn = totalTrades > 0 ? totalReward / totalTrades : 0
-    const winRate = totalTrades > 0 ? winningTrades / totalTrades : 0
+    const trainAvgReturn = trainTotalTrades > 0 ? trainTotalReward / trainTotalTrades : 0
+    const trainWinRate = trainTotalTrades > 0 ? trainWinningTrades / trainTotalTrades : 0
     const trainingDuration = Date.now() - startTime
     
-    const metrics: TrainingMetrics = {
+    // TESTING PHASE (No training, just evaluation)
+    let testTotalReward = 0
+    let testTotalTrades = 0
+    let testWinningTrades = 0
+    let position = 0
+    let balance = 10000
+    let shares = 0
+    
+    for (let i = 20; i < testData.length - 1; i++) {
+      const features = this.extractFeatures(testData, i)
+      const action = this.selectSmartAction(features, testData, i, position > 0)
+      const currentPrice = testData[i].price
+      
+      let reward = 0
+      
+      if (action === 0 && position <= 0) { // BUY
+        const tradeSize = Math.floor(balance * 0.95 / currentPrice)
+        if (tradeSize > 0) {
+          shares += tradeSize
+          balance -= tradeSize * currentPrice
+          position = 1
+          testTotalTrades++
+        }
+      } else if (action === 1 && position >= 0) { // SELL
+        if (shares > 0) {
+          const saleValue = shares * currentPrice
+          balance += saleValue
+          
+          const returnRate = (currentPrice - (balance + saleValue - 10000) / shares) / currentPrice
+          reward = returnRate * 100
+          
+          if (reward > 0) testWinningTrades++
+          
+          testTotalReward += reward
+          shares = 0
+          position = -1
+          testTotalTrades++
+        }
+      }
+    }
+    
+    const testAvgReturn = testTotalTrades > 0 ? testTotalReward / testTotalTrades : 0
+    const testWinRate = testTotalTrades > 0 ? testWinningTrades / testTotalTrades : 0
+    
+    const trainMetrics: TrainingMetrics = {
       symbol,
-      winRate,
-      avgReturn: avgReturn / 100, // Convert back to percentage
-      totalTrades,
+      winRate: trainWinRate,
+      avgReturn: trainAvgReturn / 100,
+      totalTrades: trainTotalTrades,
       sharpeRatio: this.calculateSharpeRatio(buffer),
       trainingDuration
     }
     
-    this.trainingHistory.push(metrics)
+    const testMetrics: TrainingMetrics = {
+      symbol,
+      winRate: testWinRate,
+      avgReturn: testAvgReturn / 100,
+      totalTrades: testTotalTrades,
+      sharpeRatio: 0,
+      trainingDuration: 0
+    }
     
-    console.log(`✅ ${symbol} training complete: ${(winRate * 100).toFixed(1)}% win rate, ${totalTrades} trades`)
+    this.trainingHistory.push(trainMetrics)
     
-    return metrics
+    console.log(`✅ ${symbol}: Train=${(trainWinRate * 100).toFixed(1)}% (${trainTotalTrades} trades) | Test=${(testWinRate * 100).toFixed(1)}% (${testTotalTrades} trades)`)
+    
+    return { train: trainMetrics, test: testMetrics }
   }
 
   private forward(network: { weights: number[][], bias: number[][] }, input: number[]): number[] {
@@ -510,7 +564,7 @@ class AssetSpecificPPOTrainer {
 
 // Fetch real cryptocurrency data from Bybit
 async function fetchBybitData(symbol: string): Promise<TrainingData[]> {
-  console.log(`Fetching Bybit data for ${symbol}`)
+  console.log(`📡 Fetching Bybit data for ${symbol}`)
   
   try {
     // Convert symbol format for Bybit API
@@ -519,10 +573,12 @@ async function fetchBybitData(symbol: string): Promise<TrainingData[]> {
                         symbol.includes('SOL') ? 'SOLUSDT' :
                         symbol.includes('ADA') ? 'ADAUSDT' :
                         symbol.includes('DOT') ? 'DOTUSDT' :
+                        symbol.includes('AVAX') ? 'AVAXUSDT' :
+                        symbol.includes('MATIC') ? 'MATICUSDT' :
                         symbol + 'USDT';
     
-    // Fetch 200 klines (4-hour intervals for more data points)
-    const response = await fetch(`https://api.bybit.com/v5/market/kline?category=spot&symbol=${bybitSymbol}&interval=240&limit=200`, {
+    // Fetch 300 klines (4-hour intervals for sufficient training data)
+    const response = await fetch(`https://api.bybit.com/v5/market/kline?category=spot&symbol=${bybitSymbol}&interval=240&limit=300`, {
       method: 'GET',
       headers: {
         'Content-Type': 'application/json',
@@ -539,7 +595,7 @@ async function fetchBybitData(symbol: string): Promise<TrainingData[]> {
       throw new Error(`Bybit API error: ${data.retMsg || 'No data'}`);
     }
 
-    console.log(`✅ Successfully fetched ${data.result.list.length} data points for ${symbol} from Bybit`);
+    console.log(`✅ Bybit: Fetched ${data.result.list.length} data points for ${symbol}`);
     
     // Convert Bybit data format to our TrainingData interface
     // Bybit returns: [startTime, openPrice, highPrice, lowPrice, closePrice, volume, turnover]
@@ -554,89 +610,88 @@ async function fetchBybitData(symbol: string): Promise<TrainingData[]> {
     })).reverse(); // Bybit returns newest first, we want oldest first
     
   } catch (error) {
-    console.error(`❌ Failed to fetch Bybit data for ${symbol}:`, error);
-    return [];
+    console.error(`❌ Bybit fetch failed for ${symbol}:`, error);
+    throw error;
   }
 }
 
-// Generate realistic mock data for stocks and fallback
-function generateMockData(symbol: string): TrainingData[] {
-  console.log(`Generating realistic mock data for ${symbol}`)
+// Fetch real stock data from Yahoo Finance
+async function fetchYahooFinanceData(symbol: string): Promise<TrainingData[]> {
+  console.log(`📡 Fetching Yahoo Finance data for ${symbol}`)
   
-  // Asset-specific parameters for realistic simulation
-  const assetParams = {
-    'AAPL': { basePrice: 150, volatility: 0.02, trend: 0.0001 },
-    'GOOGL': { basePrice: 2500, volatility: 0.025, trend: 0.0002 },
-    'MSFT': { basePrice: 300, volatility: 0.018, trend: 0.0001 },
-    'NVDA': { basePrice: 500, volatility: 0.04, trend: 0.0003 },
-    'TSLA': { basePrice: 800, volatility: 0.05, trend: 0.0001 },
-    'META': { basePrice: 350, volatility: 0.03, trend: 0.0001 },
-    'NFLX': { basePrice: 450, volatility: 0.035, trend: 0.0001 },
-    'AMD': { basePrice: 120, volatility: 0.04, trend: 0.0002 },
-    'CRM': { basePrice: 200, volatility: 0.03, trend: 0.0001 },
-    'UBER': { basePrice: 45, volatility: 0.04, trend: 0.0001 },
-    'SPY': { basePrice: 420, volatility: 0.015, trend: 0.0001 },
-    'QQQ': { basePrice: 350, volatility: 0.02, trend: 0.0001 },
-    'VTI': { basePrice: 220, volatility: 0.012, trend: 0.0001 },
-    'GLD': { basePrice: 180, volatility: 0.008, trend: 0.00005 },
-    'BTC': { basePrice: 45000, volatility: 0.06, trend: 0.0002 },
-    'ETH': { basePrice: 3000, volatility: 0.05, trend: 0.0003 },
-    'SOL': { basePrice: 100, volatility: 0.08, trend: 0.0004 },
-    'ADA': { basePrice: 0.5, volatility: 0.06, trend: 0.0002 },
-    'DOT': { basePrice: 8, volatility: 0.07, trend: 0.0003 }
-  }
-  
-  const params = assetParams[symbol as keyof typeof assetParams] || { basePrice: 100, volatility: 0.03, trend: 0.0001 }
-  
-  const data: TrainingData[] = []
-  let currentPrice = params.basePrice
-  const now = Date.now()
-  
-  // Generate 200 data points (matching Bybit fetch)
-  for (let i = 0; i < 200; i++) {
-    const timestamp = now - (200 - i) * 4 * 60 * 60 * 1000 // 4-hour intervals
-    
-    // Generate realistic OHLCV data
-    const trend = params.trend * (Math.random() - 0.5) * 2
-    const volatility = params.volatility * (0.5 + Math.random())
-    
-    const open = currentPrice
-    const priceChange = currentPrice * (trend + volatility * (Math.random() - 0.5))
-    const close = Math.max(0.01, open + priceChange)
-    
-    const high = Math.max(open, close) * (1 + Math.random() * 0.02)
-    const low = Math.min(open, close) * (1 - Math.random() * 0.02)
-    
-    const volume = Math.floor((100000 + Math.random() * 900000) * (1 + volatility))
-    
-    data.push({
-      timestamp,
-      open,
-      high,
-      low,
-      close,
-      price: close,
-      volume
-    })
-    
-    currentPrice = close
-  }
-  
-  return data
-}
+  try {
+    // Fetch 6 months of daily data (approximately 126 trading days)
+    const response = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?range=6mo&interval=1d`, {
+      method: 'GET',
+      headers: {
+        'User-Agent': 'Mozilla/5.0'
+      }
+    });
 
-// Fetch historical data with fallback
-async function fetchHistoricalData(symbol: string): Promise<TrainingData[]> {
-  // For crypto symbols, try Bybit first
-  if (['BTC', 'ETH', 'SOL', 'ADA', 'DOT'].some(crypto => symbol.includes(crypto))) {
-    const bybitData = await fetchBybitData(symbol)
-    if (bybitData.length > 0) {
-      return bybitData
+    if (!response.ok) {
+      throw new Error(`Yahoo Finance API error: ${response.status}`);
     }
+
+    const data = await response.json();
+    
+    if (!data.chart?.result?.[0]) {
+      throw new Error('Yahoo Finance: No data returned');
+    }
+
+    const result = data.chart.result[0];
+    const timestamps = result.timestamp;
+    const quotes = result.indicators.quote[0];
+    
+    if (!timestamps || !quotes) {
+      throw new Error('Yahoo Finance: Invalid data format');
+    }
+
+    console.log(`✅ Yahoo Finance: Fetched ${timestamps.length} data points for ${symbol}`);
+    
+    // Convert Yahoo Finance data to our TrainingData interface
+    const trainingData: TrainingData[] = [];
+    for (let i = 0; i < timestamps.length; i++) {
+      // Skip entries with null values
+      if (quotes.close[i] !== null && quotes.open[i] !== null && 
+          quotes.high[i] !== null && quotes.low[i] !== null && quotes.volume[i] !== null) {
+        trainingData.push({
+          timestamp: timestamps[i] * 1000, // Convert to milliseconds
+          open: quotes.open[i],
+          high: quotes.high[i],
+          low: quotes.low[i],
+          close: quotes.close[i],
+          price: quotes.close[i],
+          volume: quotes.volume[i]
+        });
+      }
+    }
+    
+    return trainingData;
+    
+  } catch (error) {
+    console.error(`❌ Yahoo Finance fetch failed for ${symbol}:`, error);
+    throw error;
   }
+}
+
+// Fetch historical data with proper source routing
+async function fetchHistoricalData(symbol: string): Promise<TrainingData[]> {
+  // Determine if this is a crypto symbol
+  const cryptoSymbols = ['BTC', 'ETH', 'SOL', 'ADA', 'DOT', 'AVAX', 'MATIC'];
+  const isCrypto = cryptoSymbols.some(crypto => symbol.includes(crypto));
   
-  // Fallback to mock data for stocks and failed crypto fetches
-  return generateMockData(symbol)
+  try {
+    if (isCrypto) {
+      // Use Bybit for crypto
+      return await fetchBybitData(symbol);
+    } else {
+      // Use Yahoo Finance for stocks
+      return await fetchYahooFinanceData(symbol);
+    }
+  } catch (error) {
+    console.error(`❌ Failed to fetch data for ${symbol}:`, error);
+    throw new Error(`Unable to fetch real data for ${symbol}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+  }
 }
 
 serve(async (req) => {
@@ -667,56 +722,117 @@ serve(async (req) => {
       ]
 
       console.log(`🎯 Training asset-specific PPO models on ${trainingSymbols.length} symbols:`, trainingSymbols)
+      console.log(`📊 Using 80% training data and 20% test data split`)
       
       // First train general foundational model
-      console.log('🏗️ Training foundational general model...')
+      console.log('\n🏗️ PHASE 1: Training foundational general model...')
       const generalTrainer = new AssetSpecificPPOTrainer('GENERAL')
       const generalResults = []
       
-      for (const symbol of trainingSymbols.slice(0, 5)) { // Train on subset for general model
-        const data = await fetchHistoricalData(symbol)
-        const result = await generalTrainer.trainOnSymbol(symbol, data)
-        generalResults.push(result)
-      }
-      
-      const baseModel = generalTrainer.getModelWeights()
-      console.log('✅ Foundational model training complete')
-      
-      // Now train asset-specific models
-      const assetSpecificResults = new Map()
-      
-      if (trainAssetSpecific) {
-        console.log('🎯 Training asset-specific models...')
-        
-        for (const symbol of trainingSymbols) {
-          console.log(`📈 Training specialized model for ${symbol}...`)
-          
-          const assetTrainer = new AssetSpecificPPOTrainer(symbol, baseModel)
+      for (const symbol of trainingSymbols.slice(0, 5)) {
+        try {
           const data = await fetchHistoricalData(symbol)
-          const result = await assetTrainer.trainOnSymbol(symbol, data)
           
-          assetSpecificResults.set(symbol, {
-            model: assetTrainer.getModelWeights(),
-            performance: result
-          })
+          // Split data: 80% train, 20% test
+          const splitIndex = Math.floor(data.length * 0.8)
+          const trainData = data.slice(0, splitIndex)
+          const testData = data.slice(splitIndex)
+          
+          console.log(`📊 ${symbol}: ${trainData.length} train samples, ${testData.length} test samples`)
+          const result = await generalTrainer.trainOnSymbol(symbol, trainData, testData)
+          generalResults.push(result)
+        } catch (error) {
+          console.error(`❌ Failed to train general model on ${symbol}:`, error instanceof Error ? error.message : 'Unknown error')
         }
       }
       
-      const aggregatedMetrics = {
-        totalSymbols: trainingSymbols.length,
-        avgWinRate: Array.from(assetSpecificResults.values()).reduce((sum, r) => sum + r.performance.winRate, 0) / trainingSymbols.length,
-        avgReturn: Array.from(assetSpecificResults.values()).reduce((sum, r) => sum + r.performance.avgReturn, 0) / trainingSymbols.length,
-        totalTrades: Array.from(assetSpecificResults.values()).reduce((sum, r) => sum + r.performance.totalTrades, 0),
-        sharpeRatio: Array.from(assetSpecificResults.values()).reduce((sum, r) => sum + (r.performance.sharpeRatio || 0), 0) / trainingSymbols.length,
-        assetSpecificModels: assetSpecificResults.size
+      const baseModel = generalTrainer.getModelWeights()
+      console.log('✅ Foundational model training complete\n')
+      
+      // Now train asset-specific models
+      const assetSpecificResults = new Map()
+      const detailedPerformance: any[] = []
+      
+      if (trainAssetSpecific) {
+        console.log('🎯 PHASE 2: Training asset-specific models...\n')
+        
+        for (const symbol of trainingSymbols) {
+          try {
+            console.log(`📈 Training specialized model for ${symbol}...`)
+            
+            const assetTrainer = new AssetSpecificPPOTrainer(symbol, baseModel)
+            const data = await fetchHistoricalData(symbol)
+            
+            // Split data: 80% train, 20% test
+            const splitIndex = Math.floor(data.length * 0.8)
+            const trainData = data.slice(0, splitIndex)
+            const testData = data.slice(splitIndex)
+            
+            console.log(`📊 ${symbol}: ${trainData.length} train samples, ${testData.length} test samples`)
+            const result = await assetTrainer.trainOnSymbol(symbol, trainData, testData)
+            
+            assetSpecificResults.set(symbol, {
+              model: assetTrainer.getModelWeights(),
+              performance: result
+            })
+            
+            detailedPerformance.push({
+              symbol,
+              train: result.train,
+              test: result.test
+            })
+          } catch (error) {
+            console.error(`❌ Failed to train ${symbol}:`, error instanceof Error ? error.message : 'Unknown error')
+          }
+        }
       }
       
-      console.log('🎯 ASSET-SPECIFIC PPO TRAINING RESULTS:')
-      console.log(`📊 Symbols: ${aggregatedMetrics.totalSymbols}`)
-      console.log(`🎯 Win Rate: ${(aggregatedMetrics.avgWinRate * 100).toFixed(1)}%`)
-      console.log(`💰 Average Return: ${(aggregatedMetrics.avgReturn * 100).toFixed(2)}%`)
-      console.log(`📈 Total Trades: ${aggregatedMetrics.totalTrades}`)
-      console.log(`🤖 Asset-Specific Models: ${aggregatedMetrics.assetSpecificModels}`)
+      // Calculate aggregated metrics
+      const trainResults = detailedPerformance.map(p => p.train)
+      const testResults = detailedPerformance.map(p => p.test)
+      
+      const aggregatedMetrics = {
+        totalSymbols: detailedPerformance.length,
+        training: {
+          avgWinRate: trainResults.reduce((sum, r) => sum + r.winRate, 0) / trainResults.length,
+          avgReturn: trainResults.reduce((sum, r) => sum + r.avgReturn, 0) / trainResults.length,
+          totalTrades: trainResults.reduce((sum, r) => sum + r.totalTrades, 0),
+          sharpeRatio: trainResults.reduce((sum, r) => sum + (r.sharpeRatio || 0), 0) / trainResults.length
+        },
+        testing: {
+          avgWinRate: testResults.reduce((sum, r) => sum + r.winRate, 0) / testResults.length,
+          avgReturn: testResults.reduce((sum, r) => sum + r.avgReturn, 0) / testResults.length,
+          totalTrades: testResults.reduce((sum, r) => sum + r.totalTrades, 0)
+        },
+        assetSpecificModels: assetSpecificResults.size,
+        detailedPerformance
+      }
+      
+      console.log('\n' + '='.repeat(60))
+      console.log('🎯 ASSET-SPECIFIC PPO TRAINING RESULTS')
+      console.log('='.repeat(60))
+      console.log(`\n📊 Total Symbols Trained: ${aggregatedMetrics.totalSymbols}`)
+      console.log(`🤖 Asset-Specific Models Created: ${aggregatedMetrics.assetSpecificModels}`)
+      
+      console.log('\n📈 TRAINING SET PERFORMANCE (80% of data):')
+      console.log(`   Win Rate: ${(aggregatedMetrics.training.avgWinRate * 100).toFixed(2)}%`)
+      console.log(`   Average Return: ${(aggregatedMetrics.training.avgReturn * 100).toFixed(3)}%`)
+      console.log(`   Total Trades: ${aggregatedMetrics.training.totalTrades}`)
+      console.log(`   Sharpe Ratio: ${aggregatedMetrics.training.sharpeRatio.toFixed(3)}`)
+      
+      console.log('\n🧪 TEST SET PERFORMANCE (20% of data):')
+      console.log(`   Win Rate: ${(aggregatedMetrics.testing.avgWinRate * 100).toFixed(2)}%`)
+      console.log(`   Average Return: ${(aggregatedMetrics.testing.avgReturn * 100).toFixed(3)}%`)
+      console.log(`   Total Trades: ${aggregatedMetrics.testing.totalTrades}`)
+      
+      console.log('\n📋 DETAILED PERFORMANCE BY ASSET:')
+      detailedPerformance.forEach(p => {
+        console.log(`\n   ${p.symbol}:`)
+        console.log(`      Train: ${(p.train.winRate * 100).toFixed(1)}% win rate, ${(p.train.avgReturn * 100).toFixed(2)}% avg return, ${p.train.totalTrades} trades`)
+        console.log(`      Test:  ${(p.test.winRate * 100).toFixed(1)}% win rate, ${(p.test.avgReturn * 100).toFixed(2)}% avg return, ${p.test.totalTrades} trades`)
+      })
+      
+      console.log('\n' + '='.repeat(60))
       
       // Store training metrics and models in database
       if (userId) {
