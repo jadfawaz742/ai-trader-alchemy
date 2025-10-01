@@ -227,8 +227,7 @@ export async function runBacktestSimulation(
         const atrPercent = (indicators.atr / currentPrice) * 100;
         if (atrPercent > 2) baseConfidence += 10; // High volatility = opportunities
         
-        // Add some randomness for realism
-        baseConfidence += (Math.random() - 0.5) * 10;
+        // Clamp confidence to realistic range
         baseConfidence = Math.min(95, Math.max(40, baseConfidence));
         
         // PHASE 1: Apply adaptive threshold - only trade if above learned threshold
@@ -245,11 +244,28 @@ export async function runBacktestSimulation(
         else if (priceChange < -0.05) currentRegime = 'bear_market';
         else currentRegime = 'sideways_market';
         
-        // 🎪 PHASE 3: Multi-timeframe alignment simulation
-        const timeframeAlignment = Math.random();
-        const alignedTimeframes = timeframeAlignment > 0.75 ? 4 : 
-                                 timeframeAlignment > 0.5 ? 3 :  
-                                 timeframeAlignment > 0.25 ? 2 : 1;
+        // 🎪 PHASE 3: Real multi-timeframe alignment from price action
+        // Check price trends across multiple timeframes (5, 10, 20 periods)
+        let alignedTimeframes = 0;
+        const currentTrend = indicators.macd > 0 ? 'bullish' : 'bearish';
+        
+        // 5-period trend
+        const prices5 = historicalData.slice(Math.max(0, i - 5), i + 1).map(d => d.close);
+        const trend5 = (prices5[prices5.length - 1] - prices5[0]) / prices5[0];
+        if ((trend5 > 0 && currentTrend === 'bullish') || (trend5 < 0 && currentTrend === 'bearish')) alignedTimeframes++;
+        
+        // 10-period trend
+        const prices10 = historicalData.slice(Math.max(0, i - 10), i + 1).map(d => d.close);
+        const trend10 = (prices10[prices10.length - 1] - prices10[0]) / prices10[0];
+        if ((trend10 > 0 && currentTrend === 'bullish') || (trend10 < 0 && currentTrend === 'bearish')) alignedTimeframes++;
+        
+        // 20-period trend
+        const prices20 = historicalData.slice(Math.max(0, i - 20), i + 1).map(d => d.close);
+        const trend20 = (prices20[prices20.length - 1] - prices20[0]) / prices20[0];
+        if ((trend20 > 0 && currentTrend === 'bullish') || (trend20 < 0 && currentTrend === 'bearish')) alignedTimeframes++;
+        
+        // RSI alignment
+        if ((indicators.rsi < 40 && currentTrend === 'bullish') || (indicators.rsi > 60 && currentTrend === 'bearish')) alignedTimeframes++;
         
         if (alignedTimeframes < 2) {
           continue;
@@ -265,11 +281,12 @@ export async function runBacktestSimulation(
           console.log(`⚠️ LOW CONFIDENCE ${symbol}: ${baseConfidence.toFixed(1)}% = 0.5x position size`);
         }
         
-        // Determine trade direction based on indicators
+        // Determine trade direction based on indicators only
         let tradeBehavior: 'BUY' | 'SELL';
         if (indicators.rsi < 40 && indicators.macd > 0) tradeBehavior = 'BUY';
         else if (indicators.rsi > 60 && indicators.macd < 0) tradeBehavior = 'SELL';
-        else tradeBehavior = Math.random() > 0.5 ? 'BUY' : 'SELL';
+        else if (indicators.macd > 0) tradeBehavior = 'BUY'; // MACD momentum
+        else tradeBehavior = 'SELL'; // Default to SELL if bearish momentum
         
         // 🛡️ PHASE 2: Enhanced risk management with market regime adjustment
         let regimeMultiplier = 1.0;
