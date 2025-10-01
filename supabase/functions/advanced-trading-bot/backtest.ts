@@ -11,6 +11,7 @@ import {
   analyzeMultiTimeframe, 
   getMultiTimeframeBoost 
 } from './multi-timeframe.ts';
+import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
 
 // Trade Decision Log Interface
 interface TradeDecisionLog {
