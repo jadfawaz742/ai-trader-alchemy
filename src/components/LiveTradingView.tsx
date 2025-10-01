@@ -58,11 +58,11 @@ export const LiveTradingView: React.FC<{ symbols?: string[] }> = ({ symbols: con
         body: {
           symbols,
           mode: 'live',
-          risk: 'moderate',
+          risk: 'high', // Use high risk for more trades
           portfolioBalance: portfolio?.current_balance || 100000,
           enableShorts: false,
-          tradingFrequency: 'medium',
-          maxDailyTrades: 20,
+          tradingFrequency: 'high', // High frequency for more opportunities
+          maxDailyTrades: 50, // Increased from 20
           backtestMode: false,
           enhancedPPO: true
         }
@@ -82,16 +82,27 @@ export const LiveTradingView: React.FC<{ symbols?: string[] }> = ({ symbols: con
       console.log('Bot analysis complete:', data);
 
       if (data?.signals && data.signals.length > 0) {
-        console.log(`🎯 Bot generated ${data.signals.length} trading signals`);
+        console.log(`🎯 Bot generated ${data.signals.length} trading signals:`, data.signals.map((s: any) => `${s.symbol}:${s.action}`));
         setBotStatus('trading');
         
         // Process each trading signal
         for (const signal of data.signals) {
-          const matchingStock = currentMarketData.find(m => 
-            m.symbol === signal.symbol || m.symbol === signal.symbol.replace('-USD', 'USDT')
-          );
+          console.log(`📊 Processing signal: ${signal.symbol} ${signal.action} @ $${signal.price}`);
+          
+          const matchingStock = currentMarketData.find(m => {
+            // Match both direct symbols and converted formats
+            const match = m.symbol === signal.symbol || 
+                         m.symbol === signal.symbol.replace('-USD', 'USDT') ||
+                         m.symbol.replace('-USD', '') === signal.symbol.replace('-USD', '') ||
+                         m.symbol.replace('USDT', '') === signal.symbol.replace('-USD', '');
+            if (match) {
+              console.log(`✅ Matched ${signal.symbol} to market data ${m.symbol}`);
+            }
+            return match;
+          });
           
           if (matchingStock) {
+            console.log(`💰 Executing trade for ${signal.symbol} at $${matchingStock.currentPrice}`);
             const quantity = Math.floor((portfolio?.current_balance || 100000) * 0.02 / matchingStock.currentPrice);
             const estimatedPnL = signal.action === 'BUY' 
               ? quantity * matchingStock.currentPrice * (signal.confidence / 100) * 0.05
@@ -103,7 +114,7 @@ export const LiveTradingView: React.FC<{ symbols?: string[] }> = ({ symbols: con
               quantity,
               price: matchingStock.currentPrice,
               confidence: signal.confidence,
-              reason: signal.reason,
+              reason: signal.reason || signal.reasoning || 'AI Trading Signal',
               profitLoss: estimatedPnL,
               simulation: false,
               timestamp: new Date().toISOString()
@@ -116,6 +127,11 @@ export const LiveTradingView: React.FC<{ symbols?: string[] }> = ({ symbols: con
               const newBalance = portfolio.current_balance + estimatedPnL;
               await updateBalance(newBalance);
             }
+            
+            console.log(`✅ Trade executed: ${signal.action} ${quantity} ${signal.symbol} @ $${matchingStock.currentPrice.toFixed(2)} | P&L: ${estimatedPnL >= 0 ? '+' : ''}$${estimatedPnL.toFixed(2)}`);
+          } else {
+            console.warn(`⚠️ No matching market data found for signal: ${signal.symbol}`);
+            console.log('Available market data symbols:', currentMarketData.map(m => m.symbol));
           }
         }
         

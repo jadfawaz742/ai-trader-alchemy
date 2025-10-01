@@ -1789,13 +1789,25 @@ serve(async (req) => {
           }
         }
         
-        if (tradingDecision.type !== 'HOLD' && 
-            currentState.confluenceScore >= Math.min(adaptiveParams.confluenceThreshold, RISK_LEVELS[risk].minConfluence * (isLiveMode ? 0.5 : 0.7)) &&
-            tradingDecision.confidence > Math.min(adaptiveParams.confidenceThreshold, isLiveMode ? 20 : 35)) { // 🚀 LIVE MODE: 20%, BACKTEST: 35%
-          
-          console.log(`✅ Signal passed filters - Confidence: ${tradingDecision.confidence.toFixed(1)}% (threshold: ${Math.min(adaptiveParams.confidenceThreshold, 80).toFixed(1)}%), Confluence: ${(currentState.confluenceScore * 100).toFixed(1)}% (threshold: ${(Math.min(adaptiveParams.confluenceThreshold, RISK_LEVELS[risk].minConfluence * 1.2) * 100).toFixed(1)}%)`);
-          
-          // 🚀 PHASE 1 ROI ENHANCEMENT TRACKING
+        if (tradingDecision.type !== 'HOLD') {
+          // In LIVE mode, accept almost all signals - only basic sanity checks
+          if (isLiveMode) {
+            // LIVE MODE: Accept any non-HOLD signal with confidence > 15%
+            if (tradingDecision.confidence > 15) {
+              console.log(`🚀 LIVE MODE BYPASS: Accepting ${tradingDecision.type} signal with ${tradingDecision.confidence.toFixed(1)}% confidence - MINIMAL FILTERING`);
+            } else {
+              console.log(`⚠️ LIVE MODE: Signal too weak (${tradingDecision.confidence.toFixed(1)}% < 15%), skipping`);
+              continue; // Skip to next symbol
+            }
+          } else {
+            // BACKTEST MODE: Use normal filtering
+            if (currentState.confluenceScore < Math.min(adaptiveParams.confluenceThreshold, RISK_LEVELS[risk].minConfluence * 0.7) ||
+                tradingDecision.confidence <= Math.min(adaptiveParams.confidenceThreshold, 35)) {
+              console.log(`❌ BACKTEST FILTER: Signal rejected - Confidence: ${tradingDecision.confidence.toFixed(1)}%, Confluence: ${(currentState.confluenceScore * 100).toFixed(1)}%`);
+              continue;
+            }
+            console.log(`✅ BACKTEST: Signal passed filters - Confidence: ${tradingDecision.confidence.toFixed(1)}%, Confluence: ${(currentState.confluenceScore * 100).toFixed(1)}%`);
+          }
           const oldConfidenceThreshold = 85; // Previous cap
           const oldConfluenceThreshold = 0.8; // Previous cap
           const newConfidenceThreshold = 80; // New cap
