@@ -52,72 +52,77 @@ export async function makeAITradingDecision(
   let bearishScore = 0;
   const reasons: string[] = [];
   
-  // Ichimoku analysis (20 points)
+  // 🧠 ADAPTIVE WEIGHTS: Use learned weights or defaults
+  const weights = modelWeights?.indicatorWeights || {
+    ichimoku: 20,
+    ema200: 15,
+    macd: 20,
+    bollinger: 15,
+    volume: 10,
+    marketCondition: 10,
+    volatility: 10
+  };
+  
+  // Ichimoku analysis
   if (state.indicators.ichimoku.signal > 0) {
-    bullishScore += 20;
+    bullishScore += weights.ichimoku;
     reasons.push("Ichimoku bullish");
   } else if (state.indicators.ichimoku.signal < 0) {
-    bearishScore += 20;
+    bearishScore += weights.ichimoku;
     reasons.push("Ichimoku bearish");
   }
   
-  // EMA 200 trend (15 points)
+  // EMA 200 trend
   if (state.price > state.indicators.ema200) {
-    bullishScore += 15;
+    bullishScore += weights.ema200;
     reasons.push("Above EMA200");
   } else {
-    bearishScore += 15;
+    bearishScore += weights.ema200;
     reasons.push("Below EMA200");
   }
   
-  // MACD momentum (20 points)
+  // MACD momentum
   if (state.indicators.macd.histogram > 0) {
-    bullishScore += 20;
+    bullishScore += weights.macd;
     reasons.push("MACD bullish");
   } else if (state.indicators.macd.histogram < 0) {
-    bearishScore += 20;
+    bearishScore += weights.macd;
     reasons.push("MACD bearish");
   }
   
-  // Bollinger Bands (15 points)
+  // Bollinger Bands
   if (state.indicators.bollinger.position < 0.3) {
-    bullishScore += 15;
+    bullishScore += weights.bollinger;
     reasons.push("Near lower BB");
   } else if (state.indicators.bollinger.position > 0.7) {
-    bearishScore += 15;
+    bearishScore += weights.bollinger;
     reasons.push("Near upper BB");
   }
   
-  // Volume confirmation (10 points)
+  // Volume confirmation
   if (state.indicators.obv > 0) {
-    bullishScore += 10;
+    bullishScore += weights.volume;
     reasons.push("Positive volume");
   } else {
-    bearishScore += 10;
+    bearishScore += weights.volume;
     reasons.push("Negative volume");
   }
   
-  // Market condition (10 points)
+  // Market condition
   if (state.marketCondition === 'bullish') {
-    bullishScore += 10;
+    bullishScore += weights.marketCondition;
     reasons.push("Bullish market");
   } else if (state.marketCondition === 'bearish') {
-    bearishScore += 10;
+    bearishScore += weights.marketCondition;
     reasons.push("Bearish market");
   }
   
-  // Volatility check (10 points)
+  // Volatility check
   const atrPercent = state.indicators.atr / state.price;
   if (atrPercent > 0.02 && atrPercent < 0.06) {
-    bullishScore += 10;
-    bearishScore += 10;
+    bullishScore += weights.volatility;
+    bearishScore += weights.volatility;
     reasons.push("Optimal volatility");
-  }
-  
-  // Apply model weights if available
-  if (modelWeights?.decisionWeights) {
-    bullishScore *= modelWeights.decisionWeights.bullishMultiplier || 1.0;
-    bearishScore *= modelWeights.decisionWeights.bearishMultiplier || 1.0;
   }
   
   // Determine action

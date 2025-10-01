@@ -332,8 +332,19 @@ export async function runBacktestSimulation(
         continue;
       }
       
-      // Load trained model for this symbol (if available)
+      // 🧠 Load trained model weights for this symbol (if available)
       const trainedModel = await loadTrainedModel(symbol, userId, supabaseClient);
+      
+      // Track indicator performance for this run
+      const indicatorPerformance = {
+        ichimoku: { wins: 0, losses: 0 },
+        ema200: { wins: 0, losses: 0 },
+        macd: { wins: 0, losses: 0 },
+        bollinger: { wins: 0, losses: 0 },
+        volume: { wins: 0, losses: 0 },
+        marketCondition: { wins: 0, losses: 0 },
+        volatility: { wins: 0, losses: 0 }
+      };
       
       // 🔍 Fetch multi-timeframe data for better decision quality
       const multiTimeframeData = await fetchMultiTimeframeData(symbol);
@@ -527,7 +538,29 @@ export async function runBacktestSimulation(
         totalTrades++;
         totalConfidence += aiDecision.confidence;
         
-        if (isWin) winningTrades++;
+        if (isWin) {
+          winningTrades++;
+          
+          // 🧠 Track which indicators contributed to this winning trade
+          if (tradingState.indicators.ichimoku.signal !== 0) indicatorPerformance.ichimoku.wins++;
+          if (Math.abs(tradingState.price - tradingState.indicators.ema200) / tradingState.indicators.ema200 > 0.02) indicatorPerformance.ema200.wins++;
+          if (tradingState.indicators.macd.histogram !== 0) indicatorPerformance.macd.wins++;
+          if (tradingState.indicators.bollinger.position < 0.3 || tradingState.indicators.bollinger.position > 0.7) indicatorPerformance.bollinger.wins++;
+          if (tradingState.indicators.obv !== 0) indicatorPerformance.volume.wins++;
+          if (tradingState.marketCondition !== 'sideways') indicatorPerformance.marketCondition.wins++;
+          const atrPct = tradingState.indicators.atr / tradingState.price;
+          if (atrPct > 0.02 && atrPct < 0.06) indicatorPerformance.volatility.wins++;
+        } else {
+          // Track losses
+          if (tradingState.indicators.ichimoku.signal !== 0) indicatorPerformance.ichimoku.losses++;
+          if (Math.abs(tradingState.price - tradingState.indicators.ema200) / tradingState.indicators.ema200 > 0.02) indicatorPerformance.ema200.losses++;
+          if (tradingState.indicators.macd.histogram !== 0) indicatorPerformance.macd.losses++;
+          if (tradingState.indicators.bollinger.position < 0.3 || tradingState.indicators.bollinger.position > 0.7) indicatorPerformance.bollinger.losses++;
+          if (tradingState.indicators.obv !== 0) indicatorPerformance.volume.losses++;
+          if (tradingState.marketCondition !== 'sideways') indicatorPerformance.marketCondition.losses++;
+          const atrPct = tradingState.indicators.atr / tradingState.price;
+          if (atrPct > 0.02 && atrPct < 0.06) indicatorPerformance.volatility.losses++;
+        }
         
         // Get technical indicators for logging
         const indicators = calculateTechnicalIndicators(historicalData, i);
@@ -621,8 +654,8 @@ export async function runBacktestSimulation(
         console.log(`${isWin ? '✅' : '❌'} ${symbol} ${aiDecision.type}: $${actualPnL.toFixed(2)} P&L (${aiDecision.confidence.toFixed(1)}% conf, ${currentRegime} market${trainedModel ? ', AI model' : ', rule-based'})`);
       }
       
-      // Store symbol learning data
-      learningData.set(symbol, adaptiveParams);
+      // Store symbol learning data with indicator performance
+      learningData.set(symbol, { ...adaptiveParams, indicatorPerformance });
       
     } catch (error) {
       console.error(`Error backtesting ${symbol}:`, error);
@@ -724,23 +757,81 @@ export async function runBacktestSimulation(
                 return sum + reward;
               }, 0) / learningRecords.length;
               
+              // 🎯 Calculate new indicator weights based on performance
+              const calculateNewWeight = (indicator: { wins: number, losses: number }, baseWeight: number) => {
+                const total = indicator.wins + indicator.losses;
+                if (total === 0) return baseWeight;
+                
+                const winRate = indicator.wins / total;
+                // Increase weight for indicators with >60% win rate, decrease for <40%
+                if (winRate > 0.6) {
+                  return Math.min(baseWeight * 1.3, baseWeight + 10);
+                } else if (winRate < 0.4) {
+                  return Math.max(baseWeight * 0.7, baseWeight - 10);
+                }
+                return baseWeight;
+              };
+              
+              const indicatorPerf = adaptiveParams.indicatorPerformance || {
+                ichimoku: { wins: 0, losses: 0 },
+                ema200: { wins: 0, losses: 0 },
+                macd: { wins: 0, losses: 0 },
+                bollinger: { wins: 0, losses: 0 },
+                volume: { wins: 0, losses: 0 },
+                marketCondition: { wins: 0, losses: 0 },
+                volatility: { wins: 0, losses: 0 }
+              };
+              
+              // Load existing model to get current weights
+              const { data: existingModel } = await supabaseClient
+                .from('asset_models')
+                .select('model_weights')
+                .eq('user_id', userId)
+                .eq('symbol', symbol)
+                .eq('model_type', 'adaptive_trading')
+                .maybeSingle();
+              
+              const currentWeights = existingModel?.model_weights?.indicatorWeights || {
+                ichimoku: 20,
+                ema200: 15,
+                macd: 20,
+                bollinger: 15,
+                volume: 10,
+                marketCondition: 10,
+                volatility: 10
+              };
+              
+              const newIndicatorWeights = {
+                ichimoku: calculateNewWeight(indicatorPerf.ichimoku, currentWeights.ichimoku),
+                ema200: calculateNewWeight(indicatorPerf.ema200, currentWeights.ema200),
+                macd: calculateNewWeight(indicatorPerf.macd, currentWeights.macd),
+                bollinger: calculateNewWeight(indicatorPerf.bollinger, currentWeights.bollinger),
+                volume: calculateNewWeight(indicatorPerf.volume, currentWeights.volume),
+                marketCondition: calculateNewWeight(indicatorPerf.marketCondition, currentWeights.marketCondition),
+                volatility: calculateNewWeight(indicatorPerf.volatility, currentWeights.volatility)
+              };
+              
+              console.log(`📊 ${symbol}: New indicator weights:`, newIndicatorWeights);
+              
               // Update model weights based on learning (simplified reinforcement)
               const performanceMetrics = {
                 winRate: adaptiveParams.successRate,
                 avgReturn: adaptiveParams.averageProfit,
                 totalTrades: tradeCount,
                 rewardSignal: rewardSignal,
+                indicatorPerformance: indicatorPerf,
                 lastUpdated: new Date().toISOString()
               };
               
-              // Store updated model metadata (weights would be updated by actual PPO training)
+              // Store updated model metadata with learned indicator weights
               const { error: modelError } = await supabaseClient
                 .from('asset_models')
                 .upsert({
                   user_id: userId,
                   symbol: symbol,
-                  model_type: 'ppo_reinforcement',
+                  model_type: 'adaptive_trading',
                   model_weights: { 
+                    indicatorWeights: newIndicatorWeights,
                     learning_iterations: (learningRecords.length / 10),
                     confidence_bias: adaptiveParams.confidenceThreshold - 50, // Deviation from baseline
                     risk_bias: adaptiveParams.stopLossMultiplier - 1.0
@@ -754,7 +845,7 @@ export async function runBacktestSimulation(
               if (modelError) {
                 console.error(`❌ Error updating model for ${symbol}:`, modelError);
               } else {
-                console.log(`✅ Model metadata updated for ${symbol} - next backtest will use these learned parameters`);
+                console.log(`✅ Model learned from backtest for ${symbol} - next run will use improved weights`);
               }
             }
           }
