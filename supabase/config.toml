@@ -26,3 +26,6 @@ verify_jwt = false
 
 [functions.fetch-stock-price]
 verify_jwt = false
+
+[functions.fetch-stock-history]
+verify_jwt = false

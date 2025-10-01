@@ -10,28 +10,37 @@ import { MarketActivityFeed } from '@/components/MarketActivityFeed';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 
-// Mock detailed stock data
-const getStockDetails = (symbol: string) => {
-  const baseData = {
-    'AAPL': { name: 'Apple Inc.', sector: 'Technology', cap: 'Large', price: 175.43, change: 2.34, changePercent: 1.35, volume: 45234567, marketCap: 2800000000000, pe: 28.5, dividend: 0.96, beta: 1.2 },
-    'MSFT': { name: 'Microsoft Corporation', sector: 'Technology', cap: 'Large', price: 334.89, change: -1.23, changePercent: -0.37, volume: 23456789, marketCap: 2500000000000, pe: 32.1, dividend: 2.72, beta: 0.9 },
-    'GOOGL': { name: 'Alphabet Inc.', sector: 'Technology', cap: 'Large', price: 138.21, change: 3.45, changePercent: 2.56, volume: 34567890, marketCap: 1800000000000, pe: 25.3, dividend: 0, beta: 1.1 },
-    'TSLA': { name: 'Tesla Inc.', sector: 'Automotive', cap: 'Large', price: 242.67, change: 8.94, changePercent: 3.83, volume: 78901234, marketCap: 770000000000, pe: 65.2, dividend: 0, beta: 2.1 },
-  };
-  
-  return baseData[symbol as keyof typeof baseData] || {
-    name: `${symbol} Corporation`,
-    sector: 'Technology',
-    cap: 'Medium',
-    price: 100 + Math.random() * 200,
-    change: (Math.random() - 0.5) * 10,
-    changePercent: (Math.random() - 0.5) * 5,
-    volume: Math.floor(Math.random() * 50000000),
-    marketCap: Math.floor(Math.random() * 1000000000000),
-    pe: 20 + Math.random() * 40,
-    dividend: Math.random() * 3,
-    beta: 0.5 + Math.random() * 2
-  };
+// Fetch real stock data from Yahoo Finance
+const fetchStockDetails = async (symbol: string) => {
+  try {
+    const { data, error } = await supabase.functions.invoke('fetch-stock-price', {
+      body: { symbol }
+    });
+    
+    if (error || !data) {
+      throw new Error('Failed to fetch stock data');
+    }
+    
+    return {
+      name: `${symbol} Corporation`,
+      sector: 'Technology',
+      cap: 'Large',
+      price: data.price,
+      change: data.change,
+      changePercent: data.changePercent,
+      volume: data.volume,
+      marketCap: 0,
+      pe: 0,
+      dividend: 0,
+      beta: 1.0,
+      high: data.high,
+      low: data.low,
+      previousClose: data.previousClose
+    };
+  } catch (error) {
+    console.error('Error fetching stock details:', error);
+    return null;
+  }
 };
 
 const StockDetailPage: React.FC = () => {
@@ -43,10 +52,15 @@ const StockDetailPage: React.FC = () => {
   const [loading, setLoading] = useState(false);
 
   useEffect(() => {
-    if (symbol) {
-      const data = getStockDetails(symbol.toUpperCase());
-      setStockData(data);
-    }
+    const loadStockData = async () => {
+      if (symbol) {
+        setLoading(true);
+        const data = await fetchStockDetails(symbol.toUpperCase());
+        setStockData(data);
+        setLoading(false);
+      }
+    };
+    loadStockData();
   }, [symbol]);
 
   const formatCurrency = (amount: number) => {

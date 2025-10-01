@@ -5,6 +5,7 @@ import { Button } from '@/components/ui/button';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, ReferenceLine } from 'recharts';
 import { TrendingUp, TrendingDown, RotateCcw, Activity } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
 
 interface StockDataPoint {
   time: string;
@@ -33,39 +34,39 @@ export const StockChart: React.FC<StockChartProps> = ({
   const intervalRef = useRef<NodeJS.Timeout | null>(null);
   const basePrice = useRef<number>(currentPrice || (Math.random() * 200 + 50));
 
-  // Generate realistic mock data for demonstration
-  const generateMockData = () => {
-    const dataPoints = timeframe === '1D' ? 48 : timeframe === '1W' ? 168 : 720; // 30min intervals for 1D, 1h for 1W, 4h for 1M
-    const startPrice = basePrice.current;
-    const data: StockDataPoint[] = [];
-    
-    let price = startPrice * 0.95; // Start slightly lower
-    const now = new Date();
-    
-    for (let i = dataPoints; i >= 0; i--) {
-      const intervalMinutes = timeframe === '1D' ? 30 : timeframe === '1W' ? 60 : 240;
-      const time = new Date(now.getTime() - (i * intervalMinutes * 60 * 1000));
+  // Fetch real historical data from Yahoo Finance
+  const fetchHistoricalData = async () => {
+    try {
+      const rangeMap: Record<string, string> = {
+        '1D': '1d',
+        '1W': '5d',
+        '1M': '1mo'
+      };
       
-      // Create realistic price movement with trend toward current price
-      const volatility = 0.02; // 2% volatility
-      const trendFactor = i === 0 ? 1 : (1 + ((startPrice - price) / price) * 0.1); // Gradual trend toward target
-      const randomChange = (Math.random() - 0.5) * volatility * price * trendFactor;
+      const intervalMap: Record<string, string> = {
+        '1D': '5m',
+        '1W': '30m',
+        '1M': '1d'
+      };
       
-      price = Math.max(price + randomChange, startPrice * 0.8); // Prevent going too low
+      const { data, error } = await (window as any).supabase?.functions?.invoke('fetch-stock-history', {
+        body: { 
+          symbol, 
+          range: rangeMap[timeframe],
+          interval: intervalMap[timeframe]
+        }
+      });
       
-      // If this is the last point, set it to current price if available
-      if (i === 0) {
-        price = livePrice || currentPrice || price;
+      if (error || !data || !data.history) {
+        console.error('Error fetching historical data:', error);
+        return [];
       }
       
-      data.push({
-        time: time.toISOString(),
-        price: Number(price.toFixed(2)),
-        volume: Math.floor(Math.random() * 1000000 + 100000)
-      });
+      return data.history;
+    } catch (error) {
+      console.error('Error fetching stock history:', error);
+      return [];
     }
-    
-    return data;
   };
 
   // Add live price updates
@@ -101,13 +102,18 @@ export const StockChart: React.FC<StockChartProps> = ({
     });
   };
 
-  const refreshData = () => {
+  const refreshData = async () => {
     setIsLoading(true);
-    // Simulate API delay
-    setTimeout(() => {
-      setChartData(generateMockData());
+    try {
+      const data = await fetchHistoricalData();
+      if (data && data.length > 0) {
+        setChartData(data);
+      }
+    } catch (error) {
+      console.error('Error refreshing data:', error);
+    } finally {
       setIsLoading(false);
-    }, 500);
+    }
   };
 
   const toggleLiveMode = () => {
