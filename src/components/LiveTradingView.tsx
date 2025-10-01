@@ -150,7 +150,9 @@ export const LiveTradingView: React.FC = () => {
             if (symbol.includes('USDT')) {
               const { data: cryptoData, error } = await supabase.functions.invoke('fetch-crypto-prices');
               if (!error && cryptoData?.success && cryptoData?.prices) {
-                const crypto = cryptoData.prices.find((p: any) => p.symbol === symbol);
+                // Strip USDT from symbol to match API response (BTCUSDT -> BTC)
+                const baseSymbol = symbol.replace('USDT', '');
+                const crypto = cryptoData.prices.find((p: any) => p.symbol === baseSymbol);
                 if (crypto) {
                   data = {
                     price: crypto.price,
