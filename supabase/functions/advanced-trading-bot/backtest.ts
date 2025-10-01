@@ -151,7 +151,7 @@ async function fetchRealHistoricalData(symbol: string, period: string): Promise<
     }
     
     if (historicalData.length < 20) {
-      console.log(`⚠️ Insufficient data for ${symbol}: only ${historicalData.length} points`);
+      console.log(`⚠️ Insufficient data for ${symbol}: only ${historicalData.length} points (minimum 20 required)`);
       return [];
     }
     
@@ -164,13 +164,13 @@ async function fetchRealHistoricalData(symbol: string, period: string): Promise<
   }
 }
 
-// Build TradingState from historical data for AI decision making
 function buildTradingState(historicalData: any[], index: number): TradingState {
   const currentBar = historicalData[index];
-  const prices = historicalData.slice(Math.max(0, index - 200), index + 1).map(d => d.close);
-  const highs = historicalData.slice(Math.max(0, index - 200), index + 1).map(d => d.high);
-  const lows = historicalData.slice(Math.max(0, index - 200), index + 1).map(d => d.low);
-  const volumes = historicalData.slice(Math.max(0, index - 200), index + 1).map(d => d.volume);
+  const lookbackPeriod = Math.min(200, Math.floor(historicalData.length * 0.8)); // Adaptive lookback
+  const prices = historicalData.slice(Math.max(0, index - lookbackPeriod), index + 1).map(d => d.close);
+  const highs = historicalData.slice(Math.max(0, index - lookbackPeriod), index + 1).map(d => d.high);
+  const lows = historicalData.slice(Math.max(0, index - lookbackPeriod), index + 1).map(d => d.low);
+  const volumes = historicalData.slice(Math.max(0, index - lookbackPeriod), index + 1).map(d => d.volume);
   
   // Calculate EMA 200
   let ema200 = prices.reduce((sum, p) => sum + p, 0) / prices.length;
@@ -358,9 +358,10 @@ export async function runBacktestSimulation(
         description: `${riskLevel} risk profile`
       };
       
-      // Iterate through historical data points (skip first 200 for indicators)
+      // Iterate through historical data points (skip first 50 for indicators - REDUCED for shorter backtests)
       // Sample every 2nd day for faster processing (still realistic)
-      for (let i = 200; i < historicalData.length - 1; i += 2) {
+      const minDataPoints = Math.min(50, Math.floor(historicalData.length * 0.2)); // Use 20% of data or 50 points, whichever is smaller
+      for (let i = minDataPoints; i < historicalData.length - 1; i += 2) {
         const currentBar = historicalData[i];
         const nextBar = historicalData[i + 1];
         const currentPrice = currentBar.close;

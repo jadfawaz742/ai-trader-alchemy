@@ -143,8 +143,6 @@ const AdvancedTradingBot: React.FC = () => {
   });
 
   const [isAnalyzing, setIsAnalyzing] = useState(false);
-  const [isTraining, setIsTraining] = useState(false);
-  const [trainingMetrics, setTrainingMetrics] = useState<any>(null);
 
   // Chat functionality
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -161,143 +159,6 @@ const AdvancedTradingBot: React.FC = () => {
     
     addMessage({ role: 'user', content: inputMessage });
     setInputMessage('');
-  };
-
-  // Fetch training metrics on component mount
-  useEffect(() => {
-    if (user) {
-      fetchTrainingMetrics();
-    }
-  }, [user]);
-
-  const fetchTrainingMetrics = async () => {
-    try {
-      const { data, error } = await supabase.functions.invoke('train-ppo-model', {
-        body: { action: 'getMetrics', userId: user?.id }
-      });
-
-      if (error) throw error;
-
-      if (data.success && data.metrics) {
-        setTrainingMetrics(data.metrics);
-      }
-    } catch (error) {
-      console.error('Error fetching training metrics:', error);
-    }
-  };
-
-  const startPPOTraining = async () => {
-    if (!user) {
-      toast.error('Please sign in to start training');
-      return;
-    }
-
-    setIsTraining(true);
-    
-    // Add starting message to chat
-    addMessage({
-      role: 'assistant',
-      content: '🚀 **Starting Asset-Specific PPO Training...**\n\nTraining reinforcement learning models on:\n• 10 Major Stocks (AAPL, GOOGL, MSFT, etc.)\n• 4 ETFs (SPY, QQQ, VTI, GLD)\n• 5 Cryptocurrencies (BTC, ETH, SOL, ADA, DOT)\n• 5 Growth Stocks (ROKU, SHOP, SQ, PYPL, ZM)\n\nUsing 80% data for training and 20% for testing...\n\nThis may take a few moments. ⏳'
-    });
-    
-    try {
-      console.log('🚀 Starting Asset-Specific PPO Training...');
-      
-      const { data, error } = await supabase.functions.invoke('train-ppo-model', {
-        body: {
-          action: 'train',
-          symbols: [
-            // Major Stocks (10)
-            'AAPL', 'GOOGL', 'MSFT', 'NVDA', 'TSLA', 'META', 'NFLX', 'AMD', 'CRM', 'UBER',
-            // ETFs (4) 
-            'SPY', 'QQQ', 'VTI', 'GLD',
-            // Major Cryptocurrencies (5)
-            'BTC', 'ETH', 'SOL', 'ADA', 'DOT',
-            // Growth Stocks (5)
-            'ROKU', 'SHOP', 'SQ', 'PYPL', 'ZM'
-          ],
-          userId: user.id,
-          trainAssetSpecific: true
-        }
-      });
-
-      if (error) throw error;
-
-      if (data.success) {
-        setTrainingMetrics(data.metrics);
-        
-        // Build comprehensive performance message for chat
-        let performanceMessage = '🎯 **PPO TRAINING COMPLETE**\n\n';
-        performanceMessage += `**Overall Summary:**\n`;
-        performanceMessage += `• Total Assets Trained: ${data.metrics.totalSymbols}\n`;
-        performanceMessage += `• Specialized Models: ${data.metrics.assetSpecificModels}\n\n`;
-        
-        performanceMessage += `**📈 TRAINING SET (80% of data):**\n`;
-        performanceMessage += `• Win Rate: ${(data.metrics.training.avgWinRate * 100).toFixed(2)}%\n`;
-        performanceMessage += `• Avg Return: ${(data.metrics.training.avgReturn * 100).toFixed(3)}%\n`;
-        performanceMessage += `• Total Trades: ${data.metrics.training.totalTrades}\n`;
-        performanceMessage += `• Sharpe Ratio: ${data.metrics.training.sharpeRatio.toFixed(3)}\n\n`;
-        
-        performanceMessage += `**🧪 TEST SET (20% of data):**\n`;
-        performanceMessage += `• Win Rate: ${(data.metrics.testing.avgWinRate * 100).toFixed(2)}%\n`;
-        performanceMessage += `• Avg Return: ${(data.metrics.testing.avgReturn * 100).toFixed(3)}%\n`;
-        performanceMessage += `• Total Trades: ${data.metrics.testing.totalTrades}\n\n`;
-        
-        performanceMessage += `**📋 DETAILED PERFORMANCE BY ASSET:**\n\n`;
-        
-        // Group by asset type
-        const stockAssets = data.metrics.detailedPerformance.filter((p: any) => 
-          !['BTC', 'ETH', 'SOL', 'ADA', 'DOT', 'AVAX', 'MATIC'].some(c => p.symbol.includes(c))
-        );
-        const cryptoAssets = data.metrics.detailedPerformance.filter((p: any) => 
-          ['BTC', 'ETH', 'SOL', 'ADA', 'DOT', 'AVAX', 'MATIC'].some(c => p.symbol.includes(c))
-        );
-        
-        if (stockAssets.length > 0) {
-          performanceMessage += `**Stocks:**\n`;
-          stockAssets.forEach((p: any) => {
-            performanceMessage += `• ${p.symbol}: Train ${(p.train.winRate * 100).toFixed(1)}% (${p.train.totalTrades} trades) | Test ${(p.test.winRate * 100).toFixed(1)}% (${p.test.totalTrades} trades)\n`;
-          });
-          performanceMessage += '\n';
-        }
-        
-        if (cryptoAssets.length > 0) {
-          performanceMessage += `**Cryptocurrencies:**\n`;
-          cryptoAssets.forEach((p: any) => {
-            performanceMessage += `• ${p.symbol}: Train ${(p.train.winRate * 100).toFixed(1)}% (${p.train.totalTrades} trades) | Test ${(p.test.winRate * 100).toFixed(1)}% (${p.test.totalTrades} trades)\n`;
-          });
-        }
-        
-        // Add performance message to chat
-        addMessage({
-          role: 'assistant',
-          content: performanceMessage
-        });
-        
-        toast.success('🤖 Asset-Specific PPO Training Complete!', {
-          description: `Trained ${data.metrics.assetSpecificModels} models. Check chat for details.`
-        });
-
-        console.log('🎯 ASSET-SPECIFIC PPO TRAINING RESULTS:');
-        console.log(`📊 Symbols: ${data.metrics.totalSymbols}`);
-        console.log(`📈 Training: ${(data.metrics.training.avgWinRate * 100).toFixed(2)}% win rate`);
-        console.log(`🧪 Testing: ${(data.metrics.testing.avgWinRate * 100).toFixed(2)}% win rate`);
-      }
-    } catch (error: any) {
-      console.error('PPO training error:', error);
-      
-      // Add error message to chat
-      addMessage({
-        role: 'assistant',
-        content: `❌ **Training Failed**\n\nError: ${error?.message || 'Unknown error occurred'}\n\nPlease try again or check the console for more details.`
-      });
-      
-      toast.error('PPO training failed', {
-        description: error?.message || 'Unknown error occurred'
-      });
-    } finally {
-      setIsTraining(false);
-    }
   };
 
   const runAdvancedAnalysis = async () => {
@@ -507,7 +368,7 @@ ${data.backtestResults.tradeDecisionLogs?.slice(-5).map((log: any, i: number) =>
         <div className="flex items-center gap-4">
           <Badge variant="outline" className="px-3 py-1">
             <Activity className="h-4 w-4 mr-1" />
-            {isAnalyzing ? 'Analyzing...' : isTraining ? 'Training...' : 'Ready'}
+            {isAnalyzing ? 'Analyzing...' : 'Ready'}
           </Badge>
         </div>
       </div>
@@ -582,9 +443,8 @@ ${data.backtestResults.tradeDecisionLogs?.slice(-5).map((log: any, i: number) =>
         <CardContent>
           <div className="space-y-6">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="grid w-full grid-cols-6">
+              <TabsList className="grid w-full grid-cols-5">
                 <TabsTrigger value="config">Configuration</TabsTrigger>
-                <TabsTrigger value="ppo">PPO Training</TabsTrigger>
                 <TabsTrigger value="backtest">Backtesting</TabsTrigger>
                 <TabsTrigger value="logs">Trade Logs</TabsTrigger>
                 <TabsTrigger value="live">Live Trading</TabsTrigger>
@@ -813,115 +673,6 @@ ${data.backtestResults.tradeDecisionLogs?.slice(-5).map((log: any, i: number) =>
                       )}
                     </Button>
                   </div>
-                </div>
-              </TabsContent>
-
-              <TabsContent value="ppo">
-                <div className="space-y-6">
-                  <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-                    <Card>
-                      <CardHeader>
-                        <CardTitle className="flex items-center gap-2">
-                          <Brain className="h-5 w-5" />
-                          Asset-Specific PPO Training
-                        </CardTitle>
-                        <CardDescription>
-                          Train specialized models for each asset class with enhanced reward functions
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent className="space-y-4">
-                        <div className="text-sm text-muted-foreground">
-                          <p>• Creates foundational general model</p>
-                          <p>• Fine-tunes asset-specific models</p>
-                          <p>• Adapts to volatility and market characteristics</p>
-                          <p>• Enhanced reward functions per asset type</p>
-                        </div>
-                        
-                        <Button
-                          onClick={startPPOTraining}
-                          disabled={isTraining}
-                          className="w-full"
-                        >
-                          {isTraining ? (
-                            <>
-                              <RotateCcw className="h-4 w-4 mr-2 animate-spin" />
-                              Training Asset-Specific Models...
-                            </>
-                          ) : (
-                            <>
-                              <Brain className="h-4 w-4 mr-2" />
-                              Start PPO Training
-                            </>
-                          )}
-                        </Button>
-                      </CardContent>
-                    </Card>
-
-                    <Card>
-                      <CardHeader>
-                        <CardTitle>Training Metrics</CardTitle>
-                        <CardDescription>
-                          Latest training performance results
-                        </CardDescription>
-                      </CardHeader>
-                      <CardContent>
-                        {trainingMetrics ? (
-                          <div className="space-y-3">
-                            <div className="flex justify-between">
-                              <span className="text-sm text-muted-foreground">Models Trained:</span>
-                              <span className="font-medium">{trainingMetrics.metrics?.assetSpecificModels || 0}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-sm text-muted-foreground">Avg Win Rate:</span>
-                              <span className="font-medium text-green-600">
-                                {((trainingMetrics.metrics?.avgWinRate || 0) * 100).toFixed(1)}%
-                              </span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-sm text-muted-foreground">Avg Return:</span>
-                              <span className="font-medium text-blue-600">
-                                {((trainingMetrics.metrics?.avgReturn || 0) * 100).toFixed(2)}%
-                              </span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-sm text-muted-foreground">Total Trades:</span>
-                              <span className="font-medium">{trainingMetrics.metrics?.totalTrades || 0}</span>
-                            </div>
-                            <div className="flex justify-between">
-                              <span className="text-sm text-muted-foreground">Sharpe Ratio:</span>
-                              <span className="font-medium">{(trainingMetrics.metrics?.sharpeRatio || 0).toFixed(2)}</span>
-                            </div>
-                          </div>
-                        ) : (
-                          <div className="text-center text-muted-foreground py-8">
-                            <Brain className="h-12 w-12 mx-auto mb-4 opacity-50" />
-                            <p>No training data available</p>
-                            <p className="text-sm mt-2">Start PPO training to see metrics</p>
-                          </div>
-                        )}
-                      </CardContent>
-                    </Card>
-                  </div>
-
-                  {/* PPO Training Progress */}
-                  {isTraining && (
-                    <Card>
-                      <CardHeader>
-                        <CardTitle>Training Progress</CardTitle>
-                      </CardHeader>
-                      <CardContent>
-                        <div className="space-y-4">
-                          <div>
-                            <div className="flex justify-between mb-2">
-                              <span className="text-sm">Overall Progress</span>
-                              <span className="text-sm">Training...</span>
-                            </div>
-                            <Progress value={45} className="w-full" />
-                          </div>
-                        </div>
-                      </CardContent>
-                    </Card>
-                  )}
                 </div>
               </TabsContent>
 
