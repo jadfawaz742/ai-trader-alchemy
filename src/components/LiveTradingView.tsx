@@ -168,7 +168,7 @@ export const LiveTradingView: React.FC = () => {
               const { data: stockData, error } = await supabase.functions.invoke('fetch-stock-price', {
                 body: { symbol }
               });
-              if (!error && stockData?.success) {
+              if (!error && stockData) {
                 data = {
                   price: stockData.price,
                   change: stockData.changePercent,
