@@ -133,33 +133,66 @@ serve(async (req) => {
 });
 
 async function fetchStockData(symbol: string) {
-  try {
-    // Using Alpha Vantage free API (demo data for now)
-    // In production, you would use a real API key
-    console.log(`Fetching market data for ${symbol}`);
-    
-    // Mock data for demonstration - replace with real API call
-    const mockData = {
-      companyName: `${symbol.toUpperCase()} Corporation`,
-      currentPrice: Math.random() * 200 + 50, // Random price between 50-250
-      priceChange: (Math.random() - 0.5) * 10, // Random change -5 to +5
-      priceChangePercent: (Math.random() - 0.5) * 10, // Random % change
-      volume: Math.floor(Math.random() * 10000000), // Random volume
-      marketCap: Math.floor(Math.random() * 1000000000000), // Random market cap
-      peRatio: Math.random() * 30 + 5, // Random P/E ratio
-      dayHigh: Math.random() * 200 + 50,
-      dayLow: Math.random() * 200 + 50,
-      fiftyTwoWeekHigh: Math.random() * 250 + 100,
-      fiftyTwoWeekLow: Math.random() * 100 + 30,
-      dividend: Math.random() * 5,
-      beta: Math.random() * 2 + 0.5,
-    };
-
-    return mockData;
-  } catch (error) {
-    console.error('Error fetching stock data:', error);
-    return null;
+  const alphaVantageKey = Deno.env.get('ALPHA_VANTAGE_API_KEY');
+  
+  if (!alphaVantageKey) {
+    console.log('Alpha Vantage API key not found, using mock data');
+    return generateMockStockData(symbol);
   }
+
+  try {
+    console.log(`Fetching real market data for ${symbol} from Alpha Vantage`);
+    
+    // Fetch quote data
+    const quoteUrl = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${alphaVantageKey}`;
+    const quoteResponse = await fetch(quoteUrl);
+    const quoteData = await quoteResponse.json();
+    
+    if (quoteData['Global Quote']) {
+      const quote = quoteData['Global Quote'];
+      
+      return {
+        companyName: symbol.toUpperCase(),
+        currentPrice: parseFloat(quote['05. price']) || 0,
+        priceChange: parseFloat(quote['09. change']) || 0,
+        priceChangePercent: parseFloat(quote['10. change percent']?.replace('%', '')) || 0,
+        volume: parseInt(quote['06. volume']) || 0,
+        dayHigh: parseFloat(quote['03. high']) || 0,
+        dayLow: parseFloat(quote['04. low']) || 0,
+        previousClose: parseFloat(quote['08. previous close']) || 0,
+        marketCap: 0, // Not available in this endpoint
+        peRatio: 0, // Not available in this endpoint
+        fiftyTwoWeekHigh: 0, // Not available in this endpoint
+        fiftyTwoWeekLow: 0, // Not available in this endpoint
+        dividend: 0,
+        beta: 1.0,
+      };
+    } else {
+      console.log('Alpha Vantage API limit reached or invalid symbol, using mock data');
+      return generateMockStockData(symbol);
+    }
+  } catch (error) {
+    console.error('Error fetching stock data from Alpha Vantage:', error);
+    return generateMockStockData(symbol);
+  }
+}
+
+function generateMockStockData(symbol: string) {
+  return {
+    companyName: `${symbol.toUpperCase()} Corporation`,
+    currentPrice: Math.random() * 200 + 50,
+    priceChange: (Math.random() - 0.5) * 10,
+    priceChangePercent: (Math.random() - 0.5) * 10,
+    volume: Math.floor(Math.random() * 10000000),
+    marketCap: Math.floor(Math.random() * 1000000000000),
+    peRatio: Math.random() * 30 + 5,
+    dayHigh: Math.random() * 200 + 50,
+    dayLow: Math.random() * 200 + 50,
+    fiftyTwoWeekHigh: Math.random() * 250 + 100,
+    fiftyTwoWeekLow: Math.random() * 100 + 30,
+    dividend: Math.random() * 5,
+    beta: Math.random() * 2 + 0.5,
+  };
 }
 
 async function generateLLMAnalysis(symbol: string, marketData: any, analysisType: string, newsData: any = null) {

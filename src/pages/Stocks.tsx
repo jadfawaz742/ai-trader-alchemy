@@ -70,13 +70,61 @@ const StocksPage: React.FC = () => {
   const [selectedCap, setSelectedCap] = useState<string>('All');
   const [sortBy, setSortBy] = useState<'symbol' | 'price' | 'change' | 'volume'>('symbol');
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
+  const [stockPrices, setStockPrices] = useState<Record<string, any>>({});
+  const [isLoading, setIsLoading] = useState(true);
   const navigate = useNavigate();
   const { toast } = useToast();
+
+  useEffect(() => {
+    const fetchRealPrices = async () => {
+      setIsLoading(true);
+      const priceData: Record<string, any> = {};
+      
+      // Fetch prices for first 10 stocks to avoid API rate limits
+      const stocksToFetch = STOCK_DATA.slice(0, 10);
+      
+      for (const stock of stocksToFetch) {
+        try {
+          const { data, error } = await supabase.functions.invoke('fetch-stock-price', {
+            body: { symbol: stock.symbol }
+          });
+          
+          if (!error && data) {
+            priceData[stock.symbol] = data;
+          }
+          
+          // Add delay to avoid rate limiting (Alpha Vantage free tier: 5 calls/min)
+          await new Promise(resolve => setTimeout(resolve, 12000));
+        } catch (error) {
+          console.error(`Error fetching ${stock.symbol}:`, error);
+        }
+      }
+      
+      setStockPrices(priceData);
+      setIsLoading(false);
+    };
+    
+    fetchRealPrices();
+  }, []);
 
   const sectors = ['All', ...Array.from(new Set(STOCK_DATA.map(stock => stock.sector)))];
   const caps = ['All', 'Large', 'Medium', 'Small'];
 
   const filteredAndSortedStocks = STOCK_DATA
+    .map(stock => {
+      // Use real price data if available, otherwise use mock data
+      const realData = stockPrices[stock.symbol];
+      if (realData && !realData.error) {
+        return {
+          ...stock,
+          price: realData.price || stock.price,
+          change: realData.change || stock.change,
+          changePercent: realData.changePercent || stock.changePercent,
+          volume: realData.volume || stock.volume,
+        };
+      }
+      return stock;
+    })
     .filter(stock => {
       const matchesSearch = stock.symbol.toLowerCase().includes(searchTerm.toLowerCase()) ||
                            stock.name.toLowerCase().includes(searchTerm.toLowerCase());
@@ -157,7 +205,14 @@ const StocksPage: React.FC = () => {
         {/* Search and Filters */}
         <Card className="mb-6">
           <CardHeader>
-            <CardTitle>Market Overview</CardTitle>
+            <div className="flex items-center justify-between">
+              <CardTitle>Market Overview</CardTitle>
+              {isLoading && (
+                <Badge variant="secondary" className="animate-pulse">
+                  Loading real prices...
+                </Badge>
+              )}
+            </div>
           </CardHeader>
           <CardContent>
             <div className="space-y-4">
@@ -226,23 +281,30 @@ const StocksPage: React.FC = () => {
 
         {/* Stock Grid */}
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {filteredAndSortedStocks.map(stock => (
-            <Card 
-              key={stock.symbol} 
-              className="hover:shadow-lg transition-shadow cursor-pointer"
-              onClick={() => navigate(`/stocks/${stock.symbol}`)}
-            >
-              <CardHeader className="pb-3">
-                <div className="flex items-center justify-between">
-                  <div>
-                    <CardTitle className="text-lg font-mono">{stock.symbol}</CardTitle>
-                    <p className="text-sm text-muted-foreground truncate">{stock.name}</p>
+          {filteredAndSortedStocks.map(stock => {
+            const hasRealData = stockPrices[stock.symbol] && !stockPrices[stock.symbol].error;
+            return (
+              <Card 
+                key={stock.symbol} 
+                className="hover:shadow-lg transition-shadow cursor-pointer"
+                onClick={() => navigate(`/stocks/${stock.symbol}`)}
+              >
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between">
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <CardTitle className="text-lg font-mono">{stock.symbol}</CardTitle>
+                        {hasRealData && (
+                          <Badge variant="secondary" className="text-xs">Live</Badge>
+                        )}
+                      </div>
+                      <p className="text-sm text-muted-foreground truncate">{stock.name}</p>
+                    </div>
+                    <Badge variant="outline" className="text-xs">
+                      {stock.cap}
+                    </Badge>
                   </div>
-                  <Badge variant="outline" className="text-xs">
-                    {stock.cap}
-                  </Badge>
-                </div>
-              </CardHeader>
+                </CardHeader>
               <CardContent className="space-y-3">
                 <div className="flex items-center justify-between">
                   <div className="text-2xl font-bold">
@@ -278,7 +340,8 @@ const StocksPage: React.FC = () => {
                 </Button>
               </CardContent>
             </Card>
-          ))}
+          );
+          })}
         </div>
 
         {filteredAndSortedStocks.length === 0 && (

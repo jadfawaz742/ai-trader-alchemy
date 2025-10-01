@@ -23,3 +23,6 @@ verify_jwt = true
 
 [functions.fetch-crypto-prices]
 verify_jwt = false
+
+[functions.fetch-stock-price]
+verify_jwt = false
