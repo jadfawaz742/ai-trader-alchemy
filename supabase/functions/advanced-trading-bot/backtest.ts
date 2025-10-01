@@ -723,10 +723,10 @@ export async function runBacktestSimulation(
               success_rate: adaptiveParams.successRate,
               total_trades: adaptiveParams.totalTrades,
               winning_trades: adaptiveParams.winningTrades,
-              average_profit: adaptiveParams.averageProfit,
-              last_updated: new Date().toISOString()
+              average_profit: adaptiveParams.averageProfit
             }, {
-              onConflict: 'user_id,symbol'
+              onConflict: 'user_id,symbol',
+              ignoreDuplicates: false
             });
           
           if (upsertError) {
