@@ -198,7 +198,6 @@ export async function runBacktestSimulation(
 
   let totalTrades = 0;
   let winningTrades = 0;
-  let totalReturn = 0;
   let totalConfidence = 0;
   let currentBalance = initialBalance;
   const trades = [];
@@ -381,7 +380,6 @@ export async function runBacktestSimulation(
         totalConfidence += baseConfidence;
         
         if (isWin) winningTrades++;
-        totalReturn += actualPnL;
         
         // Log the trade decision with REAL price
         const tradeLog: TradeDecisionLog = {
@@ -485,7 +483,7 @@ export async function runBacktestSimulation(
     success: true,
     totalTrades,
     winRate: totalTrades > 0 ? winningTrades / totalTrades : 0,
-    totalReturn: totalReturn / initialBalance,
+    totalReturn: (currentBalance - initialBalance) / initialBalance, // ✅ CORRECT: (final - initial) / initial
     finalBalance: currentBalance,
     sharpeRatio: totalTrades > 10 ? calculateSharpeRatio(trades) : 0,
     avgConfidence: totalTrades > 0 ? totalConfidence / totalTrades / 100 : 0,
@@ -500,6 +498,6 @@ export async function runBacktestSimulation(
       assetSpecificModels: true,
       tradeDecisionLogging: true
     },
-    summary: `🚀 ASSET-SPECIFIC MODELS + PHASE 1-3: ${totalTrades} trades, ${((winningTrades / totalTrades) * 100).toFixed(1)}% win rate, ${((totalReturn / initialBalance) * 100).toFixed(2)}% total return with specialized models, dynamic position sizing, ATR stops, multi-timeframe analysis, and detailed trade logging`
+    summary: `🚀 ASSET-SPECIFIC MODELS + PHASE 1-3: ${totalTrades} trades, ${((winningTrades / totalTrades) * 100).toFixed(1)}% win rate, ${(((currentBalance - initialBalance) / initialBalance) * 100).toFixed(2)}% ROI with specialized models, dynamic position sizing, ATR stops, multi-timeframe analysis, and detailed trade logging`
   };
 }
