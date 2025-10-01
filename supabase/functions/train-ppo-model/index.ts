@@ -51,6 +51,8 @@ class AssetSpecificPPOTrainer {
   private learningRate = 0.001
   private gamma = 0.99
   private lambda = 0.95
+  private epsilon = 0.3 // Exploration rate - 30% random actions
+  private minTradesPerEpisode = 5 // Force minimum trades per episode
 
   constructor(assetType: string = 'GENERAL', baseModel?: any) {
     this.assetType = assetType
@@ -292,10 +294,18 @@ class AssetSpecificPPOTrainer {
       let position = 0 // -1: short, 0: neutral, 1: long
       let balance = 10000
       let shares = 0
+      let episodeTrades = 0
+      let lastTradeIndex = -1
       
       for (let i = 20; i < trainData.length - 1; i++) {
         const features = this.extractFeatures(trainData, i)
-        const action = this.selectSmartAction(features, trainData, i, position > 0)
+        
+        // FORCED TRADE MECHANISM: Ensure minimum trades per episode
+        const shouldForceExplore = episodeTrades < this.minTradesPerEpisode && 
+                                   i > lastTradeIndex + 10 && // At least 10 periods between forced trades
+                                   (trainData.length - i) > 20 // Ensure enough data left
+        
+        const action = this.selectSmartAction(features, trainData, i, position > 0, shouldForceExplore)
         const nextPrice = trainData[i + 1].price
         const currentPrice = trainData[i].price
         
@@ -306,35 +316,56 @@ class AssetSpecificPPOTrainer {
         if (action === 0 && position <= 0) { // BUY
           const tradeSize = Math.floor(balance * 0.95 / currentPrice)
           if (tradeSize > 0) {
+            const entryPrice = currentPrice
             shares += tradeSize
             balance -= tradeSize * currentPrice
             position = 1
             traded = true
             trainTotalTrades++
+            episodeTrades++
+            lastTradeIndex = i
+            
+            // AGGRESSIVE REWARD: Immediate small reward for taking action
+            reward = 0.5 // Reward for entering position
           }
         } else if (action === 1 && position >= 0) { // SELL
           if (shares > 0) {
             const saleValue = shares * currentPrice
+            const costBasis = 10000 - balance + saleValue
             balance += saleValue
             
-            // Calculate reward based on performance
-            const returnRate = (currentPrice - (balance + saleValue - 10000) / shares) / currentPrice
-            reward = returnRate * 100 // Scale reward
+            // AGGRESSIVE REWARD FUNCTION
+            const returnRate = (saleValue - (costBasis - balance)) / (costBasis - balance)
+            reward = returnRate * 200 // Doubled scale for more aggressive learning
             
-            if (reward > 0) trainWinningTrades++
+            // Additional reward bonuses
+            if (reward > 0) {
+              trainWinningTrades++
+              reward *= 1.5 // 50% bonus for winning trades
+            } else {
+              reward *= 0.8 // Slightly reduce penalty for losing trades to encourage exploration
+            }
+            
+            // Bonus for quick profitable trades
+            const holdTime = i - lastTradeIndex
+            if (reward > 0 && holdTime < 20) {
+              reward *= 1.3 // Bonus for quick profits
+            }
             
             shares = 0
             position = -1
             traded = true
             trainTotalTrades++
+            episodeTrades++
+            lastTradeIndex = i
           }
         }
         
         // Enhanced reward function for asset-specific training
         if (traded) {
           // Asset-specific reward adjustments
-          const volatilityBonus = this.assetCharacteristics.volatility === 'high' ? 1.2 : 1.0
-          const liquidityBonus = this.assetCharacteristics.liquidity === 'high' ? 1.1 : 1.0
+          const volatilityBonus = this.assetCharacteristics.volatility === 'high' ? 1.3 : 1.0
+          const liquidityBonus = this.assetCharacteristics.liquidity === 'high' ? 1.2 : 1.0
           reward *= volatilityBonus * liquidityBonus
           
           trainTotalReward += reward
@@ -354,6 +385,9 @@ class AssetSpecificPPOTrainer {
         })
       }
       
+      // Log episode trades
+      console.log(`  Episode ${episode + 1}: ${episodeTrades} trades executed`)
+      
       // Update networks every episode
       if (buffer.length > 0) {
         this.updateNetworks(buffer.filter(b => b.traded))
@@ -371,10 +405,12 @@ class AssetSpecificPPOTrainer {
     let position = 0
     let balance = 10000
     let shares = 0
+    let lastTradeIndex = -1
     
     for (let i = 20; i < testData.length - 1; i++) {
       const features = this.extractFeatures(testData, i)
-      const action = this.selectSmartAction(features, testData, i, position > 0)
+      // No forced exploration during testing - pure exploitation
+      const action = this.selectSmartAction(features, testData, i, position > 0, false)
       const currentPrice = testData[i].price
       
       let reward = 0
@@ -386,13 +422,15 @@ class AssetSpecificPPOTrainer {
           balance -= tradeSize * currentPrice
           position = 1
           testTotalTrades++
+          lastTradeIndex = i
         }
       } else if (action === 1 && position >= 0) { // SELL
         if (shares > 0) {
           const saleValue = shares * currentPrice
+          const costBasis = 10000 - balance + saleValue
           balance += saleValue
           
-          const returnRate = (currentPrice - (balance + saleValue - 10000) / shares) / currentPrice
+          const returnRate = (saleValue - (costBasis - balance)) / (costBasis - balance)
           reward = returnRate * 100
           
           if (reward > 0) testWinningTrades++
@@ -401,8 +439,22 @@ class AssetSpecificPPOTrainer {
           shares = 0
           position = -1
           testTotalTrades++
+          lastTradeIndex = i
         }
       }
+    }
+    
+    // Close any open position at the end of test period
+    if (shares > 0) {
+      const finalPrice = testData[testData.length - 1].price
+      const saleValue = shares * finalPrice
+      const costBasis = 10000 - balance + saleValue
+      balance += saleValue
+      const returnRate = (saleValue - (costBasis - balance)) / (costBasis - balance)
+      const reward = returnRate * 100
+      if (reward > 0) testWinningTrades++
+      testTotalReward += reward
+      testTotalTrades++
     }
     
     const testAvgReturn = testTotalTrades > 0 ? testTotalReward / testTotalTrades : 0
@@ -450,36 +502,59 @@ class AssetSpecificPPOTrainer {
     return result
   }
 
-  private selectSmartAction(features: number[], data: TrainingData[], index: number, inPosition: boolean): number {
+  private selectSmartAction(features: number[], data: TrainingData[], index: number, inPosition: boolean, forceExplore: boolean = false): number {
+    // EXPLORATION: Random action with epsilon probability or when forced
+    if (forceExplore || Math.random() < this.epsilon) {
+      if (!inPosition) {
+        // More likely to buy when not in position (70% buy, 30% hold)
+        return Math.random() < 0.7 ? 0 : 2
+      } else {
+        // More likely to sell when in position (70% sell, 30% hold)
+        return Math.random() < 0.7 ? 1 : 2
+      }
+    }
+    
     const actionProbs = this.forward(this.actor, features)
     
-    // Enhanced action selection with technical indicators and asset-specific logic
+    // Enhanced action selection with AGGRESSIVE technical indicators
     const rsi = features[7] * 100 // RSI feature
     const macd = features[8] // MACD feature
     const volatility = features[9] // Volatility feature
+    const sma10Above = features[5] // Above SMA10
+    const sma20Above = features[6] // Above SMA20
     
     // Asset-specific signal strength adjustments
     const { sensitivity, volatility: assetVolatility } = this.assetCharacteristics
-    const sensitivityMultiplier = sensitivity === 'high' ? 1.3 : sensitivity === 'low' ? 0.7 : 1.0
-    const volatilityThreshold = assetVolatility === 'high' ? 0.8 : assetVolatility === 'low' ? 0.3 : 0.5
+    const sensitivityMultiplier = sensitivity === 'high' ? 1.5 : sensitivity === 'low' ? 0.8 : 1.0
     
-    // Calculate technical signals
-    const buySignal = (rsi < 30 ? 0.3 : 0) + (macd > 0 ? 0.2 : 0) + (volatility > volatilityThreshold ? 0.1 : 0)
-    const sellSignal = (rsi > 70 ? 0.3 : 0) + (macd < 0 ? 0.2 : 0) + (volatility > volatilityThreshold ? 0.1 : 0)
+    // AGGRESSIVE: Lowered thresholds and increased signal weights
+    const buySignal = (
+      (rsi < 50 ? 0.5 : 0) +           // Raised from 30 to 50
+      (macd > -0.01 ? 0.4 : 0) +       // More lenient threshold
+      (sma10Above ? 0.3 : 0) +         // Trend following
+      (volatility > 0.01 ? 0.2 : 0)    // Any volatility is good for trading
+    )
     
-    // Apply asset-specific adjustments
-    const adjustedBuySignal = buySignal * sensitivityMultiplier
-    const adjustedSellSignal = sellSignal * sensitivityMultiplier
+    const sellSignal = (
+      (rsi > 50 ? 0.5 : 0) +           // Lowered from 70 to 50
+      (macd < 0.01 ? 0.4 : 0) +        // More lenient threshold
+      (!sma10Above ? 0.3 : 0) +        // Trend following
+      (volatility > 0.01 ? 0.2 : 0)    // Any volatility is good for trading
+    )
     
-    // Modify action probabilities based on technical analysis
+    // Apply AGGRESSIVE asset-specific adjustments
+    const adjustedBuySignal = buySignal * sensitivityMultiplier * 1.5
+    const adjustedSellSignal = sellSignal * sensitivityMultiplier * 1.5
+    
+    // Modify action probabilities AGGRESSIVELY
     const modifiedProbs = [...actionProbs]
     
     if (!inPosition) {
-      modifiedProbs[0] *= (1 + adjustedBuySignal) // BUY
-      modifiedProbs[2] *= (1 + adjustedSellSignal * 0.5) // Reduce HOLD when sell signals
+      modifiedProbs[0] *= (1 + adjustedBuySignal * 2) // BUY - doubled multiplier
+      modifiedProbs[2] *= 0.3 // Heavily reduce HOLD
     } else {
-      modifiedProbs[1] *= (1 + adjustedSellSignal) // SELL
-      modifiedProbs[2] *= (1 - adjustedSellSignal * 0.3) // Reduce HOLD during sell signals
+      modifiedProbs[1] *= (1 + adjustedSellSignal * 2) // SELL - doubled multiplier
+      modifiedProbs[2] *= 0.3 // Heavily reduce HOLD
     }
     
     // Normalize probabilities
