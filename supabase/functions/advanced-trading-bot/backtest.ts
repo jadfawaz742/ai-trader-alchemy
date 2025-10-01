@@ -860,14 +860,14 @@ export async function runBacktestSimulation(
     return std === 0 ? 0 : mean / std;
   }
 
-  // Get last 20 trades for detailed logging
-  const last20Trades = tradeDecisionLogs.slice(-20);
+  // Get last 50 trades for detailed logging
+  const last50Trades = tradeDecisionLogs.slice(-50);
   
-  if (showLogs && last20Trades.length > 0) {
-    console.log('\n📊 LAST 20 TRADE DECISIONS & INDICATORS:');
+  if (showLogs && last50Trades.length > 0) {
+    console.log('\n📊 LAST 50 TRADE DECISIONS & INDICATORS:');
     console.log('=========================================');
     
-    last20Trades.forEach((trade, index) => {
+    last50Trades.forEach((trade, index) => {
       console.log(`\n${index + 1}. ${trade.symbol} - ${trade.action} @ $${trade.price.toFixed(2)}`);
       console.log(`   🎯 Confidence: ${trade.confidence.toFixed(1)}% | Result: ${trade.result} | P&L: $${trade.pnl?.toFixed(2)}`);
       console.log(`   🛡️ Stop Loss: $${trade.stopLoss?.toFixed(2)} | Take Profit: $${trade.takeProfit?.toFixed(2)}`);
@@ -1050,7 +1050,7 @@ export async function runBacktestSimulation(
     finalBalance: currentBalance,
     sharpeRatio: totalTrades > 10 ? calculateSharpeRatio(trades) : 0,
     avgConfidence: totalTrades > 0 ? totalConfidence / totalTrades / 100 : 0,
-    tradeDecisionLogs: last20Trades,
+    tradeDecisionLogs: last50Trades,
     enhancedFeatures: {
       dynamicPositionSizing: true,
       atrTrailingStops: true,
