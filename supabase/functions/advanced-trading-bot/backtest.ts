@@ -434,10 +434,9 @@ export async function runBacktestSimulation(
           regimeMultiplier = 0.9;
         }
         
-        // Calculate P&L based on actual next-day price movement
-        const actualPriceChange = (nextBar.close - currentPrice) / currentPrice;
-        const directionMultiplier = aiDecision.type === 'BUY' ? 1 : -1;
-        const rawPnL = actualPriceChange * directionMultiplier * 100 * positionMultiplier * regimeMultiplier;
+        // 🎯 Calculate position size and quantity
+        const tradeAmount = (currentBalance * 0.02) * positionMultiplier * regimeMultiplier;
+        const quantity = Math.floor(tradeAmount / currentPrice);
         
         // ATR-based trailing stop simulation
         const hitStop = aiDecision.type === 'BUY' ? 
@@ -447,16 +446,25 @@ export async function runBacktestSimulation(
           nextBar.high > riskParams.takeProfit : 
           nextBar.low < riskParams.takeProfit;
         
-        let finalPnL = rawPnL;
+        // 💰 Calculate ACTUAL P&L based on entry/exit prices and quantity
+        let exitPrice = nextBar.close;
+        
+        // If stop loss or take profit hit, use those prices
         if (hitStop) {
-          finalPnL = -Math.abs(rawPnL) * 0.5; // Stop loss hit
+          exitPrice = riskParams.stopLoss;
         } else if (hitTarget) {
-          finalPnL = Math.abs(rawPnL) * 1.5; // Take profit hit
+          exitPrice = riskParams.takeProfit;
         }
         
-        const isWin = finalPnL > 0;
-        const tradeAmount = (currentBalance * 0.02) * positionMultiplier;
-        const actualPnL = tradeAmount * (finalPnL / 100);
+        // Simple, correct P&L calculation: (exit - entry) * quantity for BUY, (entry - exit) * quantity for SELL
+        let actualPnL: number;
+        if (aiDecision.type === 'BUY') {
+          actualPnL = (exitPrice - currentPrice) * quantity;
+        } else {
+          actualPnL = (currentPrice - exitPrice) * quantity;
+        }
+        
+        const isWin = actualPnL > 0;
         
         currentBalance += actualPnL;
         totalTrades++;
@@ -473,7 +481,7 @@ export async function runBacktestSimulation(
           timestamp: new Date(currentBar.timestamp).toISOString(),
           action: aiDecision.type,
           price: currentPrice,
-          quantity: Math.floor(tradeAmount / currentPrice),
+          quantity: quantity,
           confidence: aiDecision.confidence,
           stopLoss: riskParams.stopLoss,
           takeProfit: riskParams.takeProfit,
@@ -518,7 +526,7 @@ export async function runBacktestSimulation(
           symbol,
           type: aiDecision.type,
           price: currentPrice,
-          quantity: Math.floor(tradeAmount / currentPrice),
+          quantity: quantity,
           pnl: actualPnL,
           confidence: aiDecision.confidence,
           regime: currentRegime,
