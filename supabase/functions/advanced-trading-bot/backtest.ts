@@ -586,7 +586,7 @@ export async function runBacktestSimulation(
         riskParams.stopLoss = riskParams.stopLoss * adaptiveParams.stopLossMultiplier;
         riskParams.takeProfit = riskParams.takeProfit * adaptiveParams.takeProfitMultiplier;
         
-        // 🎯 AGGRESSIVE DYNAMIC POSITION SIZING - Deploy larger capital amounts
+        // 🎯 FLEXIBLE POSITION SIZING - Works from $1 to unlimited amounts
         let positionMultiplier = 1.0;
         
         // Base position size scales with confidence (8-30% of balance)
@@ -637,15 +637,17 @@ export async function runBacktestSimulation(
         }
         
         // 🎯 Calculate final position size with all multipliers
-        const tradeAmount = (currentBalance * basePositionPercent) * regimeMultiplier;
-        const quantity = Math.floor(tradeAmount / currentPrice);
+        const tradeAmount = Math.max(1.0, (currentBalance * basePositionPercent) * regimeMultiplier); // Minimum $1
+        
+        // Support fractional shares for flexibility (real brokers support this)
+        const quantity = Math.max(0.001, tradeAmount / currentPrice); // Minimum 0.001 shares
         
         const formatCurrency = (val: number) => `$${val.toFixed(2)}`;
-        console.log(`   💰 Position: ${formatCurrency(tradeAmount)} (${(basePositionPercent * regimeMultiplier * 100).toFixed(1)}% of ${formatCurrency(currentBalance)})`);
+        console.log(`   💰 Position: ${formatCurrency(tradeAmount)} (${(basePositionPercent * regimeMultiplier * 100).toFixed(1)}% of ${formatCurrency(currentBalance)}) = ${quantity.toFixed(6)} shares`);
         
-        // Skip if quantity is 0 (price too high for available capital)
-        if (quantity === 0) {
-          console.log(`   ⏭️ Skipping ${symbol} - insufficient capital for 1 share at ${formatCurrency(currentPrice)}`);
+        // Skip only if balance is completely insufficient (less than $0.50)
+        if (currentBalance < 0.50) {
+          console.log(`   ⏭️ Skipping ${symbol} - balance too low: ${formatCurrency(currentBalance)}`);
           continue;
         }
         

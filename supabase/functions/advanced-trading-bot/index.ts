@@ -3135,7 +3135,7 @@ async function calculateMultiIndicatorDecision(
   };
 }
 
-// AGGRESSIVE ATR-Based Position Sizing with Dynamic Confidence Scaling (8-30% of capital)
+// FLEXIBLE ATR-Based Position Sizing - Works from $1 to unlimited amounts
 function calculateATRBasedPositionSize(
   portfolioBalance: number,
   atr: number,
@@ -3175,12 +3175,12 @@ function calculateATRBasedPositionSize(
   }
   
   // Calculate position amount based on confidence-adjusted percentage
-  const positionAmount = portfolioBalance * basePositionPercent;
+  const positionAmount = Math.max(1.0, portfolioBalance * basePositionPercent); // Minimum $1
   
-  // Convert to number of shares/units
-  const quantity = Math.floor(positionAmount / currentPrice);
+  // Support fractional shares for flexibility (real brokers support this)
+  const quantity = Math.max(0.001, positionAmount / currentPrice); // Minimum 0.001 shares
   
-  console.log(`💰 Aggressive Position Sizing: ${(basePositionPercent * 100).toFixed(1)}% of $${portfolioBalance.toFixed(2)} = $${positionAmount.toFixed(2)}, Quantity=${quantity} @ $${currentPrice.toFixed(2)}`);
+  console.log(`💰 Flexible Position Sizing: ${(basePositionPercent * 100).toFixed(1)}% of $${portfolioBalance.toFixed(2)} = $${positionAmount.toFixed(2)}, Quantity=${quantity.toFixed(6)} @ $${currentPrice.toFixed(2)}`);
   
   return quantity;
 }
