@@ -133,7 +133,7 @@ serve(async (req) => {
 });
 
 async function fetchStockData(symbol: string) {
-  const alphaVantageKey = Deno.env.get('ALPHA_VANTAGE_API_KEY');
+  const alphaVantageKey = Deno.env.get('SW18WL459HN6SJYG');
   
   if (!alphaVantageKey) {
     console.log('Alpha Vantage API key not found, using mock data');
