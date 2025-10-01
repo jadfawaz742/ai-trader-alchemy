@@ -357,6 +357,8 @@ function calculateRSI(prices: number[], period: number = 14): number {
   return 100 - (100 / (1 + rs));
 }
 
+// Convert trading state to full indicator data for saving
+function extractIndicatorsForSaving(state: TradingState, historicalData: any[], index: number): any {
   // Extract full indicator data including Fibonacci for logging
   const prices = historicalData.slice(Math.max(0, index - 50), index + 1).map(d => d.close);
   const rsi = calculateRSI(prices);
