@@ -193,6 +193,13 @@ const AdvancedTradingBot: React.FC = () => {
     }
 
     setIsTraining(true);
+    
+    // Add starting message to chat
+    addMessage({
+      role: 'assistant',
+      content: '🚀 **Starting Asset-Specific PPO Training...**\n\nTraining reinforcement learning models on:\n• 10 Major Stocks (AAPL, GOOGL, MSFT, etc.)\n• 4 ETFs (SPY, QQQ, VTI, GLD)\n• 5 Cryptocurrencies (BTC, ETH, SOL, ADA, DOT)\n• 5 Growth Stocks (ROKU, SHOP, SQ, PYPL, ZM)\n\nUsing 80% data for training and 20% for testing...\n\nThis may take a few moments. ⏳'
+    });
+    
     try {
       console.log('🚀 Starting Asset-Specific PPO Training...');
       
@@ -219,19 +226,72 @@ const AdvancedTradingBot: React.FC = () => {
       if (data.success) {
         setTrainingMetrics(data.metrics);
         
+        // Build comprehensive performance message for chat
+        let performanceMessage = '🎯 **PPO TRAINING COMPLETE**\n\n';
+        performanceMessage += `**Overall Summary:**\n`;
+        performanceMessage += `• Total Assets Trained: ${data.metrics.totalSymbols}\n`;
+        performanceMessage += `• Specialized Models: ${data.metrics.assetSpecificModels}\n\n`;
+        
+        performanceMessage += `**📈 TRAINING SET (80% of data):**\n`;
+        performanceMessage += `• Win Rate: ${(data.metrics.training.avgWinRate * 100).toFixed(2)}%\n`;
+        performanceMessage += `• Avg Return: ${(data.metrics.training.avgReturn * 100).toFixed(3)}%\n`;
+        performanceMessage += `• Total Trades: ${data.metrics.training.totalTrades}\n`;
+        performanceMessage += `• Sharpe Ratio: ${data.metrics.training.sharpeRatio.toFixed(3)}\n\n`;
+        
+        performanceMessage += `**🧪 TEST SET (20% of data):**\n`;
+        performanceMessage += `• Win Rate: ${(data.metrics.testing.avgWinRate * 100).toFixed(2)}%\n`;
+        performanceMessage += `• Avg Return: ${(data.metrics.testing.avgReturn * 100).toFixed(3)}%\n`;
+        performanceMessage += `• Total Trades: ${data.metrics.testing.totalTrades}\n\n`;
+        
+        performanceMessage += `**📋 DETAILED PERFORMANCE BY ASSET:**\n\n`;
+        
+        // Group by asset type
+        const stockAssets = data.metrics.detailedPerformance.filter((p: any) => 
+          !['BTC', 'ETH', 'SOL', 'ADA', 'DOT', 'AVAX', 'MATIC'].some(c => p.symbol.includes(c))
+        );
+        const cryptoAssets = data.metrics.detailedPerformance.filter((p: any) => 
+          ['BTC', 'ETH', 'SOL', 'ADA', 'DOT', 'AVAX', 'MATIC'].some(c => p.symbol.includes(c))
+        );
+        
+        if (stockAssets.length > 0) {
+          performanceMessage += `**Stocks:**\n`;
+          stockAssets.forEach((p: any) => {
+            performanceMessage += `• ${p.symbol}: Train ${(p.train.winRate * 100).toFixed(1)}% (${p.train.totalTrades} trades) | Test ${(p.test.winRate * 100).toFixed(1)}% (${p.test.totalTrades} trades)\n`;
+          });
+          performanceMessage += '\n';
+        }
+        
+        if (cryptoAssets.length > 0) {
+          performanceMessage += `**Cryptocurrencies:**\n`;
+          cryptoAssets.forEach((p: any) => {
+            performanceMessage += `• ${p.symbol}: Train ${(p.train.winRate * 100).toFixed(1)}% (${p.train.totalTrades} trades) | Test ${(p.test.winRate * 100).toFixed(1)}% (${p.test.totalTrades} trades)\n`;
+          });
+        }
+        
+        // Add performance message to chat
+        addMessage({
+          role: 'assistant',
+          content: performanceMessage
+        });
+        
         toast.success('🤖 Asset-Specific PPO Training Complete!', {
-          description: `Trained ${data.metrics.assetSpecificModels} specialized models with ${(data.metrics.avgWinRate * 100).toFixed(1)}% win rate`
+          description: `Trained ${data.metrics.assetSpecificModels} models. Check chat for details.`
         });
 
         console.log('🎯 ASSET-SPECIFIC PPO TRAINING RESULTS:');
         console.log(`📊 Symbols: ${data.metrics.totalSymbols}`);
-        console.log(`🎯 Win Rate: ${(data.metrics.avgWinRate * 100).toFixed(1)}%`);
-        console.log(`💰 Average Return: ${(data.metrics.avgReturn * 100).toFixed(2)}%`);
-        console.log(`📈 Total Trades: ${data.metrics.totalTrades}`);
-        console.log(`🤖 Asset-Specific Models: ${data.metrics.assetSpecificModels}`);
+        console.log(`📈 Training: ${(data.metrics.training.avgWinRate * 100).toFixed(2)}% win rate`);
+        console.log(`🧪 Testing: ${(data.metrics.testing.avgWinRate * 100).toFixed(2)}% win rate`);
       }
     } catch (error: any) {
       console.error('PPO training error:', error);
+      
+      // Add error message to chat
+      addMessage({
+        role: 'assistant',
+        content: `❌ **Training Failed**\n\nError: ${error?.message || 'Unknown error occurred'}\n\nPlease try again or check the console for more details.`
+      });
+      
       toast.error('PPO training failed', {
         description: error?.message || 'Unknown error occurred'
       });
