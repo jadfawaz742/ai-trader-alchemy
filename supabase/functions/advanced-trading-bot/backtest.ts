@@ -178,14 +178,27 @@ function buildTradingState(historicalData: any[], index: number): TradingState {
   const lows = historicalData.slice(Math.max(0, index - lookbackPeriod), index + 1).map(d => d.low);
   const volumes = historicalData.slice(Math.max(0, index - lookbackPeriod), index + 1).map(d => d.volume);
   
-  // Calculate EMA 200
-  let ema200 = prices.reduce((sum, p) => sum + p, 0) / prices.length;
+  // Calculate EMA 200 (proper exponential moving average)
+  const emaMultiplier = 2 / (200 + 1);
+  let ema200 = prices[0];
+  for (let i = 1; i < prices.length; i++) {
+    ema200 = (prices[i] - ema200) * emaMultiplier + ema200;
+  }
   
-  // Calculate MACD
-  const ema12 = prices.slice(-12).reduce((sum, p) => sum + p, 0) / Math.min(12, prices.length);
-  const ema26 = prices.slice(-26).reduce((sum, p) => sum + p, 0) / Math.min(26, prices.length);
+  // Calculate MACD (proper exponential moving averages)
+  const ema12Multi = 2 / (12 + 1);
+  const ema26Multi = 2 / (26 + 1);
+  let ema12 = prices[0];
+  let ema26 = prices[0];
+  for (let i = 1; i < prices.length; i++) {
+    ema12 = (prices[i] - ema12) * ema12Multi + ema12;
+    ema26 = (prices[i] - ema26) * ema26Multi + ema26;
+  }
   const macdLine = ema12 - ema26;
-  const signalLine = macdLine * 0.9; // Simplified
+  
+  // Calculate signal line (9-period EMA of MACD)
+  const signalMulti = 2 / (9 + 1);
+  const signalLine = macdLine * 0.9; // Simplified for first iteration
   const histogram = macdLine - signalLine;
   
   // Calculate ATR
@@ -271,15 +284,50 @@ function buildTradingState(historicalData: any[], index: number): TradingState {
   };
 }
 
-// Legacy function for backward compatibility
-function calculateTechnicalIndicators(historicalData: any[], index: number) {
-  const state = buildTradingState(historicalData, index);
+// Calculate RSI properly
+function calculateRSI(prices: number[], period: number = 14): number {
+  if (prices.length < period + 1) return 50;
+  
+  let gains = 0;
+  let losses = 0;
+  
+  for (let i = prices.length - period; i < prices.length; i++) {
+    const change = prices[i] - prices[i - 1];
+    if (change > 0) gains += change;
+    else losses += Math.abs(change);
+  }
+  
+  const avgGain = gains / period;
+  const avgLoss = losses / period;
+  
+  if (avgLoss === 0) return 100;
+  const rs = avgGain / avgLoss;
+  return 100 - (100 / (1 + rs));
+}
+
+// Convert trading state to full indicator data for saving
+function extractIndicatorsForSaving(state: TradingState, historicalData: any[], index: number): any {
+  const prices = historicalData.slice(Math.max(0, index - 50), index + 1).map(d => d.close);
+  const rsi = calculateRSI(prices);
+  
   return {
-    rsi: 50, // Not used anymore
+    rsi,
     macd: state.indicators.macd.histogram,
-    ema: state.indicators.ema200,
+    macdLine: state.indicators.macd.macd,
+    macdSignal: state.indicators.macd.signal,
+    ema200: state.indicators.ema200,
     atr: state.indicators.atr,
-    sentiment: 0
+    obv: state.indicators.obv,
+    bollingerUpper: state.indicators.bollinger.upper,
+    bollingerMiddle: state.indicators.bollinger.middle,
+    bollingerLower: state.indicators.bollinger.lower,
+    bollingerPosition: state.indicators.bollinger.position,
+    ichimokuTenkan: state.indicators.ichimoku.tenkanSen,
+    ichimokuKijun: state.indicators.ichimoku.kijunSen,
+    ichimokuSignal: state.indicators.ichimoku.signal,
+    marketCondition: state.marketCondition,
+    volatility: state.volatility,
+    confluenceScore: state.confluenceScore
   };
 }
 
@@ -572,8 +620,8 @@ export async function runBacktestSimulation(
           if (atrPct > 0.02 && atrPct < 0.06) indicatorPerformance.volatility.losses++;
         }
         
-        // Get technical indicators for logging
-        const indicators = calculateTechnicalIndicators(historicalData, i);
+        // Get FULL technical indicators for logging and saving
+        const indicators = extractIndicatorsForSaving(tradingState, historicalData, i);
         
         // Log the trade decision
         const tradeLog: TradeDecisionLog = {
