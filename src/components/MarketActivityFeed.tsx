@@ -2,6 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { TrendingUp, TrendingDown, Activity, Zap } from 'lucide-react';
+import { supabase } from '@/integrations/supabase/client';
 
 interface MarketActivity {
   id: string;
@@ -20,22 +21,45 @@ interface MarketActivityFeedProps {
 
 export const MarketActivityFeed: React.FC<MarketActivityFeedProps> = ({ isActive }) => {
   const [activities, setActivities] = useState<MarketActivity[]>([]);
+  const [cryptoPrices, setCryptoPrices] = useState<Record<string, any>>({});
+
+  // Fetch real crypto prices
+  useEffect(() => {
+    if (!isActive) return;
+
+    const fetchPrices = async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke('fetch-crypto-prices');
+        
+        if (error) {
+          console.error('Error fetching crypto prices:', error);
+          return;
+        }
+
+        if (data?.success && data?.prices) {
+          const priceMap: Record<string, any> = {};
+          data.prices.forEach((p: any) => {
+            priceMap[p.symbol] = p;
+          });
+          setCryptoPrices(priceMap);
+          console.log('✅ Updated crypto prices:', priceMap);
+        }
+      } catch (error) {
+        console.error('Error fetching crypto prices:', error);
+      }
+    };
+
+    // Fetch immediately and then every 10 seconds
+    fetchPrices();
+    const priceInterval = setInterval(fetchPrices, 10000);
+
+    return () => clearInterval(priceInterval);
+  }, [isActive]);
 
   useEffect(() => {
     if (!isActive) return;
 
     const generateActivity = () => {
-      // Use the same expanded symbol list as PPO training
-      const symbols = [
-        // Major US Tech Stocks
-        'AAPL', 'GOOGL', 'MSFT', 'TSLA', 'NVDA', 'META', 'AMZN', 'NFLX',
-        // Other Major Stocks  
-        'JPM', 'JNJ', 'PG', 'V', 'WMT', 'UNH', 'HD',
-        // ETFs
-        'SPY', 'QQQ', 'IWM', 'VTI',
-        // Major Cryptocurrencies
-        'BTCUSD', 'ETHUSD', 'SOLUSDT', 'ADAUSDT', 'DOTUSDT'
-      ];
       const actions = ['BUY', 'SELL', 'ALERT'] as const;
       const reasons = [
         'Strong momentum detected',
@@ -48,55 +72,22 @@ export const MarketActivityFeed: React.FC<MarketActivityFeedProps> = ({ isActive
         'Moving average crossover'
       ];
 
-      const symbol = symbols[Math.floor(Math.random() * symbols.length)];
+      // Get available crypto symbols from real prices
+      const availableCryptos = Object.keys(cryptoPrices);
+      
+      if (availableCryptos.length === 0) return; // Wait for prices to load
+
+      const symbol = availableCryptos[Math.floor(Math.random() * availableCryptos.length)];
       const action = actions[Math.floor(Math.random() * actions.length)];
-      
-      // Enhanced price generation based on asset type
-      let basePrice;
-      if (symbol.includes('USD')) {
-        // Cryptocurrencies
-        basePrice = symbol === 'BTCUSD' ? 42000 + Math.random() * 8000 :
-                   symbol === 'ETHUSD' ? 2200 + Math.random() * 600 :
-                   symbol === 'SOLUSDT' ? 80 + Math.random() * 40 :
-                   symbol === 'ADAUSDT' ? 0.35 + Math.random() * 0.15 :
-                   0.25 + Math.random() * 0.15; // DOTUSDT
-      } else if (['SPY', 'QQQ', 'IWM', 'VTI'].includes(symbol)) {
-        // ETFs
-        basePrice = symbol === 'SPY' ? 420 + Math.random() * 60 :
-                   symbol === 'QQQ' ? 350 + Math.random() * 50 :
-                   symbol === 'IWM' ? 180 + Math.random() * 40 :
-                   220 + Math.random() * 40; // VTI
-      } else {
-        // Stocks - realistic price ranges
-        const stockPrices = {
-          'NVDA': 850 + Math.random() * 100,
-          'GOOGL': 135 + Math.random() * 20,
-          'TSLA': 240 + Math.random() * 40,
-          'AAPL': 170 + Math.random() * 20,
-          'MSFT': 330 + Math.random() * 30,
-          'META': 295 + Math.random() * 30,
-          'AMZN': 125 + Math.random() * 15,
-          'NFLX': 450 + Math.random() * 50,
-          'JPM': 140 + Math.random() * 20,
-          'JNJ': 160 + Math.random() * 15,
-          'PG': 150 + Math.random() * 10,
-          'V': 250 + Math.random() * 25,
-          'WMT': 155 + Math.random() * 10,
-          'UNH': 520 + Math.random() * 40,
-          'HD': 320 + Math.random() * 30
-        };
-        basePrice = stockPrices[symbol as keyof typeof stockPrices] || 150 + Math.random() * 200;
-      }
-      
-      const change = (Math.random() - 0.5) * (symbol.includes('USD') ? 8 : 5); // Higher volatility for crypto
+      const cryptoData = cryptoPrices[symbol];
       
       const newActivity: MarketActivity = {
         id: Math.random().toString(36).substr(2, 9),
-        symbol,
+        symbol: symbol + 'USDT',
         action,
-        price: Number(basePrice.toFixed(2)),
-        change: Number(change.toFixed(2)),
-        volume: `${(Math.random() * 9 + 1).toFixed(1)}M`,
+        price: cryptoData.price,
+        change: cryptoData.change24h,
+        volume: `${(cryptoData.volume24h / 1000000).toFixed(1)}M`,
         timestamp: new Date(),
         reason: reasons[Math.floor(Math.random() * reasons.length)]
       };
@@ -104,13 +95,13 @@ export const MarketActivityFeed: React.FC<MarketActivityFeedProps> = ({ isActive
       setActivities(prev => [newActivity, ...prev.slice(0, 19)]); // Keep last 20 activities
     };
 
-    // Generate initial activity
-    generateActivity();
-    
-    const interval = setInterval(generateActivity, 2000 + Math.random() * 3000); // Every 2-5 seconds
-
-    return () => clearInterval(interval);
-  }, [isActive]);
+    // Generate initial activity after prices are loaded
+    if (Object.keys(cryptoPrices).length > 0) {
+      generateActivity();
+      const interval = setInterval(generateActivity, 3000 + Math.random() * 2000); // Every 3-5 seconds
+      return () => clearInterval(interval);
+    }
+  }, [isActive, cryptoPrices]);
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
