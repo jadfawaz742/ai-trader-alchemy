@@ -1053,10 +1053,10 @@ async function getAdaptiveParameters(userId: string, symbol: string): Promise<Ad
     }
 
     return data || {
-      confidenceThreshold: 50.0, // 🚀 ULTRA-AGGRESSIVE: Start at 50% instead of 75%
-      confluenceThreshold: 0.6,
-      stopLossMultiplier: 1.0,
-      takeProfitMultiplier: 1.0,
+      confidenceThreshold: 35.0, // 🚀 MAX AGGRESSIVE: 35% for maximum opportunities
+      confluenceThreshold: 0.45,  // Lowered from 0.6 for more signals
+      stopLossMultiplier: 0.9,    // Tighter stops
+      takeProfitMultiplier: 1.8,  // Higher profit targets for better R:R
       successRate: 0.0,
       totalTrades: 0,
       winningTrades: 0,
@@ -1065,10 +1065,10 @@ async function getAdaptiveParameters(userId: string, symbol: string): Promise<Ad
   } catch (error) {
     console.error('Error in getAdaptiveParameters:', error);
     return {
-      confidenceThreshold: 45.0, // 🚀 ULTRA-AGGRESSIVE: Start at 45% for high risk
-      confluenceThreshold: 0.6,
-      stopLossMultiplier: 1.0,
-      takeProfitMultiplier: 1.0,
+      confidenceThreshold: 30.0, // 🚀 MAXIMUM AGGRESSIVE: 30% for ultra-high risk
+      confluenceThreshold: 0.40,  // Very low for maximum trades
+      stopLossMultiplier: 0.85,   // Tightest stops
+      takeProfitMultiplier: 2.0,  // Maximum profit targets
       successRate: 0.0,
       totalTrades: 0,
       winningTrades: 0,
@@ -1605,7 +1605,7 @@ serve(async (req) => {
       portfolioBalance = 100000,
       enableShorts = true,
       tradingFrequency = 'daily',
-      maxDailyTrades = 15, // INCREASED from 5 for better opportunity capture
+      maxDailyTrades = 25, // INCREASED from 15 for maximum opportunity capture
       backtestMode = false,
       backtestPeriod = '1month'
     } = await req.json();
@@ -1686,12 +1686,23 @@ serve(async (req) => {
           console.log(`🎯 Using existing asset-specific model for ${symbol} (updated ${assetModel.updatedAt})`);
           // Use existing model but still analyze current market
           trainingResult = {
-            model: assetModel.modelWeights,
-            performance: assetModel.performanceMetrics || {
-              accuracy: 0.75,
-              winRate: 0.65,
-              sharpeRatio: 1.2,
-              maxDrawdown: 0.15
+            model: {
+              ...assetModel.modelWeights,
+              trainingTrades: assetModel.modelWeights.trainingTrades || [],
+              testingTrades: assetModel.modelWeights.testingTrades || [],
+              symbol: symbol
+            },
+            performance: {
+              ...(assetModel.performanceMetrics || {}),
+              accuracy: assetModel.performanceMetrics?.accuracy || 0.75,
+              winRate: assetModel.performanceMetrics?.winRate || 0.65,
+              sharpeRatio: assetModel.performanceMetrics?.sharpeRatio || 1.2,
+              maxDrawdown: assetModel.performanceMetrics?.maxDrawdown || 0.15,
+              trainingTrades: assetModel.performanceMetrics?.trainingTrades || 0,
+              testingTrades: assetModel.performanceMetrics?.testingTrades || 0,
+              trainingWinRate: assetModel.performanceMetrics?.trainingWinRate || 0.65,
+              testingWinRate: assetModel.performanceMetrics?.testingWinRate || 0.65,
+              avgConfidence: assetModel.performanceMetrics?.avgConfidence || 75
             },
             convergence: true
           };
@@ -1836,24 +1847,27 @@ serve(async (req) => {
             console.log(`🎯 PHASE 1 ROI BOOST: This signal would have been REJECTED under old thresholds (85%/80%) but is now ACCEPTED (80%/75%) - Potential ROI gain!`);
           }
           
-          // Enhanced position sizing logging
+          // Enhanced position sizing logging - MAX AGGRESSIVE
           const confidencePercent = tradingDecision.confidence;
           let positionMultiplier = 1.0;
           if (confidencePercent >= 90) {
-            positionMultiplier = 3.0; // MASSIVE gains for 90%+ confidence
-            console.log(`🚀 ULTRA HIGH CONFIDENCE: ${confidencePercent.toFixed(1)}% confidence = 3.0x position size (MAXIMUM ROI)`);
+            positionMultiplier = 3.5; // MAXIMUM gains for 90%+ confidence
+            console.log(`🚀 ULTRA HIGH CONFIDENCE: ${confidencePercent.toFixed(1)}% confidence = 3.5x position size (MAXIMUM ROI)`);
           } else if (confidencePercent >= 85) {
-            positionMultiplier = 2.5; // INCREASED from 1.5x to 2.5x 
-            console.log(`💎 HIGH CONFIDENCE POSITION: ${confidencePercent.toFixed(1)}% confidence = 2.5x position size (AGGRESSIVE Enhancement)`);
+            positionMultiplier = 3.0; // INCREASED from 2.5x to 3.0x 
+            console.log(`💎 HIGH CONFIDENCE POSITION: ${confidencePercent.toFixed(1)}% confidence = 3.0x position size (MAXIMUM Enhancement)`);
           } else if (confidencePercent >= 75) {
-            positionMultiplier = 1.8; // NEW tier for 75%+ confidence
-            console.log(`🔥 STRONG CONFIDENCE POSITION: ${confidencePercent.toFixed(1)}% confidence = 1.8x position size`);
+            positionMultiplier = 2.2; // Higher than before
+            console.log(`🔥 STRONG CONFIDENCE POSITION: ${confidencePercent.toFixed(1)}% confidence = 2.2x position size`);
           } else if (confidencePercent >= 65) {
-            positionMultiplier = 1.2; // NEW tier for 65%+ confidence  
-            console.log(`📈 GOOD CONFIDENCE POSITION: ${confidencePercent.toFixed(1)}% confidence = 1.2x position size`);
-          } else if (confidencePercent < 60) {
-            positionMultiplier = 0.3; // MORE aggressive risk reduction
-            console.log(`⚠️ LOW CONFIDENCE POSITION: ${confidencePercent.toFixed(1)}% confidence = 0.3x position size (Risk Management)`);
+            positionMultiplier = 1.5; // Increased from 1.2x
+            console.log(`📈 GOOD CONFIDENCE POSITION: ${confidencePercent.toFixed(1)}% confidence = 1.5x position size`);
+          } else if (confidencePercent >= 50) {
+            positionMultiplier = 0.8; // NEW tier - allow 50%+ confidence
+            console.log(`⚡ MODERATE CONFIDENCE POSITION: ${confidencePercent.toFixed(1)}% confidence = 0.8x position size`);
+          } else {
+            positionMultiplier = 0.4; // Still take the trade but smaller
+            console.log(`⚠️ LOW CONFIDENCE POSITION: ${confidencePercent.toFixed(1)}% confidence = 0.4x position size (Risk Management)`);
           }
           
           console.log(`📈 EXPECTED PHASE 1 ROI IMPACT: Position multiplier ${positionMultiplier}x will ${positionMultiplier > 1 ? 'increase' : positionMultiplier < 1 ? 'reduce' : 'maintain'} potential gains/losses proportionally`);
@@ -1890,12 +1904,12 @@ serve(async (req) => {
             trainedPeriods: trainingData.length,
             testingPeriods: testingData.length,
             learningStats: {
-              trainingTrades: trainingResult.model.trainingTrades?.length || 0,
-              testingTrades: trainingResult.model.testingTrades?.length || 0,
-              trainingWinRate: (trainingResult.performance as any).trainingWinRate || trainingResult.performance.winRate,
-              testingWinRate: (trainingResult.performance as any).testingWinRate || trainingResult.performance.winRate,
-              avgConfidence: (trainingResult.performance as any).avgConfidence || 80,
-              fibonacciSuccessRate: (trainingResult.performance as any).fibonacciSuccessRate || 0.6
+              trainingTrades: Array.isArray(trainingResult.model.trainingTrades) ? trainingResult.model.trainingTrades.length : (trainingResult.performance.trainingTrades || 0),
+              testingTrades: Array.isArray(trainingResult.model.testingTrades) ? trainingResult.model.testingTrades.length : (trainingResult.performance.testingTrades || 0),
+              trainingWinRate: trainingResult.performance.trainingWinRate || trainingResult.performance.winRate || 0.65,
+              testingWinRate: trainingResult.performance.testingWinRate || trainingResult.performance.winRate || 0.65,
+              avgConfidence: trainingResult.performance.avgConfidence || 75,
+              fibonacciSuccessRate: trainingResult.performance.fibonacciSuccessRate || 0.6
             }
           };
 
@@ -3374,9 +3388,9 @@ async function calculateSmartRiskParameters(
   const rewardAmount = Math.abs(adjustedParams.takeProfit - currentPrice);
   const riskReward = rewardAmount / riskAmount;
   
-  // Ensure minimum risk/reward ratio
-  const minRiskReward = riskLevel.name === 'low' ? 2.0 : 
-                        riskLevel.name === 'medium' ? 1.5 : 1.2;
+  // Ensure minimum risk/reward ratio - MORE AGGRESSIVE
+  const minRiskReward = riskLevel.name === 'low' ? 2.5 : 
+                        riskLevel.name === 'medium' ? 2.0 : 1.8;
   
   if (riskReward < minRiskReward) {
     console.log(`⚠️ Risk/Reward ${riskReward.toFixed(2)} below minimum ${minRiskReward}, adjusting target`);
