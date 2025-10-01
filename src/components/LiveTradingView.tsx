@@ -36,7 +36,7 @@ export const LiveTradingView: React.FC = () => {
   const [botStatus, setBotStatus] = useState<'idle' | 'analyzing' | 'trading'>('idle');
   const { portfolio, updateBalance } = usePortfolioContext();
 
-  // Fetch real market data updates
+  // Fetch real market data and trigger bot analysis
   useEffect(() => {
     if (!isActive) return;
 
@@ -102,6 +102,8 @@ export const LiveTradingView: React.FC = () => {
 
       if (newMarketData.length > 0) {
         setMarketData(newMarketData);
+        // Trigger bot analysis with real market data
+        await analyzeAndTrade(newMarketData);
       }
     };
 
@@ -111,37 +113,82 @@ export const LiveTradingView: React.FC = () => {
     return () => clearInterval(interval);
   }, [isActive]);
 
-  const simulateTrade = async (currentMarketData: MarketFluctuation[]) => {
-    const tradableStock = currentMarketData[Math.floor(Math.random() * currentMarketData.length)];
-    const action = Math.random() > 0.6 ? 'BUY' : Math.random() > 0.3 ? 'SELL' : 'HOLD';
-    
-    if (action === 'HOLD') return;
+  const analyzeAndTrade = async (currentMarketData: MarketFluctuation[]) => {
+    try {
+      setBotStatus('analyzing');
+      
+      // Call the actual trading bot with real market data
+      const symbols = currentMarketData.map(m => 
+        m.symbol.includes('USDT') ? m.symbol.replace('USDT', '-USD') : m.symbol
+      );
+      
+      const { data, error } = await supabase.functions.invoke('advanced-trading-bot', {
+        body: {
+          symbols,
+          mode: 'live',
+          risk: 'moderate',
+          portfolioBalance: portfolio?.current_balance || 100000,
+          enableShorts: false,
+          tradingFrequency: 'medium',
+          maxDailyTrades: 20,
+          backtestMode: false,
+          enhancedPPO: true
+        }
+      });
 
-    const quantity = Math.floor(Math.random() * 10) + 1;
-    const confidence = 60 + Math.random() * 35; // 60-95% confidence
-    const profitLoss = (Math.random() - 0.3) * 200; // Slightly positive bias
-    
-    const newTrade: LiveTrade = {
-      symbol: tradableStock.symbol,
-      action,
-      quantity,
-      price: tradableStock.currentPrice,
-      confidence: Number(confidence.toFixed(1)),
-      reason: `${tradableStock.trend} signal detected with ${confidence.toFixed(1)}% confidence`,
-      profitLoss: Number(profitLoss.toFixed(2)),
-      simulation: true,
-      timestamp: new Date().toISOString()
-    };
+      if (error) {
+        console.error('Bot analysis error:', error);
+        setBotStatus('idle');
+        return;
+      }
 
-    setLiveTrades(prev => [newTrade, ...prev.slice(0, 9)]); // Keep last 10 trades
-    setTotalPnL(prev => prev + profitLoss);
+      if (data?.signals && data.signals.length > 0) {
+        setBotStatus('trading');
+        
+        // Process each trading signal
+        for (const signal of data.signals) {
+          const matchingStock = currentMarketData.find(m => 
+            m.symbol === signal.symbol || m.symbol === signal.symbol.replace('-USD', 'USDT')
+          );
+          
+          if (matchingStock) {
+            const quantity = Math.floor((portfolio?.current_balance || 100000) * 0.02 / matchingStock.currentPrice);
+            const estimatedPnL = signal.action === 'BUY' 
+              ? quantity * matchingStock.currentPrice * (signal.confidence / 100) * 0.05
+              : quantity * matchingStock.currentPrice * (signal.confidence / 100) * 0.03;
 
-    // Update portfolio balance if it's a significant profit/loss
-    if (portfolio && Math.abs(profitLoss) > 10) {
-      const newBalance = portfolio.current_balance + profitLoss;
-      await updateBalance(newBalance);
+            const newTrade: LiveTrade = {
+              symbol: signal.symbol,
+              action: signal.action,
+              quantity,
+              price: matchingStock.currentPrice,
+              confidence: signal.confidence,
+              reason: signal.reason,
+              profitLoss: estimatedPnL,
+              simulation: false,
+              timestamp: new Date().toISOString()
+            };
+
+            setLiveTrades(prev => [newTrade, ...prev.slice(0, 9)]);
+            setTotalPnL(prev => prev + estimatedPnL);
+
+            if (portfolio && Math.abs(estimatedPnL) > 10) {
+              const newBalance = portfolio.current_balance + estimatedPnL;
+              await updateBalance(newBalance);
+            }
+          }
+        }
+        
+        setTimeout(() => setBotStatus('idle'), 2000);
+      } else {
+        setBotStatus('idle');
+      }
+    } catch (error) {
+      console.error('Error in bot analysis:', error);
+      setBotStatus('idle');
     }
   };
+
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' }).format(amount);
