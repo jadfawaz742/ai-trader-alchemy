@@ -6,7 +6,7 @@ import { PortfolioProvider } from "@/components/PortfolioProvider";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
-import { Loader2, LogOut, User, Settings, BarChart3, Home, Brain } from "lucide-react";
+import { Loader2, LogOut, User, Settings, BarChart3, Brain } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -75,12 +75,6 @@ const AdvancedTrading = () => {
               </p>
             </div>
             <div className="flex gap-2">
-              <Button variant="outline" asChild>
-                <Link to="/">
-                  <Home className="h-4 w-4 mr-2" />
-                  Live Trading
-                </Link>
-              </Button>
               <Button variant="outline" asChild>
                 <Link to="/stocks">
                   <BarChart3 className="h-4 w-4 mr-2" />
