@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
@@ -6,6 +6,7 @@ import { Progress } from '@/components/ui/progress';
 import { usePortfolioContext } from '@/components/PortfolioProvider';
 import { Activity, Bot, TrendingUp, TrendingDown, Zap, Eye, Play, Square } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
 
 interface LiveTrade {
   symbol: string;
@@ -35,85 +36,9 @@ export const LiveTradingView: React.FC = () => {
   const [totalPnL, setTotalPnL] = useState(0);
   const [botStatus, setBotStatus] = useState<'idle' | 'analyzing' | 'trading'>('idle');
   const { portfolio, updateBalance } = usePortfolioContext();
+  const { toast } = useToast();
 
-  // Fetch real market data and trigger bot analysis
-  useEffect(() => {
-    if (!isActive) return;
-
-    const fetchRealMarketData = async () => {
-      const symbols = ['AAPL', 'GOOGL', 'MSFT', 'TSLA', 'NVDA', 'META', 'AMZN', 'BTCUSDT', 'ETHUSDT'];
-      const newMarketData: MarketFluctuation[] = [];
-
-      for (const symbol of symbols) {
-        try {
-          let data;
-          
-          // Check if it's a crypto symbol
-          if (symbol.includes('USDT')) {
-            const { data: cryptoData, error } = await supabase.functions.invoke('fetch-crypto-prices');
-            if (!error && cryptoData?.success && cryptoData?.prices) {
-              const crypto = cryptoData.prices.find((p: any) => p.symbol === symbol);
-              if (crypto) {
-                data = {
-                  price: crypto.price,
-                  change: crypto.change24h,
-                  volume: crypto.volume24h
-                };
-              }
-            }
-          } else {
-            // Fetch stock data from Yahoo Finance
-            const { data: stockData, error } = await supabase.functions.invoke('fetch-stock-price', {
-              body: { symbol }
-            });
-            if (!error && stockData?.success) {
-              data = {
-                price: stockData.price,
-                change: stockData.changePercent,
-                volume: stockData.volume
-              };
-            }
-          }
-
-          if (data) {
-            const priceChange = data.change;
-            let trend: 'bullish' | 'bearish' | 'neutral';
-            if (priceChange > 0.5) {
-              trend = 'bullish';
-            } else if (priceChange < -0.5) {
-              trend = 'bearish';
-            } else {
-              trend = 'neutral';
-            }
-
-            newMarketData.push({
-              symbol,
-              currentPrice: data.price,
-              priceChange: (data.price * priceChange) / 100,
-              priceChangePercent: priceChange,
-              trend,
-              timestamp: new Date().toISOString()
-            });
-          }
-        } catch (error) {
-          console.error(`Error fetching price for ${symbol}:`, error);
-        }
-      }
-
-      if (newMarketData.length > 0) {
-        setMarketData(newMarketData);
-        // Trigger bot analysis with real market data
-        await analyzeAndTrade(newMarketData);
-      }
-    };
-
-    fetchRealMarketData();
-    const interval = setInterval(fetchRealMarketData, 30000); // Update every 30 seconds
-
-    return () => clearInterval(interval);
-  }, [isActive]);
-
-  const analyzeAndTrade = async (currentMarketData: MarketFluctuation[]) => {
+  const analyzeAndTrade = useCallback(async (currentMarketData: MarketFluctuation[]) => {
     try {
       setBotStatus('analyzing');
       
@@ -138,9 +63,16 @@ export const LiveTradingView: React.FC = () => {
 
       if (error) {
         console.error('Bot analysis error:', error);
+        toast({
+          variant: "destructive",
+          title: "Bot Analysis Error",
+          description: "Failed to analyze market. Will retry on next cycle."
+        });
         setBotStatus('idle');
         return;
       }
+
+      console.log('Bot analysis complete:', data);
 
       if (data?.signals && data.signals.length > 0) {
         setBotStatus('trading');
@@ -185,9 +117,120 @@ export const LiveTradingView: React.FC = () => {
       }
     } catch (error) {
       console.error('Error in bot analysis:', error);
+      toast({
+        variant: "destructive",
+        title: "Trading Error",
+        description: "An error occurred during analysis. Check console for details."
+      });
       setBotStatus('idle');
     }
-  };
+  }, [portfolio, updateBalance, toast]);
+
+  // Fetch real market data and trigger bot analysis
+  useEffect(() => {
+    if (!isActive) {
+      setMarketData([]);
+      return;
+    }
+
+    console.log('Starting live market data fetch...');
+
+    const fetchRealMarketData = async () => {
+      try {
+        const symbols = ['AAPL', 'GOOGL', 'MSFT', 'TSLA', 'NVDA', 'META', 'AMZN', 'BTCUSDT', 'ETHUSDT'];
+        const newMarketData: MarketFluctuation[] = [];
+
+        console.log('Fetching prices for', symbols.length, 'symbols...');
+
+        for (const symbol of symbols) {
+          try {
+            let data;
+            
+            // Check if it's a crypto symbol
+            if (symbol.includes('USDT')) {
+              const { data: cryptoData, error } = await supabase.functions.invoke('fetch-crypto-prices');
+              if (!error && cryptoData?.success && cryptoData?.prices) {
+                const crypto = cryptoData.prices.find((p: any) => p.symbol === symbol);
+                if (crypto) {
+                  data = {
+                    price: crypto.price,
+                    change: crypto.change24h,
+                    volume: crypto.volume24h
+                  };
+                }
+              } else if (error) {
+                console.error(`Error fetching crypto ${symbol}:`, error);
+              }
+            } else {
+              // Fetch stock data from Yahoo Finance
+              const { data: stockData, error } = await supabase.functions.invoke('fetch-stock-price', {
+                body: { symbol }
+              });
+              if (!error && stockData?.success) {
+                data = {
+                  price: stockData.price,
+                  change: stockData.changePercent,
+                  volume: stockData.volume
+                };
+              } else if (error) {
+                console.error(`Error fetching stock ${symbol}:`, error);
+              }
+            }
+
+            if (data) {
+              const priceChange = data.change;
+              let trend: 'bullish' | 'bearish' | 'neutral';
+              if (priceChange > 0.5) {
+                trend = 'bullish';
+              } else if (priceChange < -0.5) {
+                trend = 'bearish';
+              } else {
+                trend = 'neutral';
+              }
+
+              newMarketData.push({
+                symbol,
+                currentPrice: data.price,
+                priceChange: (data.price * priceChange) / 100,
+                priceChangePercent: priceChange,
+                trend,
+                timestamp: new Date().toISOString()
+              });
+            }
+          } catch (error) {
+            console.error(`Error fetching price for ${symbol}:`, error);
+          }
+        }
+
+        console.log('Fetched', newMarketData.length, 'market prices');
+
+        if (newMarketData.length > 0) {
+          setMarketData(newMarketData);
+          // Trigger bot analysis with real market data
+          await analyzeAndTrade(newMarketData);
+        } else {
+          console.warn('No market data received');
+          toast({
+            variant: "destructive",
+            title: "Data Fetch Error",
+            description: "Failed to fetch market data. Check your connection."
+          });
+        }
+      } catch (error) {
+        console.error('Error in fetchRealMarketData:', error);
+        toast({
+          variant: "destructive",
+          title: "Market Data Error",
+          description: "Failed to load market data. Will retry in 30 seconds."
+        });
+      }
+    };
+
+    fetchRealMarketData();
+    const interval = setInterval(fetchRealMarketData, 30000); // Update every 30 seconds
+
+    return () => clearInterval(interval);
+  }, [isActive, analyzeAndTrade, toast]);
 
 
   const formatCurrency = (amount: number) => {
