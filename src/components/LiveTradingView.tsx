@@ -29,7 +29,7 @@ interface MarketFluctuation {
   timestamp: string;
 }
 
-export const LiveTradingView: React.FC = () => {
+export const LiveTradingView: React.FC<{ symbols?: string[] }> = ({ symbols: configSymbols }) => {
   const [isActive, setIsActive] = useState(false);
   const [liveTrades, setLiveTrades] = useState<LiveTrade[]>([]);
   const [marketData, setMarketData] = useState<MarketFluctuation[]>([]);
@@ -37,6 +37,11 @@ export const LiveTradingView: React.FC = () => {
   const [botStatus, setBotStatus] = useState<'idle' | 'analyzing' | 'trading'>('idle');
   const { portfolio, updateBalance } = usePortfolioContext();
   const { toast } = useToast();
+  
+  // Use configured symbols or fallback to default
+  const symbols = configSymbols && configSymbols.length > 0 
+    ? configSymbols 
+    : ['AAPL', 'GOOGL', 'MSFT', 'TSLA', 'NVDA', 'META', 'AMZN', 'BTC-USD', 'ETH-USD'];
 
   const analyzeAndTrade = useCallback(async (currentMarketData: MarketFluctuation[]) => {
     try {
@@ -141,21 +146,20 @@ export const LiveTradingView: React.FC = () => {
 
     const fetchRealMarketData = async () => {
       try {
-        const symbols = ['AAPL', 'GOOGL', 'MSFT', 'TSLA', 'NVDA', 'META', 'AMZN', 'BTCUSDT', 'ETHUSDT'];
         const newMarketData: MarketFluctuation[] = [];
 
-        console.log('Fetching prices for', symbols.length, 'symbols...');
+        console.log('Fetching prices for', symbols.length, 'configured symbols:', symbols);
 
         for (const symbol of symbols) {
           try {
             let data;
             
-            // Check if it's a crypto symbol
-            if (symbol.includes('USDT')) {
+            // Check if it's a crypto symbol (ends with -USD or USDT)
+            if (symbol.endsWith('-USD') || symbol.includes('USDT')) {
               const { data: cryptoData, error } = await supabase.functions.invoke('fetch-crypto-prices');
               if (!error && cryptoData?.success && cryptoData?.prices) {
-                // Strip USDT from symbol to match API response (BTCUSDT -> BTC)
-                const baseSymbol = symbol.replace('USDT', '');
+                // Extract base symbol (BTC-USD -> BTC, BTCUSDT -> BTC)
+                const baseSymbol = symbol.replace('-USD', '').replace('USDT', '');
                 const crypto = cryptoData.prices.find((p: any) => p.symbol === baseSymbol);
                 if (crypto) {
                   data = {
@@ -237,7 +241,7 @@ export const LiveTradingView: React.FC = () => {
     const interval = setInterval(fetchRealMarketData, 30000); // Update every 30 seconds
 
     return () => clearInterval(interval);
-  }, [isActive, analyzeAndTrade, toast]);
+  }, [isActive, analyzeAndTrade, toast, symbols]);
 
 
   const formatCurrency = (amount: number) => {

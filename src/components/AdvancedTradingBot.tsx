@@ -1031,7 +1031,7 @@ ${data.backtestResults.tradeDecisionLogs?.slice(-5).map((log: any, i: number) =>
 
               <TabsContent value="live">
                 <div className="space-y-6">
-                  <LiveTradingView />
+                  <LiveTradingView symbols={botConfig.symbols} />
                 </div>
               </TabsContent>
 
