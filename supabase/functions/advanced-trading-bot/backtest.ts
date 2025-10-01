@@ -439,25 +439,52 @@ export async function runBacktestSimulation(
         const tradeAmount = (currentBalance * 0.02) * positionMultiplier * regimeMultiplier;
         const quantity = Math.floor(tradeAmount / currentPrice);
         
-        // ATR-based trailing stop simulation
-        const hitStop = aiDecision.type === 'BUY' ? 
-          nextBar.low < riskParams.stopLoss : 
-          nextBar.high > riskParams.stopLoss;
-        const hitTarget = aiDecision.type === 'BUY' ? 
-          nextBar.high > riskParams.takeProfit : 
-          nextBar.low < riskParams.takeProfit;
+        // 🎯 Hold position until stop loss or take profit is hit
+        let exitPrice: number | null = null;
+        let exitBar = i + 1;
+        let hitStop = false;
+        let hitTarget = false;
         
-        // 💰 Calculate ACTUAL P&L based on entry/exit prices and quantity
-        let exitPrice = nextBar.close;
-        
-        // If stop loss or take profit hit, use those prices
-        if (hitStop) {
-          exitPrice = riskParams.stopLoss;
-        } else if (hitTarget) {
-          exitPrice = riskParams.takeProfit;
+        // Scan forward through bars until we hit stop loss or take profit
+        while (exitBar < historicalData.length && !exitPrice) {
+          const scanBar = historicalData[exitBar];
+          
+          if (aiDecision.type === 'BUY') {
+            // For BUY: check if low hit stop loss or high hit take profit
+            if (scanBar.low <= riskParams.stopLoss) {
+              exitPrice = riskParams.stopLoss;
+              hitStop = true;
+            } else if (scanBar.high >= riskParams.takeProfit) {
+              exitPrice = riskParams.takeProfit;
+              hitTarget = true;
+            }
+          } else {
+            // For SELL: check if high hit stop loss or low hit take profit
+            if (scanBar.high >= riskParams.stopLoss) {
+              exitPrice = riskParams.stopLoss;
+              hitStop = true;
+            } else if (scanBar.low <= riskParams.takeProfit) {
+              exitPrice = riskParams.takeProfit;
+              hitTarget = true;
+            }
+          }
+          
+          exitBar++;
+          
+          // Safety: don't scan more than 20 bars ahead
+          if (exitBar > i + 20) {
+            // If neither target hit within 20 bars, exit at current price (conservative)
+            exitPrice = historicalData[Math.min(exitBar - 1, historicalData.length - 1)].close;
+            break;
+          }
         }
         
-        // Simple, correct P&L calculation: (exit - entry) * quantity for BUY, (entry - exit) * quantity for SELL
+        // If we reached end of data without hitting targets, skip this trade
+        if (!exitPrice) {
+          continue;
+        }
+        
+        // 💰 Calculate ACTUAL P&L: (exit - entry) * quantity for BUY, (entry - exit) * quantity for SELL
         let actualPnL: number;
         if (aiDecision.type === 'BUY') {
           actualPnL = (exitPrice - currentPrice) * quantity;
