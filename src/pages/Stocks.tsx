@@ -80,8 +80,8 @@ const StocksPage: React.FC = () => {
       setIsLoading(true);
       const priceData: Record<string, any> = {};
       
-      // Fetch prices for first 10 stocks to avoid API rate limits
-      const stocksToFetch = STOCK_DATA.slice(0, 10);
+      // Fetch prices for first 15 stocks (Yahoo Finance has better rate limits)
+      const stocksToFetch = STOCK_DATA.slice(0, 15);
       
       for (const stock of stocksToFetch) {
         try {
@@ -93,8 +93,8 @@ const StocksPage: React.FC = () => {
             priceData[stock.symbol] = data;
           }
           
-          // Add delay to avoid rate limiting (Alpha Vantage free tier: 5 calls/min)
-          await new Promise(resolve => setTimeout(resolve, 12000));
+          // Small delay to avoid overwhelming the API
+          await new Promise(resolve => setTimeout(resolve, 500));
         } catch (error) {
           console.error(`Error fetching ${stock.symbol}:`, error);
         }

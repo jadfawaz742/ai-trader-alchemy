@@ -20,46 +20,56 @@ serve(async (req) => {
       });
     }
 
-    const alphaVantageKey = Deno.env.get('SW18WL459HN6SJYG');
+    console.log(`Fetching price for ${symbol} from Yahoo Finance`);
     
-    if (!alphaVantageKey) {
-      console.log('Alpha Vantage API key not found');
-      return new Response(JSON.stringify({ 
-        error: 'API key not configured',
-        mockData: generateMockData(symbol)
+    // Yahoo Finance API endpoint (free, no API key needed)
+    const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1d`;
+    
+    const response = await fetch(yahooUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0',
+      }
+    });
+    
+    if (!response.ok) {
+      console.log('Yahoo Finance request failed, using mock data');
+      return new Response(JSON.stringify({
+        ...generateMockData(symbol),
+        note: 'Mock data - Yahoo Finance unavailable'
       }), {
-        status: 200,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
-
-    console.log(`Fetching price for ${symbol}`);
     
-    const quoteUrl = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${alphaVantageKey}`;
-    const response = await fetch(quoteUrl);
     const data = await response.json();
     
-    if (data['Global Quote'] && Object.keys(data['Global Quote']).length > 0) {
-      const quote = data['Global Quote'];
+    if (data.chart?.result?.[0]) {
+      const result = data.chart.result[0];
+      const meta = result.meta;
+      const quote = result.indicators.quote[0];
+      
+      const currentPrice = meta.regularMarketPrice || quote.close[quote.close.length - 1];
+      const previousClose = meta.previousClose || meta.chartPreviousClose;
+      const change = currentPrice - previousClose;
+      const changePercent = (change / previousClose) * 100;
       
       return new Response(JSON.stringify({
         symbol: symbol.toUpperCase(),
-        price: parseFloat(quote['05. price']) || 0,
-        change: parseFloat(quote['09. change']) || 0,
-        changePercent: parseFloat(quote['10. change percent']?.replace('%', '')) || 0,
-        volume: parseInt(quote['06. volume']) || 0,
-        high: parseFloat(quote['03. high']) || 0,
-        low: parseFloat(quote['04. low']) || 0,
-        previousClose: parseFloat(quote['08. previous close']) || 0,
+        price: currentPrice,
+        change: change,
+        changePercent: changePercent,
+        volume: meta.regularMarketVolume || 0,
+        high: meta.regularMarketDayHigh || quote.high[quote.high.length - 1],
+        low: meta.regularMarketDayLow || quote.low[quote.low.length - 1],
+        previousClose: previousClose,
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     } else {
-      // API limit reached or invalid symbol
-      console.log('Using mock data for', symbol);
+      console.log('Invalid Yahoo Finance response, using mock data');
       return new Response(JSON.stringify({
         ...generateMockData(symbol),
-        note: 'Mock data - API limit may be reached'
+        note: 'Mock data - Invalid response'
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });

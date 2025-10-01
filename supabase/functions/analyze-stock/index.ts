@@ -133,46 +133,54 @@ serve(async (req) => {
 });
 
 async function fetchStockData(symbol: string) {
-  const alphaVantageKey = Deno.env.get('SW18WL459HN6SJYG');
-  
-  if (!alphaVantageKey) {
-    console.log('Alpha Vantage API key not found, using mock data');
-    return generateMockStockData(symbol);
-  }
-
   try {
-    console.log(`Fetching real market data for ${symbol} from Alpha Vantage`);
+    console.log(`Fetching real market data for ${symbol} from Yahoo Finance`);
     
-    // Fetch quote data
-    const quoteUrl = `https://www.alphavantage.co/query?function=GLOBAL_QUOTE&symbol=${symbol}&apikey=${alphaVantageKey}`;
-    const quoteResponse = await fetch(quoteUrl);
-    const quoteData = await quoteResponse.json();
+    const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1d&range=1d`;
     
-    if (quoteData['Global Quote']) {
-      const quote = quoteData['Global Quote'];
+    const response = await fetch(yahooUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0',
+      }
+    });
+    
+    if (!response.ok) {
+      console.log('Yahoo Finance request failed, using mock data');
+      return generateMockStockData(symbol);
+    }
+    
+    const data = await response.json();
+    
+    if (data.chart?.result?.[0]) {
+      const result = data.chart.result[0];
+      const meta = result.meta;
+      const quote = result.indicators.quote[0];
+      
+      const currentPrice = meta.regularMarketPrice || quote.close[quote.close.length - 1];
+      const previousClose = meta.previousClose || meta.chartPreviousClose;
       
       return {
         companyName: symbol.toUpperCase(),
-        currentPrice: parseFloat(quote['05. price']) || 0,
-        priceChange: parseFloat(quote['09. change']) || 0,
-        priceChangePercent: parseFloat(quote['10. change percent']?.replace('%', '')) || 0,
-        volume: parseInt(quote['06. volume']) || 0,
-        dayHigh: parseFloat(quote['03. high']) || 0,
-        dayLow: parseFloat(quote['04. low']) || 0,
-        previousClose: parseFloat(quote['08. previous close']) || 0,
-        marketCap: 0, // Not available in this endpoint
-        peRatio: 0, // Not available in this endpoint
-        fiftyTwoWeekHigh: 0, // Not available in this endpoint
-        fiftyTwoWeekLow: 0, // Not available in this endpoint
-        dividend: 0,
-        beta: 1.0,
+        currentPrice: currentPrice,
+        priceChange: currentPrice - previousClose,
+        priceChangePercent: ((currentPrice - previousClose) / previousClose) * 100,
+        volume: meta.regularMarketVolume || 0,
+        dayHigh: meta.regularMarketDayHigh || quote.high[quote.high.length - 1],
+        dayLow: meta.regularMarketDayLow || quote.low[quote.low.length - 1],
+        previousClose: previousClose,
+        marketCap: meta.marketCap || 0,
+        peRatio: meta.trailingPE || 0,
+        fiftyTwoWeekHigh: meta.fiftyTwoWeekHigh || 0,
+        fiftyTwoWeekLow: meta.fiftyTwoWeekLow || 0,
+        dividend: meta.dividendRate || 0,
+        beta: meta.beta || 1.0,
       };
     } else {
-      console.log('Alpha Vantage API limit reached or invalid symbol, using mock data');
+      console.log('Invalid Yahoo Finance response, using mock data');
       return generateMockStockData(symbol);
     }
   } catch (error) {
-    console.error('Error fetching stock data from Alpha Vantage:', error);
+    console.error('Error fetching stock data from Yahoo Finance:', error);
     return generateMockStockData(symbol);
   }
 }
