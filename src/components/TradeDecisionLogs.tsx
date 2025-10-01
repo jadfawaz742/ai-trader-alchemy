@@ -51,12 +51,16 @@ interface TradeDecisionLogsProps {
   logs: TradeDecisionLog[];
   title?: string;
   initialBalance?: number; // Starting capital for ROI calculation
+  overallBacktestROI?: number; // Overall backtest return % (if showing subset of trades)
+  overallBacktestPnL?: number; // Overall backtest P&L (if showing subset of trades)
 }
 
 export const TradeDecisionLogs: React.FC<TradeDecisionLogsProps> = ({ 
   logs, 
   title = "Last 20 Trade Decisions",
-  initialBalance = 100000 // Default to $100k if not provided
+  initialBalance = 100000, // Default to $100k if not provided
+  overallBacktestROI,
+  overallBacktestPnL
 }) => {
   if (!logs || logs.length === 0) {
     return (
@@ -179,11 +183,46 @@ export const TradeDecisionLogs: React.FC<TradeDecisionLogsProps> = ({
           {title}
         </CardTitle>
         <CardDescription>
-          Detailed analysis of trading decisions with indicators and reasoning
+          {overallBacktestROI !== undefined 
+            ? `Showing last ${logs.length} trades from full backtest` 
+            : 'Detailed analysis of trading decisions with indicators and reasoning'}
         </CardDescription>
         
-        {/* Performance Summary */}
+        {/* Overall Backtest Performance (if available) */}
+        {overallBacktestROI !== undefined && overallBacktestPnL !== undefined && (
+          <div className="mt-4 pt-4 border-t bg-primary/5 p-4 rounded-lg">
+            <div className="text-sm font-medium mb-2">📊 Overall Backtest Performance</div>
+            <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+              <div>
+                <div className="text-sm text-muted-foreground">Total ROI</div>
+                <div className={`text-2xl font-bold ${overallBacktestROI >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  {(overallBacktestROI * 100).toFixed(2)}%
+                </div>
+                <div className="text-xs text-muted-foreground">on {formatCurrency(initialBalance)}</div>
+              </div>
+              <div>
+                <div className="text-sm text-muted-foreground">Total P&L</div>
+                <div className={`text-2xl font-bold ${overallBacktestPnL >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  {formatCurrency(overallBacktestPnL)}
+                </div>
+              </div>
+              <div>
+                <div className="text-sm text-muted-foreground">Final Balance</div>
+                <div className="text-2xl font-bold text-primary">
+                  {formatCurrency(initialBalance + overallBacktestPnL)}
+                </div>
+              </div>
+            </div>
+          </div>
+        )}
+        
+        {/* Performance Summary for Displayed Trades */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mt-4 pt-4 border-t">
+          <div className="col-span-2 md:col-span-4">
+            <div className="text-sm font-medium mb-2">
+              {overallBacktestROI !== undefined ? `📋 Last ${logs.length} Trades Performance` : '📊 Performance Summary'}
+            </div>
+          </div>
           <div>
             <div className="text-sm text-muted-foreground">Total ROI</div>
             <div className={`text-2xl font-bold ${metrics.totalROI >= 0 ? 'text-green-600' : 'text-red-600'}`}>

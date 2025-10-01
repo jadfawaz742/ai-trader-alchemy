@@ -130,6 +130,8 @@ const AdvancedTradingBot: React.FC = () => {
   const [signals, setSignals] = useState<TradingSignal[]>([]);
   const [tradeDecisionLogs, setTradeDecisionLogs] = useState<any[]>([]);
   const [backtestInitialBalance, setBacktestInitialBalance] = useState<number>(100000);
+  const [backtestOverallROI, setBacktestOverallROI] = useState<number | undefined>(undefined);
+  const [backtestOverallPnL, setBacktestOverallPnL] = useState<number | undefined>(undefined);
   const [botStats, setBotStats] = useState<BotStats>({
     totalSignals: 0,
     successRate: 0,
@@ -222,9 +224,14 @@ const AdvancedTradingBot: React.FC = () => {
           console.log(`📈 Sharpe Ratio: ${data.backtestResults.sharpeRatio?.toFixed(2) || 'N/A'}`);
           console.log(`🧠 Average Confidence: ${(data.backtestResults.avgConfidence * 100).toFixed(1)}%`);
           
-          // Store initial balance for ROI calculations
+          // Store initial balance and backtest results for ROI calculations
           const initialBalance = botConfig.portfolioBalance || 100000;
           setBacktestInitialBalance(initialBalance);
+          
+          // Calculate overall P&L from totalReturn
+          const overallPnL = initialBalance * data.backtestResults.totalReturn;
+          setBacktestOverallROI(data.backtestResults.totalReturn);
+          setBacktestOverallPnL(overallPnL);
           
           // Display trade decision logs in chat
           if (data.backtestResults.tradeDecisionLogs && data.backtestResults.tradeDecisionLogs.length > 0) {
@@ -790,6 +797,8 @@ ${data.backtestResults.tradeDecisionLogs?.slice(-5).map((log: any, i: number) =>
                     logs={tradeDecisionLogs}
                     title="Trade Decision Analysis"
                     initialBalance={backtestInitialBalance}
+                    overallBacktestROI={backtestOverallROI}
+                    overallBacktestPnL={backtestOverallPnL}
                   />
                 </div>
               </TabsContent>
