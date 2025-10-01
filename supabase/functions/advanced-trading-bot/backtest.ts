@@ -20,6 +20,121 @@ interface TradeDecisionLog {
   result?: 'WIN' | 'LOSS';
 }
 
+// Fetch real historical data from Yahoo Finance
+async function fetchRealHistoricalData(symbol: string, period: string): Promise<any[]> {
+  try {
+    console.log(`📡 Fetching real historical data for ${symbol}...`);
+    
+    // Map period to Yahoo Finance range
+    const rangeMap: Record<string, string> = {
+      '1week': '5d',
+      '2weeks': '1mo',
+      '1month': '1mo',
+      '3months': '3mo'
+    };
+    
+    const range = rangeMap[period] || '1mo';
+    const interval = '1d'; // Daily data
+    
+    // Fetch from Yahoo Finance
+    const response = await fetch(
+      `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?range=${range}&interval=${interval}`,
+      {
+        headers: {
+          'User-Agent': 'Mozilla/5.0'
+        }
+      }
+    );
+    
+    if (!response.ok) {
+      throw new Error(`Yahoo Finance API error: ${response.status}`);
+    }
+    
+    const data = await response.json();
+    
+    if (!data.chart?.result?.[0]) {
+      throw new Error('No historical data returned from Yahoo Finance');
+    }
+    
+    const result = data.chart.result[0];
+    const timestamps = result.timestamp;
+    const quotes = result.indicators.quote[0];
+    
+    if (!timestamps || !quotes) {
+      throw new Error('Invalid data format from Yahoo Finance');
+    }
+    
+    // Format historical data
+    const historicalData = [];
+    for (let i = 0; i < timestamps.length; i++) {
+      if (quotes.close[i] !== null && quotes.open[i] !== null && 
+          quotes.high[i] !== null && quotes.low[i] !== null && quotes.volume[i] !== null) {
+        historicalData.push({
+          timestamp: timestamps[i] * 1000,
+          open: quotes.open[i],
+          high: quotes.high[i],
+          low: quotes.low[i],
+          close: quotes.close[i],
+          volume: quotes.volume[i]
+        });
+      }
+    }
+    
+    console.log(`✅ Fetched ${historicalData.length} data points for ${symbol}`);
+    return historicalData;
+    
+  } catch (error) {
+    console.error(`❌ Failed to fetch historical data for ${symbol}:`, error);
+    // Return empty array - will skip this symbol
+    return [];
+  }
+}
+
+// Calculate technical indicators from real price data
+function calculateTechnicalIndicators(historicalData: any[], index: number) {
+  const currentBar = historicalData[index];
+  const prices = historicalData.slice(Math.max(0, index - 14), index + 1).map(d => d.close);
+  
+  // RSI Calculation
+  let gains = 0, losses = 0;
+  for (let i = 1; i < prices.length; i++) {
+    const change = prices[i] - prices[i - 1];
+    if (change > 0) gains += change;
+    else losses -= change;
+  }
+  const avgGain = gains / prices.length;
+  const avgLoss = losses / prices.length;
+  const rs = avgLoss === 0 ? 100 : avgGain / avgLoss;
+  const rsi = 100 - (100 / (1 + rs));
+  
+  // MACD Calculation (simplified)
+  const ema12 = prices.slice(-12).reduce((sum, p) => sum + p, 0) / Math.min(12, prices.length);
+  const ema26 = prices.slice(-26).reduce((sum, p) => sum + p, 0) / Math.min(26, prices.length);
+  const macd = ((ema12 - ema26) / ema26) * 100;
+  
+  // EMA (50-period approximation)
+  const ema = prices.reduce((sum, p) => sum + p, 0) / prices.length;
+  
+  // ATR Calculation
+  let atrSum = 0;
+  for (let i = Math.max(1, index - 14); i <= index; i++) {
+    const high = historicalData[i].high;
+    const low = historicalData[i].low;
+    const prevClose = i > 0 ? historicalData[i - 1].close : historicalData[i].close;
+    const tr = Math.max(high - low, Math.abs(high - prevClose), Math.abs(low - prevClose));
+    atrSum += tr;
+  }
+  const atr = atrSum / Math.min(14, index + 1);
+  
+  return {
+    rsi,
+    macd,
+    ema,
+    atr,
+    sentiment: 0 // News sentiment disabled
+  };
+}
+
 // Enhanced Backtesting with Phase 1-3 ROI Improvements + Trade Logging
 export async function runBacktestSimulation(
   symbols: string[],
@@ -62,10 +177,18 @@ export async function runBacktestSimulation(
   const tradeDecisionLogs: TradeDecisionLog[] = [];
   const learningData = new Map(); // Track learning per symbol
 
-  // 🚀 PHASE 1-3 ENHANCED SIMULATION
+  // 🚀 PHASE 1-3 ENHANCED SIMULATION WITH REAL DATA
   for (const symbol of symbols) {
     try {
-      console.log(`📈 Backtesting ${symbol} with FULL Phase 1-3 enhancements...`);
+      console.log(`📈 Backtesting ${symbol} with REAL historical data and Phase 1-3 enhancements...`);
+      
+      // Fetch real historical data from Yahoo Finance
+      const historicalData = await fetchRealHistoricalData(symbol, period);
+      
+      if (historicalData.length === 0) {
+        console.log(`⚠️ Skipping ${symbol} - no historical data available`);
+        continue;
+      }
       
       // PHASE 1: Enhanced adaptive parameters with improved thresholds
       let adaptiveParams = {
@@ -79,75 +202,95 @@ export async function runBacktestSimulation(
         averageProfit: 0.0
       };
       
-      // Generate mock historical performance with learning adaptation
-      const symbolTrades = Math.floor(Math.random() * 8) + 3; // 3-10 trades per symbol
-      
-      for (let i = 0; i < symbolTrades; i++) {
-        const baseConfidence = Math.random() * 30 + 60; // 60-90% base confidence
+      // Iterate through historical data points (skip first 20 for indicators)
+      for (let i = 20; i < historicalData.length - 1; i++) {
+        const currentBar = historicalData[i];
+        const nextBar = historicalData[i + 1];
+        const currentPrice = currentBar.close;
+        
+        // Calculate real technical indicators from historical data
+        const indicators = calculateTechnicalIndicators(historicalData, i);
+        
+        // Calculate confidence based on real indicators
+        let baseConfidence = 50;
+        
+        // RSI signals
+        if (indicators.rsi < 30) baseConfidence += 15; // Oversold
+        else if (indicators.rsi > 70) baseConfidence += 15; // Overbought
+        else if (indicators.rsi > 40 && indicators.rsi < 60) baseConfidence += 10; // Neutral zone
+        
+        // MACD signals
+        if (Math.abs(indicators.macd) > 2) baseConfidence += 15; // Strong momentum
+        else if (Math.abs(indicators.macd) > 1) baseConfidence += 10;
+        
+        // Volatility (ATR)
+        const atrPercent = (indicators.atr / currentPrice) * 100;
+        if (atrPercent > 2) baseConfidence += 10; // High volatility = opportunities
+        
+        // Add some randomness for realism
+        baseConfidence += (Math.random() - 0.5) * 10;
+        baseConfidence = Math.min(95, Math.max(40, baseConfidence));
         
         // PHASE 1: Apply adaptive threshold - only trade if above learned threshold
         if (baseConfidence < adaptiveParams.confidenceThreshold) {
-          console.log(`⏸️ Skipping trade for ${symbol} - confidence ${baseConfidence.toFixed(1)}% below threshold ${adaptiveParams.confidenceThreshold.toFixed(1)}%`);
           continue;
         }
         
-        // 🚀 PHASE 2: Market regime simulation (bull/bear/sideways)
-        const marketRegimes = ['bull_market', 'bear_market', 'sideways_market'];
-        const currentRegime = marketRegimes[Math.floor(Math.random() * marketRegimes.length)];
+        // 🚀 PHASE 2: Market regime detection from real price action
+        const recentPrices = historicalData.slice(Math.max(0, i - 20), i + 1).map(d => d.close);
+        const priceChange = (recentPrices[recentPrices.length - 1] - recentPrices[0]) / recentPrices[0];
+        
+        let currentRegime: string;
+        if (priceChange > 0.05) currentRegime = 'bull_market';
+        else if (priceChange < -0.05) currentRegime = 'bear_market';
+        else currentRegime = 'sideways_market';
         
         // 🎪 PHASE 3: Multi-timeframe alignment simulation
-        const timeframeAlignment = Math.random(); // 0-1 representing alignment across timeframes
-        const alignedTimeframes = timeframeAlignment > 0.75 ? 4 : // Strong alignment
-                                 timeframeAlignment > 0.5 ? 3 :  // Moderate alignment  
-                                 timeframeAlignment > 0.25 ? 2 : 1; // Weak alignment
+        const timeframeAlignment = Math.random();
+        const alignedTimeframes = timeframeAlignment > 0.75 ? 4 : 
+                                 timeframeAlignment > 0.5 ? 3 :  
+                                 timeframeAlignment > 0.25 ? 2 : 1;
         
-        // Only trade if multi-timeframe alignment is sufficient (2+ timeframes)
         if (alignedTimeframes < 2) {
-          console.log(`⏸️ Skipping ${symbol} - insufficient timeframe alignment (${alignedTimeframes}/4 timeframes)`);
           continue;
         }
         
         // 🎯 PHASE 1: Dynamic position sizing based on confidence
         let positionMultiplier = 1.0;
         if (baseConfidence >= 85) {
-          positionMultiplier = 1.5; // High confidence = 1.5x position
+          positionMultiplier = 1.5;
           console.log(`💎 HIGH CONFIDENCE ${symbol}: ${baseConfidence.toFixed(1)}% = 1.5x position size`);
         } else if (baseConfidence < 70) {
-          positionMultiplier = 0.5; // Low confidence = 0.5x position
+          positionMultiplier = 0.5;
           console.log(`⚠️ LOW CONFIDENCE ${symbol}: ${baseConfidence.toFixed(1)}% = 0.5x position size`);
         }
+        
+        // Determine trade direction based on indicators
+        let tradeBehavior: 'BUY' | 'SELL';
+        if (indicators.rsi < 40 && indicators.macd > 0) tradeBehavior = 'BUY';
+        else if (indicators.rsi > 60 && indicators.macd < 0) tradeBehavior = 'SELL';
+        else tradeBehavior = Math.random() > 0.5 ? 'BUY' : 'SELL';
         
         // 🛡️ PHASE 2: Enhanced risk management with market regime adjustment
         let regimeMultiplier = 1.0;
         let regimeWinBonus = 0;
-        const tradeBehavior = Math.random() > 0.5 ? 'BUY' : 'SELL'; // Simulate trade direction
         
         switch (currentRegime) {
           case 'bull_market':
-            regimeMultiplier = tradeBehavior === 'BUY' ? 1.3 : 0.8; // Favor buys in bull market
+            regimeMultiplier = tradeBehavior === 'BUY' ? 1.3 : 0.8;
             regimeWinBonus = tradeBehavior === 'BUY' ? 0.15 : -0.05;
             break;
           case 'bear_market':
-            regimeMultiplier = tradeBehavior === 'SELL' ? 1.2 : 0.7; // Favor sells in bear market
+            regimeMultiplier = tradeBehavior === 'SELL' ? 1.2 : 0.7;
             regimeWinBonus = tradeBehavior === 'SELL' ? 0.12 : -0.08;
             break;
           case 'sideways_market':
-            regimeMultiplier = 0.9; // Reduce all positions in sideways market
-            regimeWinBonus = -0.02; // Slightly negative bonus
+            regimeMultiplier = 0.9;
+            regimeWinBonus = -0.02;
             break;
         }
         
-        // Generate realistic technical indicators
-        const indicators = {
-          rsi: Math.random() * 100,
-          macd: (Math.random() - 0.5) * 2,
-          ema: Math.random() * 200 + 50,
-          atr: Math.random() * 5 + 1,
-          sentiment: Math.random() * 2 - 1 // -1 to 1
-        };
-        
-        // Calculate stop loss and take profit based on ATR
-        const currentPrice = Math.random() * 100 + 50;
+        // Calculate stop loss and take profit based on real ATR
         const stopLoss = tradeBehavior === 'BUY' ? 
           currentPrice - (indicators.atr * adaptiveParams.stopLossMultiplier) :
           currentPrice + (indicators.atr * adaptiveParams.stopLossMultiplier);
@@ -155,24 +298,36 @@ export async function runBacktestSimulation(
           currentPrice + (indicators.atr * adaptiveParams.takeProfitMultiplier * 2) :
           currentPrice - (indicators.atr * adaptiveParams.takeProfitMultiplier * 2);
         
-        // Generate decision reasoning
+        // Generate decision reasoning with real data
         let reasoning = `${currentRegime.toUpperCase()} market detected. `;
         reasoning += `RSI: ${indicators.rsi.toFixed(1)} ${indicators.rsi > 70 ? '(Overbought)' : indicators.rsi < 30 ? '(Oversold)' : '(Neutral)'}. `;
         reasoning += `MACD: ${indicators.macd.toFixed(2)} ${indicators.macd > 0 ? '(Bullish)' : '(Bearish)'}. `;
-        reasoning += `ATR: ${indicators.atr.toFixed(2)} (${indicators.atr > 3 ? 'High' : 'Normal'} volatility). `;
+        reasoning += `ATR: ${indicators.atr.toFixed(2)} (${atrPercent > 2 ? 'High' : 'Normal'} volatility). `;
         reasoning += `Timeframe alignment: ${alignedTimeframes}/4. `;
         reasoning += `Confidence: ${baseConfidence.toFixed(1)}%.`;
 
-        // Calculate realistic P&L based on enhanced market conditions
-        const profitTarget = baseConfidence >= 80 ? 2.5 : baseConfidence >= 70 ? 2.0 : 1.5;
-        const rawPnL = (Math.random() - 0.4) * profitTarget * positionMultiplier * regimeMultiplier; // Slight positive bias
+        // Calculate P&L based on actual next-day price movement
+        const actualPriceChange = (nextBar.close - currentPrice) / currentPrice;
+        const directionMultiplier = tradeBehavior === 'BUY' ? 1 : -1;
+        const rawPnL = actualPriceChange * directionMultiplier * 100 * positionMultiplier * regimeMultiplier;
         
         // PHASE 2: ATR-based trailing stop simulation
-        const atrTrailingStop = Math.random() > 0.7; // 30% chance of ATR stop triggering
-        const finalPnL = atrTrailingStop && rawPnL > 0 ? rawPnL * 0.8 : rawPnL; // ATR captures 80% of profits
+        const hitStop = tradeBehavior === 'BUY' ? 
+          nextBar.low < stopLoss : 
+          nextBar.high > stopLoss;
+        const hitTarget = tradeBehavior === 'BUY' ? 
+          nextBar.high > takeProfit : 
+          nextBar.low < takeProfit;
+        
+        let finalPnL = rawPnL;
+        if (hitStop) {
+          finalPnL = -Math.abs(rawPnL) * 0.5; // Stop loss hit
+        } else if (hitTarget) {
+          finalPnL = Math.abs(rawPnL) * 1.5; // Take profit hit
+        }
         
         const isWin = finalPnL > 0;
-        const tradeAmount = (currentBalance * 0.02) * positionMultiplier; // 2% position size * multiplier
+        const tradeAmount = (currentBalance * 0.02) * positionMultiplier;
         const actualPnL = tradeAmount * (finalPnL / 100);
         
         currentBalance += actualPnL;
@@ -182,12 +337,12 @@ export async function runBacktestSimulation(
         if (isWin) winningTrades++;
         totalReturn += actualPnL;
         
-        // Log the trade decision
+        // Log the trade decision with REAL price
         const tradeLog: TradeDecisionLog = {
           symbol,
-          timestamp: new Date().toISOString(),
+          timestamp: new Date(currentBar.timestamp).toISOString(),
           action: tradeBehavior,
-          price: currentPrice,
+          price: currentPrice, // REAL PRICE from Yahoo Finance
           quantity: Math.floor(tradeAmount / currentPrice),
           confidence: baseConfidence,
           stopLoss,
@@ -203,7 +358,7 @@ export async function runBacktestSimulation(
         trades.push({
           symbol,
           type: tradeBehavior,
-          price: currentPrice,
+          price: currentPrice, // REAL PRICE
           quantity: Math.floor(tradeAmount / currentPrice),
           pnl: actualPnL,
           confidence: baseConfidence,
@@ -211,12 +366,13 @@ export async function runBacktestSimulation(
           timeframes: alignedTimeframes,
           positionMultiplier,
           regimeMultiplier,
-          atrStop: atrTrailingStop,
+          hitStop,
+          hitTarget,
           enhancedFeatures: {
             dynamicPositionSizing: positionMultiplier !== 1.0,
             marketRegimeDetection: true,
             multiTimeframeAlignment: alignedTimeframes >= 2,
-            atrTrailingStop: atrTrailingStop,
+            realHistoricalData: true,
             adaptiveThresholds: baseConfidence >= adaptiveParams.confidenceThreshold
           }
         });
@@ -227,14 +383,12 @@ export async function runBacktestSimulation(
           adaptiveParams.winningTrades++;
           adaptiveParams.averageProfit = (adaptiveParams.averageProfit * (adaptiveParams.totalTrades - 1) + actualPnL) / adaptiveParams.totalTrades;
           
-          // Lower threshold if consistently winning
           if (adaptiveParams.winningTrades / adaptiveParams.totalTrades > 0.7) {
-            adaptiveParams.confidenceThreshold = Math.max(30, adaptiveParams.confidenceThreshold - 0.5); // 🚀 Floor at 30%
+            adaptiveParams.confidenceThreshold = Math.max(30, adaptiveParams.confidenceThreshold - 0.5);
           }
         } else {
-          // Raise threshold if losing
           if (adaptiveParams.winningTrades / adaptiveParams.totalTrades < 0.4) {
-            adaptiveParams.confidenceThreshold = Math.min(65, adaptiveParams.confidenceThreshold + 1); // 🚀 Cap at 65%
+            adaptiveParams.confidenceThreshold = Math.min(65, adaptiveParams.confidenceThreshold + 1);
           }
         }
         
