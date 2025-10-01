@@ -586,31 +586,68 @@ export async function runBacktestSimulation(
         riskParams.stopLoss = riskParams.stopLoss * adaptiveParams.stopLossMultiplier;
         riskParams.takeProfit = riskParams.takeProfit * adaptiveParams.takeProfitMultiplier;
         
-        // 🎯 Dynamic position sizing based on AI confidence
+        // 🎯 AGGRESSIVE DYNAMIC POSITION SIZING - Deploy larger capital amounts
         let positionMultiplier = 1.0;
-        if (aiDecision.confidence >= 85) {
+        
+        // Base position size scales with confidence (8-30% of balance)
+        let basePositionPercent = 0.10; // Start with 10% of balance
+        
+        if (aiDecision.confidence >= 90) {
+          basePositionPercent = 0.30; // Ultra high confidence = 30% of capital
+          positionMultiplier = 3.5;
+          console.log(`🚀 ULTRA HIGH CONFIDENCE ${symbol}: ${aiDecision.confidence.toFixed(1)}% = 30% of capital (3.5x multiplier)`);
+        } else if (aiDecision.confidence >= 85) {
+          basePositionPercent = 0.25; // High confidence = 25% of capital
+          positionMultiplier = 2.5;
+          console.log(`💎 HIGH CONFIDENCE ${symbol}: ${aiDecision.confidence.toFixed(1)}% = 25% of capital (2.5x multiplier)`);
+        } else if (aiDecision.confidence >= 80) {
+          basePositionPercent = 0.20; // Strong confidence = 20% of capital
+          positionMultiplier = 2.0;
+          console.log(`🔥 STRONG CONFIDENCE ${symbol}: ${aiDecision.confidence.toFixed(1)}% = 20% of capital (2.0x multiplier)`);
+        } else if (aiDecision.confidence >= 75) {
+          basePositionPercent = 0.15; // Good confidence = 15% of capital
           positionMultiplier = 1.5;
-          console.log(`💎 HIGH CONFIDENCE ${symbol}: ${aiDecision.confidence.toFixed(1)}% = 1.5x position size`);
-        } else if (aiDecision.confidence < 70) {
-          positionMultiplier = 0.5;
-          console.log(`⚠️ LOW CONFIDENCE ${symbol}: ${aiDecision.confidence.toFixed(1)}% = 0.5x position size`);
+          console.log(`📈 GOOD CONFIDENCE ${symbol}: ${aiDecision.confidence.toFixed(1)}% = 15% of capital (1.5x multiplier)`);
+        } else if (aiDecision.confidence >= 70) {
+          basePositionPercent = 0.12; // Moderate confidence = 12% of capital
+          positionMultiplier = 1.2;
+          console.log(`⚡ MODERATE CONFIDENCE ${symbol}: ${aiDecision.confidence.toFixed(1)}% = 12% of capital (1.2x multiplier)`);
+        } else {
+          basePositionPercent = 0.08; // Low confidence = 8% of capital
+          positionMultiplier = 0.8;
+          console.log(`⚠️ LOW CONFIDENCE ${symbol}: ${aiDecision.confidence.toFixed(1)}% = 8% of capital (0.8x multiplier)`);
         }
         
-        // 🛡️ Market regime adjustment
+        // 🛡️ Market regime adjustment - boost/reduce based on market alignment
         let regimeMultiplier = 1.0;
         const currentRegime = tradingState.marketCondition;
         
         if (currentRegime === 'bullish') {
-          regimeMultiplier = aiDecision.type === 'BUY' ? 1.3 : 0.8;
+          regimeMultiplier = aiDecision.type === 'BUY' ? 1.4 : 0.6; // Strong boost for aligned trades
+          if (aiDecision.type === 'BUY') {
+            console.log(`   🌊 Bullish regime boost: +40% position size`);
+          }
         } else if (currentRegime === 'bearish') {
-          regimeMultiplier = aiDecision.type === 'SELL' ? 1.2 : 0.7;
+          regimeMultiplier = aiDecision.type === 'SELL' ? 1.3 : 0.6; // Boost shorts in bear market
+          if (aiDecision.type === 'SELL') {
+            console.log(`   🐻 Bearish regime boost: +30% position size`);
+          }
         } else {
-          regimeMultiplier = 0.9;
+          regimeMultiplier = 0.9; // Slight reduction in sideways markets
         }
         
-        // 🎯 Calculate position size and quantity
-        const tradeAmount = (currentBalance * 0.02) * positionMultiplier * regimeMultiplier;
+        // 🎯 Calculate final position size with all multipliers
+        const tradeAmount = (currentBalance * basePositionPercent) * regimeMultiplier;
         const quantity = Math.floor(tradeAmount / currentPrice);
+        
+        const formatCurrency = (val: number) => `$${val.toFixed(2)}`;
+        console.log(`   💰 Position: ${formatCurrency(tradeAmount)} (${(basePositionPercent * regimeMultiplier * 100).toFixed(1)}% of ${formatCurrency(currentBalance)})`);
+        
+        // Skip if quantity is 0 (price too high for available capital)
+        if (quantity === 0) {
+          console.log(`   ⏭️ Skipping ${symbol} - insufficient capital for 1 share at ${formatCurrency(currentPrice)}`);
+          continue;
+        }
         
         // 🎯 Hold position until stop loss or take profit is hit
         let exitPrice: number | null = null;

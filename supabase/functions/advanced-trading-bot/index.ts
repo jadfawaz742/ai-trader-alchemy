@@ -3135,7 +3135,7 @@ async function calculateMultiIndicatorDecision(
   };
 }
 
-// ENHANCED ATR-Based Position Sizing with Dynamic Confidence Scaling
+// AGGRESSIVE ATR-Based Position Sizing with Dynamic Confidence Scaling (8-30% of capital)
 function calculateATRBasedPositionSize(
   portfolioBalance: number,
   atr: number,
@@ -3143,41 +3143,47 @@ function calculateATRBasedPositionSize(
   confidenceRatio: number,
   riskLevel: RiskLevel
 ): number {
-  // Risk per trade based on risk level
-  const riskPerTrade = riskLevel.name === 'low' ? 0.01 : 
-                      riskLevel.name === 'medium' ? 0.02 : 0.03;
-  
-  // ATR-based stop loss (2x ATR)
-  const stopLossDistance = atr * 2;
-  
-  // Calculate position size based on risk amount
-  const riskAmount = portfolioBalance * riskPerTrade;
-  const basePositionSize = riskAmount / stopLossDistance;
-  
-  // ENHANCED: Dynamic position sizing based on confidence levels
-  let confidenceMultiplier;
+  // Base position size scales with confidence (8-30% of balance)
+  let basePositionPercent = 0.10; // Start with 10% of balance
+  let confidenceMultiplier = 1.0;
   const confidencePercent = confidenceRatio * 100;
   
-  if (confidencePercent >= 85) {
-    // High confidence trades - 1.5x position size
+  if (confidencePercent >= 90) {
+    basePositionPercent = 0.30; // Ultra high confidence = 30% of capital
+    confidenceMultiplier = 3.5;
+    console.log(`🚀 ULTRA HIGH CONFIDENCE: ${confidencePercent.toFixed(1)}% = 30% of capital (3.5x multiplier)`);
+  } else if (confidencePercent >= 85) {
+    basePositionPercent = 0.25; // High confidence = 25% of capital
+    confidenceMultiplier = 2.5;
+    console.log(`💎 HIGH CONFIDENCE: ${confidencePercent.toFixed(1)}% = 25% of capital (2.5x multiplier)`);
+  } else if (confidencePercent >= 80) {
+    basePositionPercent = 0.20; // Strong confidence = 20% of capital
+    confidenceMultiplier = 2.0;
+    console.log(`🔥 STRONG CONFIDENCE: ${confidencePercent.toFixed(1)}% = 20% of capital (2.0x multiplier)`);
+  } else if (confidencePercent >= 75) {
+    basePositionPercent = 0.15; // Good confidence = 15% of capital
     confidenceMultiplier = 1.5;
-    console.log(`🔥 HIGH CONFIDENCE (${confidencePercent.toFixed(1)}%) - 1.5x position size`);
+    console.log(`📈 GOOD CONFIDENCE: ${confidencePercent.toFixed(1)}% = 15% of capital (1.5x multiplier)`);
   } else if (confidencePercent >= 70) {
-    // Medium confidence trades - standard position size (scaled linearly)
-    confidenceMultiplier = 0.8 + (confidencePercent - 70) * 0.7 / 15; // 0.8 to 1.5
-    console.log(`⚡ MEDIUM CONFIDENCE (${confidencePercent.toFixed(1)}%) - ${confidenceMultiplier.toFixed(1)}x position size`);
+    basePositionPercent = 0.12; // Moderate confidence = 12% of capital
+    confidenceMultiplier = 1.2;
+    console.log(`⚡ MODERATE CONFIDENCE: ${confidencePercent.toFixed(1)}% = 12% of capital (1.2x multiplier)`);
   } else {
-    // Low confidence trades - 0.5x position size
-    confidenceMultiplier = 0.5;
-    console.log(`⚠️ LOW CONFIDENCE (${confidencePercent.toFixed(1)}%) - 0.5x position size`);
+    basePositionPercent = 0.08; // Low confidence = 8% of capital
+    confidenceMultiplier = 0.8;
+    console.log(`⚠️ LOW CONFIDENCE: ${confidencePercent.toFixed(1)}% = 8% of capital (0.8x multiplier)`);
   }
   
-  const confidenceAdjustedSize = basePositionSize * confidenceMultiplier;
+  // Calculate position amount based on confidence-adjusted percentage
+  const positionAmount = portfolioBalance * basePositionPercent;
   
   // Convert to number of shares/units
-  const quantity = Math.floor(confidenceAdjustedSize / currentPrice);
+  const quantity = Math.floor(positionAmount / currentPrice);
   
-  console.log(`💰 Enhanced ATR Position Sizing: Risk=${(riskPerTrade*100).toFixed(1)}%, ATR=${atr.toFixed(4)}, Confidence=${confidencePercent.toFixed(1)}% (${confidenceMultiplier.toFixed(1)}x), Quantity=${quantity}`);
+  console.log(`💰 Aggressive Position Sizing: ${(basePositionPercent * 100).toFixed(1)}% of $${portfolioBalance.toFixed(2)} = $${positionAmount.toFixed(2)}, Quantity=${quantity} @ $${currentPrice.toFixed(2)}`);
+  
+  return quantity;
+}
   
   return Math.max(1, quantity);
 }
