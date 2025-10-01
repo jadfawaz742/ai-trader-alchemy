@@ -71,16 +71,9 @@ async function fetchRealHistoricalData(symbol: string, period: string): Promise<
   try {
     console.log(`📡 Fetching real historical data for ${symbol}...`);
     
-    // Map period to Yahoo Finance range - INCREASE data periods for better backtesting
-    const rangeMap: Record<string, string> = {
-      '1week': '1mo',  // Get 1 month instead of 5 days
-      '2weeks': '2mo', // Get 2 months instead of 1
-      '1month': '3mo', // Get 3 months instead of 1
-      '3months': '6mo' // Get 6 months instead of 3
-    };
-    
-    const range = rangeMap[period] || '3mo';
-    const interval = '1d'; // Daily data
+    // 🚀 Use 1-minute candles for high-frequency short-term backtesting
+    const range = '5d'; // 5 days of 1-minute data (plenty for short-term strategies)
+    const interval = '1m'; // 1-minute candles for granular trading decisions
     
     // Fetch from Yahoo Finance with retry logic
     let attempts = 0;
