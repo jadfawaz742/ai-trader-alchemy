@@ -82,11 +82,37 @@ async function loadTrainedModel(
 // Fetch real historical data from Yahoo Finance with OPTIMIZED intervals
 async function fetchRealHistoricalData(symbol: string, period: string): Promise<any[]> {
   try {
-    console.log(`📡 Fetching real historical data for ${symbol}...`);
+    console.log(`📡 Fetching real historical data for ${symbol} over ${period}...`);
     
-    // 🚀 OPTIMIZED: Use hourly candles to avoid resource limits while maintaining quality
-    const range = '1mo'; // 1 month of hourly data (more context, better performance)
-    const interval = '1h'; // Hourly candles - perfect balance of granularity and performance
+    // Map backtest period to Yahoo Finance range and interval
+    let range: string;
+    let interval: string;
+    
+    switch (period) {
+      case '1day':
+        range = '1d';
+        interval = '5m'; // 5-minute candles for intraday
+        break;
+      case '1week':
+        range = '5d';
+        interval = '15m'; // 15-minute candles
+        break;
+      case '2weeks':
+        range = '1mo';
+        interval = '30m'; // 30-minute candles
+        break;
+      case '1month':
+        range = '1mo';
+        interval = '1h'; // Hourly candles
+        break;
+      case '3months':
+        range = '3mo';
+        interval = '1d'; // Daily candles for longer periods
+        break;
+      default:
+        range = '1mo';
+        interval = '1h';
+    }
     
     // Fetch from Yahoo Finance with retry logic
     let attempts = 0;
