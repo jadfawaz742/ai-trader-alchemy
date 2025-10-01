@@ -37,6 +37,8 @@ export const StockChart: React.FC<StockChartProps> = ({
   // Fetch real historical data from Yahoo Finance
   const fetchHistoricalData = async () => {
     try {
+      console.log(`[StockChart] Fetching historical data for ${symbol}, timeframe: ${timeframe}`);
+      
       const rangeMap: Record<string, string> = {
         '1D': '1d',
         '1W': '5d',
@@ -49,7 +51,7 @@ export const StockChart: React.FC<StockChartProps> = ({
         '1M': '1d'
       };
       
-      const { data, error } = await (window as any).supabase?.functions?.invoke('fetch-stock-history', {
+      const { data, error } = await supabase.functions.invoke('fetch-stock-history', {
         body: { 
           symbol, 
           range: rangeMap[timeframe],
@@ -57,14 +59,20 @@ export const StockChart: React.FC<StockChartProps> = ({
         }
       });
       
-      if (error || !data || !data.history) {
-        console.error('Error fetching historical data:', error);
+      if (error) {
+        console.error('[StockChart] Error from API:', error);
         return [];
       }
       
+      if (!data || !data.history) {
+        console.warn('[StockChart] No historical data returned');
+        return [];
+      }
+      
+      console.log(`[StockChart] Successfully fetched ${data.history.length} data points`);
       return data.history;
     } catch (error) {
-      console.error('Error fetching stock history:', error);
+      console.error('[StockChart] Error fetching stock history:', error);
       return [];
     }
   };
@@ -108,9 +116,32 @@ export const StockChart: React.FC<StockChartProps> = ({
       const data = await fetchHistoricalData();
       if (data && data.length > 0) {
         setChartData(data);
+      } else {
+        // Fallback: create simple chart with current price
+        const now = new Date();
+        const fallbackData = [];
+        for (let i = 5; i >= 0; i--) {
+          fallbackData.push({
+            time: new Date(now.getTime() - (i * 60 * 1000)).toISOString(),
+            price: currentPrice || livePrice,
+            volume: 0
+          });
+        }
+        setChartData(fallbackData);
       }
     } catch (error) {
       console.error('Error refreshing data:', error);
+      // Create fallback chart on error
+      const now = new Date();
+      const fallbackData = [];
+      for (let i = 5; i >= 0; i--) {
+        fallbackData.push({
+          time: new Date(now.getTime() - (i * 60 * 1000)).toISOString(),
+          price: currentPrice || livePrice,
+          volume: 0
+        });
+      }
+      setChartData(fallbackData);
     } finally {
       setIsLoading(false);
     }
@@ -121,11 +152,20 @@ export const StockChart: React.FC<StockChartProps> = ({
   };
 
   useEffect(() => {
-    if (symbol) {
-      basePrice.current = currentPrice || (Math.random() * 200 + 50);
-      setLivePrice(basePrice.current);
-      refreshData();
-    }
+    const loadData = async () => {
+      if (symbol) {
+        basePrice.current = currentPrice || (Math.random() * 200 + 50);
+        setLivePrice(basePrice.current);
+        
+        setIsLoading(true);
+        const data = await fetchHistoricalData();
+        if (data && data.length > 0) {
+          setChartData(data);
+        }
+        setIsLoading(false);
+      }
+    };
+    loadData();
   }, [symbol, currentPrice, timeframe]);
 
   // Live updates effect

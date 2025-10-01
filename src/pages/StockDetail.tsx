@@ -13,13 +13,17 @@ import { useToast } from '@/hooks/use-toast';
 // Fetch real stock data from Yahoo Finance
 const fetchStockDetails = async (symbol: string) => {
   try {
+    console.log(`[StockDetail] Fetching data for ${symbol} from Yahoo Finance...`);
     const { data, error } = await supabase.functions.invoke('fetch-stock-price', {
       body: { symbol }
     });
     
     if (error || !data) {
+      console.error(`[StockDetail] Error fetching ${symbol}:`, error);
       throw new Error('Failed to fetch stock data');
     }
+    
+    console.log(`[StockDetail] Successfully fetched ${symbol}:`, data);
     
     return {
       name: `${symbol} Corporation`,
@@ -38,7 +42,7 @@ const fetchStockDetails = async (symbol: string) => {
       previousClose: data.previousClose
     };
   } catch (error) {
-    console.error('Error fetching stock details:', error);
+    console.error('[StockDetail] Error fetching stock details:', error);
     return null;
   }
 };
@@ -84,20 +88,30 @@ const StockDetailPage: React.FC = () => {
     if (!symbol) return;
     
     setLoading(true);
+    console.log(`[StockDetail] Starting AI analysis for ${symbol}...`);
     try {
-      const { data } = await supabase.functions.invoke('analyze-stock', {
+      const { data, error } = await supabase.functions.invoke('analyze-stock', {
         body: { symbol: symbol.toUpperCase(), analysisType: 'comprehensive' }
       });
 
+      if (error) {
+        console.error('[StockDetail] Analysis error:', error);
+        throw error;
+      }
+
       if (data?.success) {
-        setAnalysis(data);
+        console.log('[StockDetail] Analysis successful:', data);
+        setAnalysis(data.analysis);
         toast({
           title: "Analysis Complete",
           description: `AI analysis for ${symbol.toUpperCase()} is ready`
         });
+      } else {
+        console.error('[StockDetail] Analysis failed:', data);
+        throw new Error('Analysis failed');
       }
     } catch (error) {
-      console.error('Error analyzing stock:', error);
+      console.error('[StockDetail] Error analyzing stock:', error);
       toast({
         title: "Analysis Failed",
         description: "Could not analyze stock. Please try again.",
@@ -112,10 +126,19 @@ const StockDetailPage: React.FC = () => {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
         <div className="text-center text-white">
-          <h1 className="text-2xl font-bold mb-4">Stock not found</h1>
-          <Button asChild>
-            <Link to="/stocks">Back to Stocks</Link>
-          </Button>
+          {loading ? (
+            <>
+              <h1 className="text-2xl font-bold mb-4">Loading stock data...</h1>
+              <p className="text-gray-400">Fetching real-time data from Yahoo Finance</p>
+            </>
+          ) : (
+            <>
+              <h1 className="text-2xl font-bold mb-4">Stock not found</h1>
+              <Button asChild>
+                <Link to="/stocks">Back to Stocks</Link>
+              </Button>
+            </>
+          )}
         </div>
       </div>
     );
@@ -202,22 +225,22 @@ const StockDetailPage: React.FC = () => {
                   </TabsList>
                   
                   <TabsContent value="overview" className="space-y-4">
-                    <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
                       <div className="text-center p-3 bg-muted rounded-lg">
-                        <p className="text-sm text-muted-foreground">Market Cap</p>
-                        <p className="text-lg font-bold">{formatLargeNumber(stockData.marketCap)}</p>
+                        <p className="text-sm text-muted-foreground">Volume</p>
+                        <p className="text-lg font-bold">{formatVolume(stockData.volume)}</p>
                       </div>
                       <div className="text-center p-3 bg-muted rounded-lg">
-                        <p className="text-sm text-muted-foreground">P/E Ratio</p>
-                        <p className="text-lg font-bold">{stockData.pe.toFixed(1)}</p>
+                        <p className="text-sm text-muted-foreground">High</p>
+                        <p className="text-lg font-bold">{formatCurrency(stockData.high || stockData.price * 1.02)}</p>
                       </div>
                       <div className="text-center p-3 bg-muted rounded-lg">
-                        <p className="text-sm text-muted-foreground">Dividend Yield</p>
-                        <p className="text-lg font-bold">{stockData.dividend.toFixed(2)}%</p>
+                        <p className="text-sm text-muted-foreground">Low</p>
+                        <p className="text-lg font-bold">{formatCurrency(stockData.low || stockData.price * 0.98)}</p>
                       </div>
                       <div className="text-center p-3 bg-muted rounded-lg">
-                        <p className="text-sm text-muted-foreground">Beta</p>
-                        <p className="text-lg font-bold">{stockData.beta.toFixed(2)}</p>
+                        <p className="text-sm text-muted-foreground">Prev Close</p>
+                        <p className="text-lg font-bold">{formatCurrency(stockData.previousClose || stockData.price)}</p>
                       </div>
                     </div>
                     
@@ -305,18 +328,22 @@ const StockDetailPage: React.FC = () => {
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-muted-foreground">Day Range</span>
                   <span className="font-medium text-xs">
-                    {formatCurrency(stockData.price * 0.98)} - {formatCurrency(stockData.price * 1.02)}
+                    {formatCurrency(stockData.low || stockData.price * 0.98)} - {formatCurrency(stockData.high || stockData.price * 1.02)}
                   </span>
                 </div>
                 <div className="flex justify-between items-center">
-                  <span className="text-sm text-muted-foreground">52W Range</span>
-                  <span className="font-medium text-xs">
-                    {formatCurrency(stockData.price * 0.7)} - {formatCurrency(stockData.price * 1.3)}
-                  </span>
+                  <span className="text-sm text-muted-foreground">Prev Close</span>
+                  <span className="font-medium">{formatCurrency(stockData.previousClose || stockData.price)}</span>
                 </div>
                 <div className="flex justify-between items-center">
                   <span className="text-sm text-muted-foreground">Avg Volume</span>
-                  <span className="font-medium">{formatVolume(stockData.volume * 0.8)}</span>
+                  <span className="font-medium">{formatVolume(stockData.volume)}</span>
+                </div>
+                <div className="flex justify-between items-center">
+                  <span className="text-sm text-muted-foreground">Change</span>
+                  <span className={`font-medium ${stockData.change >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    {stockData.change >= 0 ? '+' : ''}{formatCurrency(stockData.change)} ({stockData.changePercent >= 0 ? '+' : ''}{stockData.changePercent.toFixed(2)}%)
+                  </span>
                 </div>
               </CardContent>
             </Card>
