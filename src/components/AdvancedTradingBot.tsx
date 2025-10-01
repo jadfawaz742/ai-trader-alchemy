@@ -306,8 +306,15 @@ ${data.backtestResults.tradeDecisionLogs?.slice(-5).map((log: any, i: number) =>
       }
     } catch (error: any) {
       console.error('Advanced trading bot error:', error);
-      toast.error('Advanced trading bot failed', {
-        description: error?.message || 'Unknown error occurred'
+      
+      const isResourceLimit = error?.code === 'RESOURCE_LIMIT' || 
+                             error?.message?.includes('WORKER_LIMIT') ||
+                             error?.message?.includes('compute resources');
+      
+      toast.error(isResourceLimit ? 'Resource Limit Exceeded' : 'Advanced trading bot failed', {
+        description: isResourceLimit
+          ? 'Backtesting exceeded compute resources. Try reducing the number of symbols or using a shorter period.'
+          : error?.message || 'Unknown error occurred'
       });
     } finally {
       setIsAnalyzing(false);

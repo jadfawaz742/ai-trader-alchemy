@@ -2026,11 +2026,19 @@ serve(async (req) => {
 
   } catch (error) {
     console.error('❌ Enhanced PPO Trading Bot Error:', error);
+    
+    // Handle resource limit errors specifically
+    const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+    const isResourceLimit = errorMessage.includes('WORKER_LIMIT') || errorMessage.includes('compute resources');
+    
     return new Response(JSON.stringify({
-      error: error instanceof Error ? error.message : 'Unknown error',
+      error: isResourceLimit 
+        ? 'Backtesting exceeded compute resources. Try: 1) Reduce number of symbols, 2) Use shorter backtest period, or 3) Run analysis instead of backtest.'
+        : errorMessage,
+      code: isResourceLimit ? 'RESOURCE_LIMIT' : 'ERROR',
       success: false
     }), {
-      status: 500,
+      status: isResourceLimit ? 503 : 500,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
   }

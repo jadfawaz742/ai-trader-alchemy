@@ -6,6 +6,11 @@ import {
   TradingAction,
   RiskLevel
 } from './shared-decision-logic.ts';
+import { 
+  fetchMultiTimeframeData, 
+  analyzeMultiTimeframe, 
+  getMultiTimeframeBoost 
+} from './multi-timeframe.ts';
 
 // Trade Decision Log Interface
 interface TradeDecisionLog {
@@ -66,14 +71,14 @@ async function loadTrainedModel(
   }
 }
 
-// Fetch real historical data from Yahoo Finance
+// Fetch real historical data from Yahoo Finance with OPTIMIZED intervals
 async function fetchRealHistoricalData(symbol: string, period: string): Promise<any[]> {
   try {
     console.log(`📡 Fetching real historical data for ${symbol}...`);
     
-    // 🚀 Use 1-minute candles for high-frequency short-term backtesting
-    const range = '5d'; // 5 days of 1-minute data (plenty for short-term strategies)
-    const interval = '1m'; // 1-minute candles for granular trading decisions
+    // 🚀 OPTIMIZED: Use hourly candles to avoid resource limits while maintaining quality
+    const range = '1mo'; // 1 month of hourly data (more context, better performance)
+    const interval = '1h'; // Hourly candles - perfect balance of granularity and performance
     
     // Fetch from Yahoo Finance with retry logic
     let attempts = 0;
@@ -329,6 +334,10 @@ export async function runBacktestSimulation(
       // Load trained model for this symbol (if available)
       const trainedModel = await loadTrainedModel(symbol, userId, supabaseClient);
       
+      // 🔍 Fetch multi-timeframe data for better decision quality
+      const multiTimeframeData = await fetchMultiTimeframeData(symbol);
+      const multiTimeframeAnalysis = analyzeMultiTimeframe(multiTimeframeData);
+      
       // PHASE 1: Enhanced adaptive parameters with improved thresholds
       let adaptiveParams = {
         confidenceThreshold: 40.0, // 🚀 ULTRA-AGGRESSIVE: Reduced to 40% 
@@ -352,10 +361,11 @@ export async function runBacktestSimulation(
         description: `${riskLevel} risk profile`
       };
       
-      // Iterate through historical data points (skip first 50 for indicators - REDUCED for shorter backtests)
-      // Sample every 2nd day for faster processing (still realistic)
-      const minDataPoints = Math.min(50, Math.floor(historicalData.length * 0.2)); // Use 20% of data or 50 points, whichever is smaller
-      for (let i = minDataPoints; i < historicalData.length - 1; i += 2) {
+      // Iterate through historical data points with adaptive sampling
+      const minDataPoints = Math.min(50, Math.floor(historicalData.length * 0.2));
+      // Sample every 4 hours (every 4th bar) for faster backtesting without losing quality
+      const sampleRate = 4; 
+      for (let i = minDataPoints; i < historicalData.length - 1; i += sampleRate) {
         const currentBar = historicalData[i];
         const nextBar = historicalData[i + 1];
         const currentPrice = currentBar.close;
@@ -388,6 +398,10 @@ export async function runBacktestSimulation(
         if (aiDecision.confidence < adaptiveParams.confidenceThreshold) {
           continue;
         }
+        
+        // 🔍 Apply multi-timeframe boost/penalty to AI confidence
+        const mtfBoost = getMultiTimeframeBoost(multiTimeframeAnalysis, aiDecision.type);
+        aiDecision.confidence = Math.max(0, Math.min(100, aiDecision.confidence + mtfBoost));
         
         console.log(`🤖 AI Decision for ${symbol}: ${aiDecision.type} with ${aiDecision.confidence.toFixed(1)}% confidence ${trainedModel ? '(using trained model)' : '(rule-based)'}`);
         
