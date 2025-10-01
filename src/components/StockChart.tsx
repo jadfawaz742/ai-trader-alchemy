@@ -1,10 +1,10 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Badge } from '@/components/ui/badge';
 import { Button } from '@/components/ui/button';
 import { ChartContainer, ChartTooltip, ChartTooltipContent } from '@/components/ui/chart';
 import { LineChart, Line, XAxis, YAxis, ResponsiveContainer, ReferenceLine } from 'recharts';
-import { TrendingUp, TrendingDown, RotateCcw, Activity } from 'lucide-react';
+import { TrendingUp, TrendingDown, RotateCcw } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 
 interface StockDataPoint {
@@ -29,10 +29,6 @@ export const StockChart: React.FC<StockChartProps> = ({
   const [chartData, setChartData] = useState<StockDataPoint[]>([]);
   const [isLoading, setIsLoading] = useState(false);
   const [timeframe, setTimeframe] = useState('1D');
-  const [livePrice, setLivePrice] = useState<number>(currentPrice || 0);
-  const [isLive, setIsLive] = useState(false);
-  const intervalRef = useRef<NodeJS.Timeout | null>(null);
-  const basePrice = useRef<number>(currentPrice || (Math.random() * 200 + 50));
 
   // Fetch real historical data from Yahoo Finance
   const fetchHistoricalData = async () => {
@@ -77,86 +73,23 @@ export const StockChart: React.FC<StockChartProps> = ({
     }
   };
 
-  // Add live price updates
-  const addLiveDataPoint = () => {
-    const now = new Date();
-    const currentTime = now.toISOString();
-    
-    // Simulate realistic price movement
-    const volatility = 0.005; // 0.5% volatility per update
-    const trend = (Math.random() - 0.5) * 0.001; // Small trend component
-    const randomChange = (Math.random() - 0.5) * volatility * livePrice;
-    const trendChange = trend * livePrice;
-    
-    const newPrice = Math.max(livePrice + randomChange + trendChange, basePrice.current * 0.85);
-    setLivePrice(Number(newPrice.toFixed(2)));
-    
-    setChartData(prevData => {
-      const newData = [...prevData];
-      
-      // Remove oldest point if we have too many
-      if (newData.length > 50) {
-        newData.shift();
-      }
-      
-      // Add new point
-      newData.push({
-        time: currentTime,
-        price: Number(newPrice.toFixed(2)),
-        volume: Math.floor(Math.random() * 1000000 + 100000)
-      });
-      
-      return newData;
-    });
-  };
-
   const refreshData = async () => {
     setIsLoading(true);
     try {
       const data = await fetchHistoricalData();
       if (data && data.length > 0) {
         setChartData(data);
-      } else {
-        // Fallback: create simple chart with current price
-        const now = new Date();
-        const fallbackData = [];
-        for (let i = 5; i >= 0; i--) {
-          fallbackData.push({
-            time: new Date(now.getTime() - (i * 60 * 1000)).toISOString(),
-            price: currentPrice || livePrice,
-            volume: 0
-          });
-        }
-        setChartData(fallbackData);
       }
     } catch (error) {
       console.error('Error refreshing data:', error);
-      // Create fallback chart on error
-      const now = new Date();
-      const fallbackData = [];
-      for (let i = 5; i >= 0; i--) {
-        fallbackData.push({
-          time: new Date(now.getTime() - (i * 60 * 1000)).toISOString(),
-          price: currentPrice || livePrice,
-          volume: 0
-        });
-      }
-      setChartData(fallbackData);
     } finally {
       setIsLoading(false);
     }
   };
 
-  const toggleLiveMode = () => {
-    setIsLive(!isLive);
-  };
-
   useEffect(() => {
     const loadData = async () => {
       if (symbol) {
-        basePrice.current = currentPrice || (Math.random() * 200 + 50);
-        setLivePrice(basePrice.current);
-        
         setIsLoading(true);
         const data = await fetchHistoricalData();
         if (data && data.length > 0) {
@@ -167,33 +100,6 @@ export const StockChart: React.FC<StockChartProps> = ({
     };
     loadData();
   }, [symbol, currentPrice, timeframe]);
-
-  // Live updates effect
-  useEffect(() => {
-    if (isLive && symbol) {
-      intervalRef.current = setInterval(addLiveDataPoint, 1000); // Update every second
-    } else {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-    }
-
-    return () => {
-      if (intervalRef.current) {
-        clearInterval(intervalRef.current);
-        intervalRef.current = null;
-      }
-    };
-  }, [isLive, symbol, livePrice]);
-
-  // Update live price when currentPrice prop changes
-  useEffect(() => {
-    if (currentPrice && currentPrice !== livePrice) {
-      setLivePrice(currentPrice);
-      basePrice.current = currentPrice;
-    }
-  }, [currentPrice]);
 
   const formatTime = (timeStr: string) => {
     const date = new Date(timeStr);
@@ -228,8 +134,8 @@ export const StockChart: React.FC<StockChartProps> = ({
     if (chartData.length < 2) return { change: 0, percentage: 0 };
     
     const firstPrice = chartData[0].price;
-    const currentDisplayPrice = isLive ? livePrice : (currentPrice || chartData[chartData.length - 1].price);
-    const change = currentDisplayPrice - firstPrice;
+    const lastPrice = currentPrice || chartData[chartData.length - 1].price;
+    const change = lastPrice - firstPrice;
     const percentage = (change / firstPrice) * 100;
     
     return { change, percentage };
@@ -245,6 +151,8 @@ export const StockChart: React.FC<StockChartProps> = ({
     },
   };
 
+  const displayPrice = currentPrice || (chartData.length > 0 ? chartData[chartData.length - 1].price : 0);
+
   return (
     <Card className={className}>
       <CardHeader className="pb-2 p-3">
@@ -259,14 +167,13 @@ export const StockChart: React.FC<StockChartProps> = ({
               )}
             </CardTitle>
             <CardDescription className="text-xs">
-              Live trading chart
+              Real-time data from Yahoo Finance
             </CardDescription>
           </div>
           <div className="flex items-center gap-2">
             <div className="text-right">
               <div className="text-2xl font-bold">
-                {formatCurrency(isLive ? livePrice : (currentPrice || 0))}
-                {isLive && <Activity className="h-3 w-3 inline ml-1 text-green-500 animate-pulse" />}
+                {formatCurrency(displayPrice)}
               </div>
               <div className={`flex items-center gap-1 text-sm ${
                 isPositive ? 'text-green-600' : 'text-red-600'
@@ -275,23 +182,14 @@ export const StockChart: React.FC<StockChartProps> = ({
                 {isPositive ? '+' : ''}{formatCurrency(change)} ({isPositive ? '+' : ''}{percentage.toFixed(2)}%)
               </div>
             </div>
-            <div className="flex gap-1">
-              <Button
-                variant={isLive ? "default" : "outline"}
-                size="sm"
-                onClick={toggleLiveMode}
-              >
-                <Activity className={`h-4 w-4 ${isLive ? 'animate-pulse' : ''}`} />
-              </Button>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={refreshData}
-                disabled={isLoading || isLive}
-              >
-                <RotateCcw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
-              </Button>
-            </div>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={refreshData}
+              disabled={isLoading}
+            >
+              <RotateCcw className={`h-4 w-4 ${isLoading ? 'animate-spin' : ''}`} />
+            </Button>
           </div>
         </div>
 
@@ -302,16 +200,11 @@ export const StockChart: React.FC<StockChartProps> = ({
               variant={timeframe === tf ? 'default' : 'outline'}
               size="sm"
               onClick={() => setTimeframe(tf)}
-              disabled={isLoading || isLive}
+              disabled={isLoading}
             >
               {tf}
             </Button>
           ))}
-          {isLive && (
-            <Badge variant="secondary" className="ml-2 animate-pulse">
-              LIVE
-            </Badge>
-          )}
         </div>
       </CardHeader>
 
@@ -355,14 +248,13 @@ export const StockChart: React.FC<StockChartProps> = ({
                   strokeWidth: 2
                 }}
               />
-              {/* Add reference line for current price if trading */}
-              {(currentPrice || isLive) && tradeType && (
+              {currentPrice && tradeType && (
                 <ReferenceLine
-                  y={isLive ? livePrice : currentPrice}
+                  y={currentPrice}
                   stroke={tradeType === 'BUY' ? 'hsl(var(--success))' : 'hsl(var(--destructive))'}
                   strokeDasharray="5 5"
                   label={{
-                    value: `${tradeType} @ ${formatCurrency(isLive ? livePrice : currentPrice)}`,
+                    value: `${tradeType} @ ${formatCurrency(currentPrice)}`,
                     position: 'insideTopRight',
                     fontSize: 12
                   }}
@@ -374,14 +266,13 @@ export const StockChart: React.FC<StockChartProps> = ({
 
         {isLoading && (
           <div className="flex items-center justify-center py-8">
-            <div className="text-muted-foreground">Loading chart data...</div>
+            <div className="text-muted-foreground">Loading real market data...</div>
           </div>
         )}
 
-        {isLive && (
-          <div className="flex items-center justify-center py-2 text-sm text-muted-foreground">
-            <Activity className="h-3 w-3 mr-1 animate-pulse" />
-            Live price updates every second
+        {chartData.length === 0 && !isLoading && (
+          <div className="flex items-center justify-center py-8">
+            <div className="text-muted-foreground">No market data available</div>
           </div>
         )}
       </CardContent>
