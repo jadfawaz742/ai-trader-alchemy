@@ -18,6 +18,7 @@ interface TradeDecisionLog {
   timestamp: string;
   action: 'BUY' | 'SELL' | 'HOLD';
   price: number;
+  exitPrice?: number;
   quantity: number;
   confidence: number;
   stopLoss?: number;
@@ -481,6 +482,7 @@ export async function runBacktestSimulation(
           timestamp: new Date(currentBar.timestamp).toISOString(),
           action: aiDecision.type,
           price: currentPrice,
+          exitPrice: exitPrice,
           quantity: quantity,
           confidence: aiDecision.confidence,
           stopLoss: riskParams.stopLoss,

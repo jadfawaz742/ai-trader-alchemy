@@ -10,6 +10,7 @@ interface TradeDecisionLog {
   timestamp: string;
   action: 'BUY' | 'SELL' | 'HOLD';
   price: number;
+  exitPrice?: number;
   quantity: number;
   confidence: number;
   stopLoss?: number;
@@ -127,11 +128,17 @@ export const TradeDecisionLogs: React.FC<TradeDecisionLogsProps> = ({
                 </div>
 
                 {/* Trade Details */}
-                <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-3">
+                <div className="grid grid-cols-2 md:grid-cols-5 gap-4 mb-3">
                   <div>
-                    <div className="text-sm text-muted-foreground">Price</div>
+                    <div className="text-sm text-muted-foreground">Entry Price</div>
                     <div className="font-medium">{formatCurrency(log.price)}</div>
                   </div>
+                  {log.exitPrice && (
+                    <div>
+                      <div className="text-sm text-muted-foreground">Exit Price</div>
+                      <div className="font-medium">{formatCurrency(log.exitPrice)}</div>
+                    </div>
+                  )}
                   <div>
                     <div className="text-sm text-muted-foreground">Quantity</div>
                     <div className="font-medium">{log.quantity}</div>
@@ -140,12 +147,20 @@ export const TradeDecisionLogs: React.FC<TradeDecisionLogsProps> = ({
                     <div className="text-sm text-muted-foreground">Confidence</div>
                     <div className="font-medium">{log.confidence.toFixed(1)}%</div>
                   </div>
-                  {log.pnl && (
+                  {log.pnl !== undefined && (
                     <div>
                       <div className="text-sm text-muted-foreground">P&L</div>
                       <div className={`font-medium ${log.pnl >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                         {formatCurrency(log.pnl)}
                       </div>
+                      {log.exitPrice && (
+                        <div className="text-xs text-muted-foreground mt-1">
+                          {log.action === 'BUY' 
+                            ? `(${formatCurrency(log.exitPrice)} - ${formatCurrency(log.price)}) × ${log.quantity}`
+                            : `(${formatCurrency(log.price)} - ${formatCurrency(log.exitPrice)}) × ${log.quantity}`
+                          }
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
