@@ -32,11 +32,11 @@ serve(async (req) => {
     });
     
     if (!response.ok) {
-      console.log('Yahoo Finance request failed, using mock data');
+      console.error('Yahoo Finance request failed');
       return new Response(JSON.stringify({
-        ...generateMockData(symbol),
-        note: 'Mock data - Yahoo Finance unavailable'
+        error: 'Failed to fetch stock data from Yahoo Finance'
       }), {
+        status: response.status,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
@@ -66,11 +66,11 @@ serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     } else {
-      console.log('Invalid Yahoo Finance response, using mock data');
+      console.error('Invalid Yahoo Finance response structure');
       return new Response(JSON.stringify({
-        ...generateMockData(symbol),
-        note: 'Mock data - Invalid response'
+        error: 'Invalid response from Yahoo Finance'
       }), {
+        status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
@@ -84,19 +84,3 @@ serve(async (req) => {
     });
   }
 });
-
-function generateMockData(symbol: string) {
-  const basePrice = Math.random() * 200 + 50;
-  const change = (Math.random() - 0.5) * 10;
-  
-  return {
-    symbol: symbol.toUpperCase(),
-    price: basePrice,
-    change: change,
-    changePercent: (change / basePrice) * 100,
-    volume: Math.floor(Math.random() * 10000000),
-    high: basePrice + Math.random() * 5,
-    low: basePrice - Math.random() * 5,
-    previousClose: basePrice - change,
-  };
-}

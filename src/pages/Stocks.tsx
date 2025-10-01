@@ -80,21 +80,44 @@ const StocksPage: React.FC = () => {
       setIsLoading(true);
       const priceData: Record<string, any> = {};
       
-      // Fetch prices for first 15 stocks (Yahoo Finance has better rate limits)
-      const stocksToFetch = STOCK_DATA.slice(0, 15);
+      // Separate stocks and crypto
+      const stocks = STOCK_DATA.filter(s => s.sector !== 'Crypto');
+      const cryptos = STOCK_DATA.filter(s => s.sector === 'Crypto');
       
-      for (const stock of stocksToFetch) {
+      // Fetch crypto prices from Bybit
+      try {
+        const { data: cryptoData } = await supabase.functions.invoke('fetch-crypto-prices');
+        if (cryptoData?.prices) {
+          cryptoData.prices.forEach((crypto: any) => {
+            const cryptoSymbol = crypto.symbol === 'BTC' ? 'BTCUSD' : 
+                                crypto.symbol === 'ETH' ? 'ETHUSD' : 
+                                `${crypto.symbol}USDT`;
+            priceData[cryptoSymbol] = {
+              price: crypto.price,
+              change: crypto.price * (crypto.change24h / 100),
+              changePercent: crypto.change24h,
+              volume: crypto.volume24h,
+              high: crypto.high24h,
+              low: crypto.low24h,
+            };
+          });
+        }
+      } catch (error) {
+        console.error('Error fetching crypto prices:', error);
+      }
+      
+      // Fetch stock prices from Yahoo Finance
+      for (const stock of stocks) {
         try {
           const { data, error } = await supabase.functions.invoke('fetch-stock-price', {
             body: { symbol: stock.symbol }
           });
           
-          if (!error && data) {
+          if (!error && data && !data.error) {
             priceData[stock.symbol] = data;
           }
           
-          // Small delay to avoid overwhelming the API
-          await new Promise(resolve => setTimeout(resolve, 500));
+          await new Promise(resolve => setTimeout(resolve, 300));
         } catch (error) {
           console.error(`Error fetching ${stock.symbol}:`, error);
         }
@@ -112,19 +135,20 @@ const StocksPage: React.FC = () => {
 
   const filteredAndSortedStocks = STOCK_DATA
     .map(stock => {
-      // Use real price data if available, otherwise use mock data
+      // Only show stocks with real data
       const realData = stockPrices[stock.symbol];
       if (realData && !realData.error) {
         return {
           ...stock,
-          price: realData.price || stock.price,
-          change: realData.change || stock.change,
-          changePercent: realData.changePercent || stock.changePercent,
-          volume: realData.volume || stock.volume,
+          price: realData.price,
+          change: realData.change,
+          changePercent: realData.changePercent,
+          volume: realData.volume,
         };
       }
-      return stock;
+      return null;
     })
+    .filter(stock => stock !== null)
     .filter(stock => {
       const matchesSearch = stock.symbol.toLowerCase().includes(searchTerm.toLowerCase()) ||
                            stock.name.toLowerCase().includes(searchTerm.toLowerCase());
