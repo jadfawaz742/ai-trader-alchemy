@@ -34,7 +34,9 @@ export type Database = {
       }
       asset_models: {
         Row: {
+          base_model_id: string | null
           created_at: string | null
+          fine_tuning_metadata: Json | null
           id: string
           model_type: string
           model_weights: Json
@@ -44,7 +46,9 @@ export type Database = {
           user_id: string | null
         }
         Insert: {
+          base_model_id?: string | null
           created_at?: string | null
+          fine_tuning_metadata?: Json | null
           id?: string
           model_type: string
           model_weights: Json
@@ -54,12 +58,58 @@ export type Database = {
           user_id?: string | null
         }
         Update: {
+          base_model_id?: string | null
           created_at?: string | null
+          fine_tuning_metadata?: Json | null
           id?: string
           model_type?: string
           model_weights?: Json
           performance_metrics?: Json | null
           symbol?: string
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "asset_models_base_model_id_fkey"
+            columns: ["base_model_id"]
+            isOneToOne: false
+            referencedRelation: "base_models"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      base_models: {
+        Row: {
+          assets_trained_on: string[]
+          created_at: string | null
+          id: string
+          model_type: string
+          model_weights: Json
+          performance_metrics: Json | null
+          training_metadata: Json | null
+          updated_at: string | null
+          user_id: string | null
+        }
+        Insert: {
+          assets_trained_on: string[]
+          created_at?: string | null
+          id?: string
+          model_type?: string
+          model_weights: Json
+          performance_metrics?: Json | null
+          training_metadata?: Json | null
+          updated_at?: string | null
+          user_id?: string | null
+        }
+        Update: {
+          assets_trained_on?: string[]
+          created_at?: string | null
+          id?: string
+          model_type?: string
+          model_weights?: Json
+          performance_metrics?: Json | null
+          training_metadata?: Json | null
           updated_at?: string | null
           user_id?: string | null
         }
