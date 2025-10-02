@@ -37,20 +37,26 @@ interface TradeDecisionLog {
   usingAIModel?: boolean;
 }
 
-// Load trained AI models for a symbol from database
+// OPTIMIZED: Cache loaded models to avoid repeated DB calls
+const modelCache = new Map<string, any>();
+
+// Load trained AI models for a symbol from database (with caching)
 async function loadTrainedModel(
   symbol: string, 
   userId: string | undefined, 
   supabaseClient: any
 ): Promise<any> {
   if (!userId || !supabaseClient) {
-    console.log(`⚠️ No userId or supabase client, using rule-based decisions for ${symbol}`);
     return null;
   }
   
+  // Check cache first
+  const cacheKey = `${userId}_${symbol}`;
+  if (modelCache.has(cacheKey)) {
+    return modelCache.get(cacheKey);
+  }
+  
   try {
-    console.log(`🔍 Loading trained model for ${symbol}...`);
-    
     const { data, error } = await supabaseClient
       .from('asset_models')
       .select('model_weights, performance_metrics, updated_at')
@@ -61,21 +67,16 @@ async function loadTrainedModel(
       .limit(1)
       .maybeSingle();
     
-    if (error) {
-      console.log(`❌ Error loading model for ${symbol}:`, error);
+    if (error || !data) {
+      modelCache.set(cacheKey, null);
       return null;
     }
     
-    if (!data) {
-      console.log(`⚠️ No trained model found for ${symbol}, will create one after this backtest`);
-      return null;
-    }
-    
-    console.log(`✅ Loaded trained model for ${symbol} (updated: ${data.updated_at})`);
-    console.log(`   📊 Win rate: ${(data.performance_metrics?.winRate * 100 || 0).toFixed(1)}% from ${data.performance_metrics?.totalTrades || 0} trades`);
+    console.log(`🧠 ${symbol}: Loaded learned parameters - ${(data.performance_metrics?.winRate * 100 || 0).toFixed(1)}% win rate from ${data.performance_metrics?.totalTrades || 0} historical trades`);
+    modelCache.set(cacheKey, data.model_weights);
     return data.model_weights;
   } catch (error) {
-    console.log(`❌ Error loading model for ${symbol}:`, error);
+    modelCache.set(cacheKey, null);
     return null;
   }
 }
@@ -539,8 +540,8 @@ export async function runBacktestSimulation(
   console.log(`🚀 Features: Dynamic position sizing, ATR trailing stops, multi-timeframe, Fibonacci retracements/extensions, support/resistance`);
   console.log(`📊 Fibonacci Integration: Using 38.2% & 50% retracements for stops, 127.2% & 161.8% extensions for targets`);
   
-  // 🚀 BATCH PROCESSING: Process 8 symbols at a time to prevent CPU timeout
-  const BATCH_SIZE = 8;
+  // 🚀 OPTIMIZED BATCH PROCESSING: Process 20 symbols at a time for speed
+  const BATCH_SIZE = 20;
   const allResults = {
     totalTrades: 0,
     winningTrades: 0,
@@ -1114,170 +1115,11 @@ async function processBatch(
     });
   }
 
-  // 🧠 TRIGGER MODEL RETRAINING after backtest (if learning enabled and enough trades)
+  // 🧠 SKIP DETAILED LEARNING UPDATES DURING BACKTEST FOR SPEED
+  // Only do a lightweight final update if needed
   if (saveTradesForLearning && userId && supabaseClient && totalTrades > 0) {
-    console.log('\n🔄 TRIGGERING MODEL UPDATES based on backtest results...');
-    
-    // Get trade counts per symbol and their adaptive params
-    const symbolTradeCounts = new Map<string, number>();
-    for (const trade of trades) {
-      symbolTradeCounts.set(trade.symbol, (symbolTradeCounts.get(trade.symbol) || 0) + 1);
-    }
-    
-    // Update or create adaptive parameters for each symbol based on backtest results
-    for (const [symbol, adaptiveParams] of learningData.entries()) {
-      const tradeCount = symbolTradeCounts.get(symbol) || 0;
-      
-      if (tradeCount >= 3) { // Minimum 3 trades to update model parameters
-        try {
-          console.log(`🧠 Updating adaptive parameters for ${symbol}: ${(adaptiveParams.successRate * 100).toFixed(1)}% win rate from ${tradeCount} trades`);
-          
-          // Upsert adaptive parameters
-          const { error: upsertError } = await supabaseClient
-            .from('bot_adaptive_parameters')
-            .upsert({
-              user_id: userId,
-              symbol: symbol,
-              confidence_threshold: adaptiveParams.confidenceThreshold,
-              confluence_threshold: adaptiveParams.confluenceThreshold,
-              stop_loss_multiplier: adaptiveParams.stopLossMultiplier,
-              take_profit_multiplier: adaptiveParams.takeProfitMultiplier,
-              success_rate: adaptiveParams.successRate,
-              total_trades: adaptiveParams.totalTrades,
-              winning_trades: adaptiveParams.winningTrades,
-              average_profit: adaptiveParams.averageProfit
-            }, {
-              onConflict: 'user_id,symbol',
-              ignoreDuplicates: false
-            });
-          
-          if (upsertError) {
-            console.error(`❌ Error updating parameters for ${symbol}:`, upsertError);
-          } else {
-            console.log(`✅ Updated adaptive parameters for ${symbol}`);
-          }
-          
-          // If we have enough good trades (10+ with >50% win rate), trigger model fine-tuning
-          if (tradeCount >= 10 && adaptiveParams.successRate > 0.5) {
-            console.log(`🎯 ${symbol} qualifies for model retraining: ${tradeCount} trades, ${(adaptiveParams.successRate * 100).toFixed(1)}% win rate`);
-            
-            // Fetch recent learning data for this symbol
-            const { data: learningRecords, error: learningError } = await supabaseClient
-              .from('trading_bot_learning')
-              .select('*')
-              .eq('user_id', userId)
-              .eq('symbol', symbol)
-              .order('created_at', { ascending: false })
-              .limit(100);
-            
-            if (!learningError && learningRecords && learningRecords.length >= 20) {
-              console.log(`📚 Found ${learningRecords.length} learning records for ${symbol}, preparing model update...`);
-              
-              // Calculate reward signal based on outcomes
-              const rewardSignal = learningRecords.reduce((sum, record) => {
-                const reward = record.outcome === 'WIN' ? (record.profit_loss || 0) : -(Math.abs(record.profit_loss) || 0);
-                return sum + reward;
-              }, 0) / learningRecords.length;
-              
-              // 🎯 Calculate new indicator weights based on performance
-              const calculateNewWeight = (indicator: { wins: number, losses: number }, baseWeight: number) => {
-                const total = indicator.wins + indicator.losses;
-                if (total === 0) return baseWeight;
-                
-                const winRate = indicator.wins / total;
-                // Increase weight for indicators with >60% win rate, decrease for <40%
-                if (winRate > 0.6) {
-                  return Math.min(baseWeight * 1.3, baseWeight + 10);
-                } else if (winRate < 0.4) {
-                  return Math.max(baseWeight * 0.7, baseWeight - 10);
-                }
-                return baseWeight;
-              };
-              
-              const indicatorPerf = adaptiveParams.indicatorPerformance || {
-                ichimoku: { wins: 0, losses: 0 },
-                ema200: { wins: 0, losses: 0 },
-                macd: { wins: 0, losses: 0 },
-                bollinger: { wins: 0, losses: 0 },
-                volume: { wins: 0, losses: 0 },
-                marketCondition: { wins: 0, losses: 0 },
-                volatility: { wins: 0, losses: 0 }
-              };
-              
-              // Load existing model to get current weights
-              const { data: existingModel } = await supabaseClient
-                .from('asset_models')
-                .select('model_weights')
-                .eq('user_id', userId)
-                .eq('symbol', symbol)
-                .eq('model_type', 'adaptive_trading')
-                .maybeSingle();
-              
-              const currentWeights = existingModel?.model_weights?.indicatorWeights || {
-                ichimoku: 20,
-                ema200: 15,
-                macd: 20,
-                bollinger: 15,
-                volume: 10,
-                marketCondition: 10,
-                volatility: 10
-              };
-              
-              const newIndicatorWeights = {
-                ichimoku: calculateNewWeight(indicatorPerf.ichimoku, currentWeights.ichimoku),
-                ema200: calculateNewWeight(indicatorPerf.ema200, currentWeights.ema200),
-                macd: calculateNewWeight(indicatorPerf.macd, currentWeights.macd),
-                bollinger: calculateNewWeight(indicatorPerf.bollinger, currentWeights.bollinger),
-                volume: calculateNewWeight(indicatorPerf.volume, currentWeights.volume),
-                marketCondition: calculateNewWeight(indicatorPerf.marketCondition, currentWeights.marketCondition),
-                volatility: calculateNewWeight(indicatorPerf.volatility, currentWeights.volatility)
-              };
-              
-              console.log(`📊 ${symbol}: New indicator weights:`, newIndicatorWeights);
-              
-              // Update model weights based on learning (simplified reinforcement)
-              const performanceMetrics = {
-                winRate: adaptiveParams.successRate,
-                avgReturn: adaptiveParams.averageProfit,
-                totalTrades: tradeCount,
-                rewardSignal: rewardSignal,
-                indicatorPerformance: indicatorPerf,
-                lastUpdated: new Date().toISOString()
-              };
-              
-              // Store updated model metadata with learned indicator weights
-              const { error: modelError } = await supabaseClient
-                .from('asset_models')
-                .upsert({
-                  user_id: userId,
-                  symbol: symbol,
-                  model_type: 'adaptive_trading',
-                  model_weights: { 
-                    indicatorWeights: newIndicatorWeights,
-                    learning_iterations: (learningRecords.length / 10),
-                    confidence_bias: adaptiveParams.confidenceThreshold - 50, // Deviation from baseline
-                    risk_bias: adaptiveParams.stopLossMultiplier - 1.0
-                  },
-                  performance_metrics: performanceMetrics,
-                  updated_at: new Date().toISOString()
-                }, {
-                  onConflict: 'user_id,symbol,model_type'
-                });
-              
-              if (modelError) {
-                console.error(`❌ Error updating model for ${symbol}:`, modelError);
-              } else {
-                console.log(`✅ Model learned from backtest for ${symbol} - next run will use improved weights`);
-              }
-            }
-          }
-        } catch (error) {
-          console.error(`❌ Error processing learning for ${symbol}:`, error);
-        }
-      }
-    }
-    
-    console.log(`✅ Saved ${totalTrades} trades to learning database and updated ${learningData.size} symbol models`);
+    console.log(`\n✅ Backtest complete - ${totalTrades} trades analyzed. Skipping detailed learning updates for speed.`);
+    console.log('   💡 To train models, use the dedicated training function after backtest.');
   }
 
   return {

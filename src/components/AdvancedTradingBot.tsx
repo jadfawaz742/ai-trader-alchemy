@@ -508,16 +508,7 @@ ${data.backtestResults.tradeDecisionLogs?.slice(-5).map((log: any, i: number) =>
                     </div>
                     
                     <div className="mt-4 p-3 bg-muted rounded-lg">
-                      <div className="flex items-center justify-between mb-2">
-                        <p className="text-sm text-muted-foreground">
-                          Selected Symbols ({botConfig.symbols.length}/15 max recommended)
-                        </p>
-                        {botConfig.symbols.length > 15 && (
-                          <Badge variant="destructive" className="text-xs">
-                            Too many symbols - may cause timeout
-                          </Badge>
-                        )}
-                      </div>
+                      <p className="text-sm text-muted-foreground mb-2">Selected Symbols ({botConfig.symbols.length}):</p>
                       <div className="flex flex-wrap gap-1">
                         {botConfig.symbols.map(symbol => (
                           <Badge key={symbol} variant="default" className="text-xs">
@@ -531,30 +522,6 @@ ${data.backtestResults.tradeDecisionLogs?.slice(-5).map((log: any, i: number) =>
                           </Badge>
                         ))}
                       </div>
-                      {botConfig.symbols.length > 15 && (
-                        <div className="mt-2 flex gap-2">
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => setBotConfig(prev => ({ 
-                              ...prev, 
-                              symbols: prev.symbols.slice(0, 10) 
-                            }))}
-                          >
-                            Keep First 10
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => setBotConfig(prev => ({ 
-                              ...prev, 
-                              symbols: [] 
-                            }))}
-                          >
-                            Clear All
-                          </Button>
-                        </div>
-                      )}
                     </div>
                   </div>
 
@@ -713,25 +680,10 @@ ${data.backtestResults.tradeDecisionLogs?.slice(-5).map((log: any, i: number) =>
                     )}
                   </div>
 
-                  {botConfig.symbols.length > 15 && (
-                    <div className="p-4 bg-destructive/10 border border-destructive/20 rounded-lg mb-4">
-                      <div className="flex items-start gap-3">
-                        <AlertCircle className="h-5 w-5 text-destructive mt-0.5" />
-                        <div>
-                          <h4 className="font-semibold text-destructive mb-1">Too Many Symbols</h4>
-                          <p className="text-sm text-muted-foreground">
-                            You have {botConfig.symbols.length} symbols selected. The backtest will likely timeout. 
-                            Please reduce to 15 or fewer symbols for reliable results.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
                   <div className="flex justify-end space-x-2">
                     <Button
                       onClick={runAdvancedAnalysis}
-                      disabled={isAnalyzing || botConfig.symbols.length === 0 || botConfig.symbols.length > 15}
+                      disabled={isAnalyzing || botConfig.symbols.length === 0}
                       className="flex items-center gap-2"
                     >
                       {isAnalyzing ? (
