@@ -503,6 +503,10 @@ export async function runBacktestSimulation(
         volatility: { wins: 0, losses: 0 }
       };
       
+      // 🔍 Fetch multi-timeframe data for better decision quality
+      const multiTimeframeData = await fetchMultiTimeframeData(symbol);
+      const multiTimeframeAnalysis = analyzeMultiTimeframe(multiTimeframeData);
+      
       // PHASE 1: Load existing adaptive parameters or initialize new ones
       let adaptiveParams = {
         confidenceThreshold: 40.0, // 🚀 ULTRA-AGGRESSIVE: Reduced to 40% 
@@ -560,17 +564,9 @@ export async function runBacktestSimulation(
       
       // Iterate through historical data points with adaptive sampling
       const minDataPoints = Math.min(50, Math.floor(historicalData.length * 0.2));
-      // 🚀 OPTIMIZED: Sample every 12th bar to prevent CPU timeout (was 4)
-      // This reduces processing by 66% while maintaining backtest accuracy
-      const sampleRate = 12;
-      
-      // 🚀 OPTIMIZATION: Limit max data points to 100 per symbol
-      const maxDataPoints = Math.min(100, Math.floor((historicalData.length - minDataPoints) / sampleRate));
-      
-      console.log(`⚡ ${symbol}: Processing ${maxDataPoints} sampled data points out of ${historicalData.length} total (sample rate: ${sampleRate})`);
-      let processedPoints = 0;
-      for (let i = minDataPoints; i < historicalData.length - 1 && processedPoints < maxDataPoints; i += sampleRate) {
-        processedPoints++;
+      // Sample every 4 hours (every 4th bar) for faster backtesting without losing quality
+      const sampleRate = 4;
+      for (let i = minDataPoints; i < historicalData.length - 1; i += sampleRate) {
         const currentBar = historicalData[i];
         const nextBar = historicalData[i + 1];
         const currentPrice = currentBar.close;
