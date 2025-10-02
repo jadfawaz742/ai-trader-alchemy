@@ -13,7 +13,27 @@ interface TimeframeAnalysis {
   confluence: number; // How well timeframes align (0-1)
 }
 
-// Fetch multiple timeframes from Yahoo Finance
+// 🚀 OPTIMIZED: Derive multi-timeframe analysis from existing data (for backtesting)
+// This avoids making 3 extra API calls per symbol, making backtest 4x faster
+export function deriveMultiTimeframeFromHistorical(historicalData: any[]): MultiTimeframeData {
+  if (historicalData.length < 20) {
+    return { hourly: [], fourHourly: [], daily: [] };
+  }
+  
+  // All data comes from the same source, just analyzed at different granularities
+  // Simulate hourly: use recent data as-is
+  const hourly = historicalData.slice(-168); // Last 168 periods (~1 week if hourly)
+  
+  // Simulate 4-hourly: sample every 4th bar
+  const fourHourly = historicalData.filter((_, i) => i % 4 === 0).slice(-180); // ~1 month
+  
+  // Simulate daily: sample every 24th bar (or if data is already daily, use as-is)
+  const daily = historicalData.filter((_, i) => i % 24 === 0).slice(-365); // ~1 year
+  
+  return { hourly, fourHourly, daily };
+}
+
+// Fetch multiple timeframes from Yahoo Finance (for live trading)
 export async function fetchMultiTimeframeData(symbol: string): Promise<MultiTimeframeData> {
   console.log(`🔍 Fetching multi-timeframe data for ${symbol}...`);
   

@@ -1616,21 +1616,12 @@ serve(async (req) => {
     
     if (backtestMode) {
       console.log(`🔬 BACKTESTING MODE: Testing AI performance over ${backtestPeriod} period`);
+      console.log(`🚀 OPTIMIZATION: Using derived multi-timeframe analysis (no extra API calls)`);
+      console.log(`📊 Processing ${symbols.length} symbols with full sophisticated analysis`);
       
-      // 🚀 CPU OPTIMIZATION: Limit symbols to prevent timeout while keeping all analysis intact
-      // Backtest uses complex multi-timeframe analysis, learning models, confluence scoring
-      // Processing 3 symbols allows full sophisticated analysis without hitting CPU limits
-      const MAX_BACKTEST_SYMBOLS = 3;
-      const backtestSymbols = symbols.slice(0, MAX_BACKTEST_SYMBOLS);
-      
-      if (symbols.length > MAX_BACKTEST_SYMBOLS) {
-        console.log(`⚠️ Limiting backtest to ${MAX_BACKTEST_SYMBOLS} symbols (requested ${symbols.length}) to prevent CPU timeout`);
-        console.log(`   Selected symbols: ${backtestSymbols.join(', ')}`);
-      }
-      
-      // Run backtesting simulation with ALL sophisticated analysis features
+      // Run backtesting simulation with ALL symbols - now optimized!
       const backtestResults = await runBacktestSimulation(
-        backtestSymbols, 
+        symbols, 
         backtestPeriod, 
         risk, 
         portfolioBalance,
@@ -1647,16 +1638,12 @@ serve(async (req) => {
         tradingFrequency,
         maxDailyTrades,
         backtestPeriod,
-        symbolsRequested: symbols.length,
-        symbolsProcessed: backtestSymbols.length,
-        processedSymbols: backtestSymbols,
+        symbolsProcessed: symbols.length,
         riskLevelInfo: RISK_LEVELS[risk],
         signals: [],
         totalSignals: 0,
         backtestResults,
-        message: backtestSymbols.length < symbols.length 
-          ? `Backtested ${backtestSymbols.length} of ${symbols.length} symbols (CPU limit): ${backtestResults.totalTrades} trades, ${(backtestResults.winRate * 100).toFixed(1)}% win rate, ${backtestResults.roi > 0 ? '+' : ''}${backtestResults.roi.toFixed(2)}% ROI`
-          : `Backtesting complete: ${backtestResults.totalTrades} trades over ${backtestPeriod} with ${(backtestResults.winRate * 100).toFixed(1)}% win rate`
+        message: `Backtesting complete: ${backtestResults.totalTrades} trades over ${backtestPeriod} with ${(backtestResults.winRate * 100).toFixed(1)}% win rate, ${backtestResults.roi > 0 ? '+' : ''}${backtestResults.roi.toFixed(2)}% ROI`
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });

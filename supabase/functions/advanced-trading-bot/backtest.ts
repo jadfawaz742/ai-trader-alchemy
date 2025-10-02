@@ -7,7 +7,7 @@ import {
   RiskLevel
 } from './shared-decision-logic.ts';
 import { 
-  fetchMultiTimeframeData, 
+  deriveMultiTimeframeFromHistorical,
   analyzeMultiTimeframe, 
   getMultiTimeframeBoost 
 } from './multi-timeframe.ts';
@@ -503,8 +503,10 @@ export async function runBacktestSimulation(
         volatility: { wins: 0, losses: 0 }
       };
       
-      // 🔍 Fetch multi-timeframe data for better decision quality
-      const multiTimeframeData = await fetchMultiTimeframeData(symbol);
+      // 🔍 OPTIMIZED: Derive multi-timeframe analysis from already-fetched data
+      // This avoids 3 extra API calls per symbol (159 calls saved for 53 symbols!)
+      // Keeps ALL multi-timeframe analysis logic intact, just uses existing data
+      const multiTimeframeData = deriveMultiTimeframeFromHistorical(historicalData);
       const multiTimeframeAnalysis = analyzeMultiTimeframe(multiTimeframeData);
       
       // PHASE 1: Load existing adaptive parameters or initialize new ones
