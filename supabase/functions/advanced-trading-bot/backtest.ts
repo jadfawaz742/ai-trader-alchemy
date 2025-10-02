@@ -546,8 +546,8 @@ export async function runBacktestSimulation(
   console.log(`🚀 Features: Dynamic position sizing, ATR trailing stops, multi-timeframe, Fibonacci retracements/extensions, support/resistance`);
   console.log(`📊 Fibonacci Integration: Using 38.2% & 50% retracements for stops, 127.2% & 161.8% extensions for targets`);
   
-  // 🚀 OPTIMIZED BATCH PROCESSING: Process all 53 symbols at once for maximum efficiency
-  const BATCH_SIZE = 53;
+  // 🚀 OPTIMIZED BATCH PROCESSING: Process 15 symbols per batch to stay under CPU limits
+  const BATCH_SIZE = 15;
   const allResults = {
     totalTrades: 0,
     winningTrades: 0,
@@ -780,10 +780,10 @@ async function processBatch(
         description: `${riskLevel} risk profile`
       };
       
-      // Iterate through historical data points with adaptive sampling
+      // Iterate through historical data points with aggressive sampling for 53 symbols
       const minDataPoints = Math.min(50, Math.floor(historicalData.length * 0.2));
-      // Sample every 4 hours (every 4th bar) for faster backtesting without losing quality
-      const sampleRate = 4;
+      // Sample every 8 bars for faster backtesting while keeping all analysis
+      const sampleRate = 8;
       for (let i = minDataPoints; i < historicalData.length - 1; i += sampleRate) {
         const currentBar = historicalData[i];
         const nextBar = historicalData[i + 1];
