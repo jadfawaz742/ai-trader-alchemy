@@ -1617,9 +1617,20 @@ serve(async (req) => {
     if (backtestMode) {
       console.log(`🔬 BACKTESTING MODE: Testing AI performance over ${backtestPeriod} period`);
       
-      // Run backtesting simulation on ALL symbols (remove slice limit)
+      // 🚀 CPU OPTIMIZATION: Limit symbols to prevent timeout while keeping all analysis intact
+      // Backtest uses complex multi-timeframe analysis, learning models, confluence scoring
+      // Processing 3 symbols allows full sophisticated analysis without hitting CPU limits
+      const MAX_BACKTEST_SYMBOLS = 3;
+      const backtestSymbols = symbols.slice(0, MAX_BACKTEST_SYMBOLS);
+      
+      if (symbols.length > MAX_BACKTEST_SYMBOLS) {
+        console.log(`⚠️ Limiting backtest to ${MAX_BACKTEST_SYMBOLS} symbols (requested ${symbols.length}) to prevent CPU timeout`);
+        console.log(`   Selected symbols: ${backtestSymbols.join(', ')}`);
+      }
+      
+      // Run backtesting simulation with ALL sophisticated analysis features
       const backtestResults = await runBacktestSimulation(
-        symbols, 
+        backtestSymbols, 
         backtestPeriod, 
         risk, 
         portfolioBalance,
@@ -1636,11 +1647,16 @@ serve(async (req) => {
         tradingFrequency,
         maxDailyTrades,
         backtestPeriod,
+        symbolsRequested: symbols.length,
+        symbolsProcessed: backtestSymbols.length,
+        processedSymbols: backtestSymbols,
         riskLevelInfo: RISK_LEVELS[risk],
         signals: [],
         totalSignals: 0,
         backtestResults,
-        message: `Backtesting complete: ${backtestResults.totalTrades} trades over ${backtestPeriod} with ${(backtestResults.winRate * 100).toFixed(1)}% win rate`
+        message: backtestSymbols.length < symbols.length 
+          ? `Backtested ${backtestSymbols.length} of ${symbols.length} symbols (CPU limit): ${backtestResults.totalTrades} trades, ${(backtestResults.winRate * 100).toFixed(1)}% win rate, ${backtestResults.roi > 0 ? '+' : ''}${backtestResults.roi.toFixed(2)}% ROI`
+          : `Backtesting complete: ${backtestResults.totalTrades} trades over ${backtestPeriod} with ${(backtestResults.winRate * 100).toFixed(1)}% win rate`
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
