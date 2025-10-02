@@ -535,9 +535,123 @@ export async function runBacktestSimulation(
   showLogs: boolean = true,
   saveTradesForLearning: boolean = true // NEW: Save trades to learn from backtests
 ) {
-  console.log(`🔬 Starting ENHANCED backtest simulation with Fibonacci + S/R for ${symbols.length} symbols over ${period}`);
+  console.log(`🔬 Starting ENHANCED backtest simulation for ${symbols.length} symbols over ${period}`);
   console.log(`🚀 Features: Dynamic position sizing, ATR trailing stops, multi-timeframe, Fibonacci retracements/extensions, support/resistance`);
   console.log(`📊 Fibonacci Integration: Using 38.2% & 50% retracements for stops, 127.2% & 161.8% extensions for targets`);
+  
+  // 🚀 BATCH PROCESSING: Process 8 symbols at a time to prevent CPU timeout
+  const BATCH_SIZE = 8;
+  const allResults = {
+    totalTrades: 0,
+    winningTrades: 0,
+    losingTrades: 0,
+    winRate: 0,
+    totalPnL: 0,
+    roi: 0,
+    sharpeRatio: 0,
+    maxDrawdown: 0,
+    trades: [] as any[]
+  };
+  
+  console.log(`⚡ Processing ${symbols.length} symbols in batches of ${BATCH_SIZE} to stay under CPU limits`);
+  
+  for (let batchStart = 0; batchStart < symbols.length; batchStart += BATCH_SIZE) {
+    const batchEnd = Math.min(batchStart + BATCH_SIZE, symbols.length);
+    const batchSymbols = symbols.slice(batchStart, batchEnd);
+    
+    console.log(`\n📦 Processing batch ${Math.floor(batchStart / BATCH_SIZE) + 1}/${Math.ceil(symbols.length / BATCH_SIZE)}: ${batchSymbols.join(', ')}`);
+    
+    const batchResults = await processBatch(
+      batchSymbols,
+      period,
+      riskLevel,
+      initialBalance,
+      supabaseClient,
+      userId,
+      showLogs,
+      saveTradesForLearning
+    );
+    
+    // Aggregate results
+    allResults.totalTrades += batchResults.totalTrades;
+    allResults.winningTrades += batchResults.winningTrades;
+    allResults.losingTrades += batchResults.losingTrades;
+    allResults.totalPnL += batchResults.totalPnL;
+    allResults.trades.push(...batchResults.trades);
+    
+    console.log(`✅ Batch complete: ${batchResults.totalTrades} trades, ${batchResults.winningTrades} wins, PnL: $${batchResults.totalPnL.toFixed(2)}`);
+  }
+  
+  // Calculate final metrics
+  allResults.winRate = allResults.totalTrades > 0 
+    ? allResults.winningTrades / allResults.totalTrades 
+    : 0;
+  allResults.roi = (allResults.totalPnL / initialBalance) * 100;
+  
+  // Calculate Sharpe ratio (simplified)
+  const avgReturn = allResults.totalTrades > 0 ? allResults.totalPnL / allResults.totalTrades : 0;
+  const returns = allResults.trades.map(t => t.pnl || 0);
+  const stdDev = returns.length > 1 
+    ? Math.sqrt(returns.reduce((sum, r) => sum + Math.pow(r - avgReturn, 2), 0) / returns.length)
+    : 1;
+  allResults.sharpeRatio = stdDev > 0 ? (avgReturn / stdDev) * Math.sqrt(252) : 0;
+  
+  // Calculate max drawdown
+  let peak = initialBalance;
+  let maxDD = 0;
+  let runningBalance = initialBalance;
+  for (const trade of allResults.trades) {
+    runningBalance += trade.pnl || 0;
+    if (runningBalance > peak) peak = runningBalance;
+    const dd = ((peak - runningBalance) / peak) * 100;
+    if (dd > maxDD) maxDD = dd;
+  }
+  allResults.maxDrawdown = maxDD;
+  
+  console.log(`\n🎯 BACKTEST COMPLETE:`);
+  console.log(`   Total Trades: ${allResults.totalTrades}`);
+  console.log(`   Win Rate: ${(allResults.winRate * 100).toFixed(1)}%`);
+  console.log(`   Total P&L: $${allResults.totalPnL.toFixed(2)}`);
+  console.log(`   ROI: ${allResults.roi.toFixed(2)}%`);
+  console.log(`   Sharpe Ratio: ${allResults.sharpeRatio.toFixed(2)}`);
+  console.log(`   Max Drawdown: ${allResults.maxDrawdown.toFixed(2)}%`);
+  
+  return {
+    success: true,
+    totalTrades: allResults.totalTrades,
+    winRate: allResults.winRate,
+    totalReturn: allResults.roi / 100, // Convert back to decimal for compatibility
+    roi: allResults.roi,
+    finalBalance: initialBalance + allResults.totalPnL,
+    sharpeRatio: allResults.sharpeRatio,
+    maxDrawdown: allResults.maxDrawdown,
+    tradeDecisionLogs: allResults.trades.slice(-50), // Last 50 trades
+    enhancedFeatures: {
+      dynamicPositionSizing: true,
+      atrTrailingStops: true,
+      multiTimeframeAnalysis: true,
+      marketRegimeDetection: true,
+      adaptiveThresholds: true,
+      signalFiltering: true,
+      assetSpecificModels: true,
+      tradeDecisionLogging: true,
+      batchProcessing: true
+    },
+    summary: `🤖 AI-POWERED BACKTESTING: ${allResults.totalTrades} trades, ${(allResults.winRate * 100).toFixed(1)}% win rate, ${allResults.roi.toFixed(2)}% ROI across ${symbols.length} symbols using batch processing, shared AI decision logic, dynamic position sizing, and market regime detection`
+  };
+}
+
+// Process a batch of symbols
+async function processBatch(
+  symbols: string[],
+  period: string,
+  riskLevel: string,
+  initialBalance: number,
+  supabaseClient: any,
+  userId?: string,
+  showLogs: boolean = true,
+  saveTradesForLearning: boolean = true
+) {
   
   // Calculate date range based on period
   const endDate = new Date();
@@ -1167,24 +1281,10 @@ export async function runBacktestSimulation(
   }
 
   return {
-    success: true,
     totalTrades,
-    winRate: totalTrades > 0 ? winningTrades / totalTrades : 0,
-    totalReturn: (currentBalance - initialBalance) / initialBalance, // ✅ CORRECT: (final - initial) / initial
-    finalBalance: currentBalance,
-    sharpeRatio: totalTrades > 10 ? calculateSharpeRatio(trades) : 0,
-    avgConfidence: totalTrades > 0 ? totalConfidence / totalTrades / 100 : 0,
-    tradeDecisionLogs: last50Trades,
-    enhancedFeatures: {
-      dynamicPositionSizing: true,
-      atrTrailingStops: true,
-      multiTimeframeAnalysis: true,
-      marketRegimeDetection: true,
-      adaptiveThresholds: true,
-      signalFiltering: true,
-      assetSpecificModels: true,
-      tradeDecisionLogging: true
-    },
-    summary: `🤖 AI-POWERED BACKTESTING: ${totalTrades} trades, ${((winningTrades / totalTrades) * 100).toFixed(1)}% win rate, ${(((currentBalance - initialBalance) / initialBalance) * 100).toFixed(2)}% ROI using shared AI decision logic (same as live trading), dynamic position sizing, ATR stops, and market regime detection`
+    winningTrades,
+    losingTrades: totalTrades - winningTrades,
+    totalPnL: currentBalance - initialBalance,
+    trades: trades.map(t => ({ pnl: t.pnl || 0 }))
   };
 }
