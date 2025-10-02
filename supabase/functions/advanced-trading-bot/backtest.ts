@@ -40,6 +40,12 @@ interface TradeDecisionLog {
 // OPTIMIZED: Cache loaded models to avoid repeated DB calls
 const modelCache = new Map<string, any>();
 
+// Graceful shutdown handler for background tasks
+addEventListener('beforeunload', (ev: any) => {
+  console.log('⚠️ Function shutdown:', ev.detail?.reason);
+  console.log('   Background learning may still be processing...');
+});
+
 // Load trained AI models for a symbol from database (with caching)
 async function loadTrainedModel(
   symbol: string, 
@@ -1115,11 +1121,172 @@ async function processBatch(
     });
   }
 
-  // 🧠 SKIP DETAILED LEARNING UPDATES DURING BACKTEST FOR SPEED
-  // Only do a lightweight final update if needed
+  // 🧠 BACKGROUND LEARNING: Process updates asynchronously to avoid timeout
   if (saveTradesForLearning && userId && supabaseClient && totalTrades > 0) {
-    console.log(`\n✅ Backtest complete - ${totalTrades} trades analyzed. Skipping detailed learning updates for speed.`);
-    console.log('   💡 To train models, use the dedicated training function after backtest.');
+    console.log('\n🔄 Starting background learning updates...');
+    
+    // Schedule background task for learning updates
+    const learningTask = async () => {
+      try {
+        console.log('📚 Processing learning updates in background...');
+        
+        // Get trade counts per symbol and their adaptive params
+        const symbolTradeCounts = new Map<string, number>();
+        for (const trade of trades) {
+          symbolTradeCounts.set(trade.symbol, (symbolTradeCounts.get(trade.symbol) || 0) + 1);
+        }
+        
+        // Batch update adaptive parameters for better performance
+        const parameterUpdates = [];
+        const modelUpdates = [];
+        
+        for (const [symbol, adaptiveParams] of learningData.entries()) {
+          const tradeCount = symbolTradeCounts.get(symbol) || 0;
+          
+          if (tradeCount >= 3) {
+            parameterUpdates.push({
+              user_id: userId,
+              symbol: symbol,
+              confidence_threshold: adaptiveParams.confidenceThreshold,
+              confluence_threshold: adaptiveParams.confluenceThreshold,
+              stop_loss_multiplier: adaptiveParams.stopLossMultiplier,
+              take_profit_multiplier: adaptiveParams.takeProfitMultiplier,
+              success_rate: adaptiveParams.successRate,
+              total_trades: adaptiveParams.totalTrades,
+              winning_trades: adaptiveParams.winningTrades,
+              average_profit: adaptiveParams.averageProfit
+            });
+            
+            // Prepare model updates for symbols with good performance
+            if (tradeCount >= 10 && adaptiveParams.successRate > 0.5) {
+              modelUpdates.push({ symbol, adaptiveParams, tradeCount });
+            }
+          }
+        }
+        
+        // Batch insert adaptive parameters
+        if (parameterUpdates.length > 0) {
+          const { error: batchError } = await supabaseClient
+            .from('bot_adaptive_parameters')
+            .upsert(parameterUpdates, {
+              onConflict: 'user_id,symbol',
+              ignoreDuplicates: false
+            });
+          
+          if (batchError) {
+            console.error('❌ Batch update error:', batchError);
+          } else {
+            console.log(`✅ Updated ${parameterUpdates.length} adaptive parameter sets`);
+          }
+        }
+        
+        // Process model updates
+        for (const { symbol, adaptiveParams, tradeCount } of modelUpdates) {
+          try {
+            console.log(`🎯 ${symbol}: Updating model (${tradeCount} trades, ${(adaptiveParams.successRate * 100).toFixed(1)}% win rate)`);
+            
+            const { data: learningRecords } = await supabaseClient
+              .from('trading_bot_learning')
+              .select('*')
+              .eq('user_id', userId)
+              .eq('symbol', symbol)
+              .order('created_at', { ascending: false })
+              .limit(100);
+            
+            if (learningRecords && learningRecords.length >= 20) {
+              const rewardSignal = learningRecords.reduce((sum, record) => {
+                const reward = record.outcome === 'WIN' ? (record.profit_loss || 0) : -(Math.abs(record.profit_loss) || 0);
+                return sum + reward;
+              }, 0) / learningRecords.length;
+              
+              const calculateNewWeight = (indicator: { wins: number, losses: number }, baseWeight: number) => {
+                const total = indicator.wins + indicator.losses;
+                if (total === 0) return baseWeight;
+                const winRate = indicator.wins / total;
+                if (winRate > 0.6) return Math.min(baseWeight * 1.3, baseWeight + 10);
+                if (winRate < 0.4) return Math.max(baseWeight * 0.7, baseWeight - 10);
+                return baseWeight;
+              };
+              
+              const indicatorPerf = adaptiveParams.indicatorPerformance || {
+                ichimoku: { wins: 0, losses: 0 },
+                ema200: { wins: 0, losses: 0 },
+                macd: { wins: 0, losses: 0 },
+                bollinger: { wins: 0, losses: 0 },
+                volume: { wins: 0, losses: 0 },
+                marketCondition: { wins: 0, losses: 0 },
+                volatility: { wins: 0, losses: 0 }
+              };
+              
+              const { data: existingModel } = await supabaseClient
+                .from('asset_models')
+                .select('model_weights')
+                .eq('user_id', userId)
+                .eq('symbol', symbol)
+                .eq('model_type', 'adaptive_trading')
+                .maybeSingle();
+              
+              const currentWeights = existingModel?.model_weights?.indicatorWeights || {
+                ichimoku: 20, ema200: 15, macd: 20, bollinger: 15,
+                volume: 10, marketCondition: 10, volatility: 10
+              };
+              
+              const newIndicatorWeights = {
+                ichimoku: calculateNewWeight(indicatorPerf.ichimoku, currentWeights.ichimoku),
+                ema200: calculateNewWeight(indicatorPerf.ema200, currentWeights.ema200),
+                macd: calculateNewWeight(indicatorPerf.macd, currentWeights.macd),
+                bollinger: calculateNewWeight(indicatorPerf.bollinger, currentWeights.bollinger),
+                volume: calculateNewWeight(indicatorPerf.volume, currentWeights.volume),
+                marketCondition: calculateNewWeight(indicatorPerf.marketCondition, currentWeights.marketCondition),
+                volatility: calculateNewWeight(indicatorPerf.volatility, currentWeights.volatility)
+              };
+              
+              await supabaseClient
+                .from('asset_models')
+                .upsert({
+                  user_id: userId,
+                  symbol: symbol,
+                  model_type: 'adaptive_trading',
+                  model_weights: { 
+                    indicatorWeights: newIndicatorWeights,
+                    learning_iterations: (learningRecords.length / 10),
+                    confidence_bias: adaptiveParams.confidenceThreshold - 50,
+                    risk_bias: adaptiveParams.stopLossMultiplier - 1.0
+                  },
+                  performance_metrics: {
+                    winRate: adaptiveParams.successRate,
+                    avgReturn: adaptiveParams.averageProfit,
+                    totalTrades: tradeCount,
+                    rewardSignal: rewardSignal,
+                    indicatorPerformance: indicatorPerf,
+                    lastUpdated: new Date().toISOString()
+                  },
+                  updated_at: new Date().toISOString()
+                }, {
+                  onConflict: 'user_id,symbol,model_type'
+                });
+              
+              console.log(`✅ ${symbol}: Model updated`);
+            }
+          } catch (error) {
+            console.error(`❌ ${symbol}: Update failed -`, error);
+          }
+        }
+        
+        console.log(`✅ Background learning complete: ${parameterUpdates.length} parameters, ${modelUpdates.length} models updated`);
+      } catch (error) {
+        console.error('❌ Background learning error:', error);
+      }
+    };
+    
+    // Use EdgeRuntime.waitUntil to run learning in background
+    try {
+      (globalThis as any).EdgeRuntime?.waitUntil(learningTask());
+      console.log('✅ Learning task scheduled in background');
+    } catch (e) {
+      console.log('⚠️ EdgeRuntime not available, running learning synchronously...');
+      await learningTask();
+    }
   }
 
   return {
