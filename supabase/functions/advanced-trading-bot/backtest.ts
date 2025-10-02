@@ -1285,6 +1285,6 @@ async function processBatch(
     winningTrades,
     losingTrades: totalTrades - winningTrades,
     totalPnL: currentBalance - initialBalance,
-    trades: trades.map(t => ({ pnl: t.pnl || 0 }))
+    trades: tradeDecisionLogs // Return full trade decision logs with all properties
   };
 }
