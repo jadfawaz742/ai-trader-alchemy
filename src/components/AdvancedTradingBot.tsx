@@ -250,8 +250,8 @@ const AdvancedTradingBot: React.FC = () => {
               console.log(`   🧠 Decision: ${log.decisionReasoning}`);
             });
             
-            // Update trade logs state for UI display
-            setTradeDecisionLogs(data.backtestResults.tradeDecisionLogs);
+            // Update trade logs state for UI display - APPEND to keep history
+            setTradeDecisionLogs(prev => [...prev, ...data.backtestResults.tradeDecisionLogs]);
           }
           
           if (data.backtestResults.enhancedFeatures) {
