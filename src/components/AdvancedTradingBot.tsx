@@ -184,9 +184,14 @@ const AdvancedTradingBot: React.FC = () => {
         }
       });
 
-      if (error) throw error;
+      // ✅ FIX: Only throw error if we don't have valid data
+      // The function may shutdown after returning results, causing a false error
+      if (error && !data?.success) {
+        console.warn('Function error (but may have returned data):', error);
+        throw error;
+      }
 
-      if (data.success) {
+      if (data?.success) {
         setSignals(prev => [...data.signals, ...prev].slice(0, 50)); // Keep last 50 signals
         
         // Enhanced learning statistics display from actual training results
