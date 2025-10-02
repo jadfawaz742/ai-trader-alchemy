@@ -80,11 +80,106 @@ async function loadTrainedModel(
   }
 }
 
-// Fetch real historical data from Yahoo Finance with OPTIMIZED intervals
+// Fetch real historical data from Yahoo Finance or Bybit with OPTIMIZED intervals
 async function fetchRealHistoricalData(symbol: string, period: string): Promise<any[]> {
   try {
-    console.log(`📡 Fetching multi-timeframe data for ${symbol} over ${period}...`);
+    console.log(`📡 Fetching data for ${symbol} over ${period}...`);
     
+    // 🚀 CRYPTO: Use Bybit for crypto symbols (ending in -USD)
+    if (symbol.endsWith('-USD')) {
+      console.log(`   Using Bybit for crypto ${symbol}`);
+      return await fetchBybitHistoricalData(symbol, period);
+    }
+    
+    // 📈 STOCKS: Use Yahoo Finance for regular stocks
+    console.log(`   Using Yahoo Finance for stock ${symbol}`);
+    return await fetchYahooFinanceData(symbol, period);
+    
+  } catch (error) {
+    console.error(`❌ Failed to fetch historical data for ${symbol}:`, error);
+    return [];
+  }
+}
+
+// Fetch historical data from Bybit for crypto
+async function fetchBybitHistoricalData(symbol: string, period: string): Promise<any[]> {
+  try {
+    // Convert BTC-USD to BTCUSDT format for Bybit
+    const bybitSymbol = symbol.replace('-USD', 'USDT');
+    
+    // Determine interval and limit based on period
+    let interval: string;
+    let limit: number;
+    
+    switch (period) {
+      case '1day':
+        interval = '5'; // 5-minute candles
+        limit = 288; // 24 hours worth
+        break;
+      case '1week':
+        interval = '15'; // 15-minute candles
+        limit = 672; // 1 week worth
+        break;
+      case '2weeks':
+        interval = '30'; // 30-minute candles
+        limit = 672; // 2 weeks worth
+        break;
+      case '1month':
+        interval = '60'; // 1-hour candles
+        limit = 720; // 1 month worth
+        break;
+      case '3months':
+        interval = 'D'; // Daily candles
+        limit = 90; // 3 months worth
+        break;
+      default:
+        interval = '60';
+        limit = 720;
+    }
+    
+    const response = await fetch(
+      `https://api.bybit.com/v5/market/kline?category=spot&symbol=${bybitSymbol}&interval=${interval}&limit=${limit}`,
+      {
+        headers: {
+          'User-Agent': 'Mozilla/5.0'
+        }
+      }
+    );
+    
+    if (!response.ok) {
+      console.log(`⚠️ Bybit API error for ${symbol}: ${response.status}`);
+      return [];
+    }
+    
+    const data = await response.json();
+    
+    if (!data.result?.list || data.result.list.length === 0) {
+      console.log(`⚠️ No Bybit data returned for ${symbol}`);
+      return [];
+    }
+    
+    // Convert Bybit format to our standard format
+    const historicalData = data.result.list.reverse().map((kline: any[]) => ({
+      timestamp: parseInt(kline[0]),
+      open: parseFloat(kline[1]),
+      high: parseFloat(kline[2]),
+      low: parseFloat(kline[3]),
+      close: parseFloat(kline[4]),
+      volume: parseFloat(kline[5])
+    }));
+    
+    console.log(`✅ Fetched ${historicalData.length} Bybit data points for ${symbol}`);
+    return historicalData;
+    
+  } catch (error) {
+    console.error(`❌ Bybit fetch error for ${symbol}:`, error);
+    return [];
+  }
+}
+
+// Fetch historical data from Yahoo Finance for stocks
+async function fetchYahooFinanceData(symbol: string, period: string): Promise<any[]> {
+  try {
     // Determine date range based on backtest period
     let range: string;
     let primaryInterval: string;
