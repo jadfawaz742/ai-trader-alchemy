@@ -546,8 +546,8 @@ export async function runBacktestSimulation(
   console.log(`🚀 Features: Dynamic position sizing, ATR trailing stops, multi-timeframe, Fibonacci retracements/extensions, support/resistance`);
   console.log(`📊 Fibonacci Integration: Using 38.2% & 50% retracements for stops, 127.2% & 161.8% extensions for targets`);
   
-  // 🚀 OPTIMIZED BATCH PROCESSING: Process 20 symbols at a time for speed
-  const BATCH_SIZE = 20;
+  // 🚀 OPTIMIZED BATCH PROCESSING: Process all 53 symbols at once for maximum efficiency
+  const BATCH_SIZE = 53;
   const allResults = {
     totalTrades: 0,
     winningTrades: 0,
