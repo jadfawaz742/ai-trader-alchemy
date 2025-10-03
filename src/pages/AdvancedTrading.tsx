@@ -43,16 +43,16 @@ const AdvancedTrading = () => {
 
   if (!isAuthenticated) {
     return (
-      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
-        <div className="text-center">
-          <h1 className="text-4xl md:text-6xl font-bold text-white mb-4">
+      <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center p-4">
+        <div className="text-center max-w-4xl mx-auto">
+          <h1 className="text-3xl sm:text-4xl md:text-5xl lg:text-6xl font-bold text-white mb-4 px-4">
             Advanced PPO Trading Bot
           </h1>
-          <p className="text-xl text-gray-300 max-w-2xl mx-auto mb-8">
+          <p className="text-base sm:text-lg md:text-xl text-gray-300 max-w-2xl mx-auto mb-8 px-4">
             Advanced AI-powered trading with adaptive learning and backtesting
           </p>
           <Link to="/auth">
-            <Button size="lg" className="text-lg px-8 py-3">
+            <Button size="lg" className="text-base sm:text-lg px-6 sm:px-8 py-3 w-full sm:w-auto">
               Sign In to Get Started
             </Button>
           </Link>
@@ -64,32 +64,33 @@ const AdvancedTrading = () => {
   return (
     <PortfolioProvider>
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900">
-        <div className="container mx-auto px-4 py-8">
-          <div className="flex justify-between items-center mb-8">
-            <div className="text-center flex-1">
-              <h1 className="text-4xl md:text-6xl font-bold text-white mb-4">
-                <Brain className="inline-block h-12 w-12 mr-4 text-purple-400" />
-                Advanced PPO Trading Bot
+        <div className="container mx-auto px-4 py-4 sm:py-8">
+          <div className="flex flex-col lg:flex-row justify-between items-center mb-6 sm:mb-8 gap-4">
+            <div className="text-center lg:flex-1">
+              <h1 className="text-2xl sm:text-3xl md:text-4xl lg:text-5xl xl:text-6xl font-bold text-white mb-2 sm:mb-4 flex items-center justify-center gap-2 sm:gap-4">
+                <Brain className="h-8 w-8 sm:h-10 sm:w-10 md:h-12 md:w-12 text-purple-400" />
+                <span className="break-words">Advanced PPO Trading Bot</span>
               </h1>
-              <p className="text-xl text-gray-300 max-w-2xl mx-auto">
+              <p className="text-sm sm:text-base md:text-lg lg:text-xl text-gray-300 max-w-2xl mx-auto px-2">
                 Advanced AI-powered trading with adaptive learning, backtesting, and risk management
               </p>
             </div>
-            <div className="flex gap-2">
-              <Button variant="outline" asChild>
+            <div className="flex gap-2 flex-wrap justify-center">
+              <Button variant="outline" asChild className="text-xs sm:text-sm">
                 <Link to="/stocks">
-                  <BarChart3 className="h-4 w-4 mr-2" />
-                  Browse Stocks
+                  <BarChart3 className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                  <span className="hidden sm:inline">Browse Stocks</span>
+                  <span className="sm:hidden">Stocks</span>
                 </Link>
               </Button>
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
-                  <Button variant="outline">
-                    <User className="h-4 w-4 mr-2" />
+                  <Button variant="outline" className="text-xs sm:text-sm">
+                    <User className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
                     Account
                   </Button>
                 </DropdownMenuTrigger>
-                <DropdownMenuContent align="end" className="w-48">
+                <DropdownMenuContent align="end" className="w-48 z-50 bg-background">
                   <DropdownMenuItem asChild>
                     <Link to="/profile" className="flex items-center">
                       <User className="h-4 w-4 mr-2" />
