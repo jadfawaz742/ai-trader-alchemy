@@ -1,5 +1,13 @@
 // Shared trading decision logic used by both live trading and backtesting
 
+export type MarketPhase = 'accumulation' | 'uptrend' | 'distribution' | 'downtrend';
+
+export interface MarketPhaseInfo {
+  phase: MarketPhase;
+  confidence: number;
+  reasoning: string[];
+}
+
 export interface TradingState {
   price: number;
   volume: number;
@@ -17,6 +25,7 @@ export interface TradingState {
   volatility: number;
   confluenceScore: number;
   historicalPerformance: number[];
+  marketPhase?: MarketPhaseInfo;
 }
 
 export interface TradingAction {
@@ -39,6 +48,218 @@ export interface RiskLevel {
   minFibLevel?: number;
   minSRStrength?: number;
   description: string;
+}
+
+// Detect market phase based on price action, volume, and indicators
+export function detectMarketPhase(
+  prices: number[],
+  volumes: number[],
+  indicators: TradingState['indicators']
+): MarketPhaseInfo {
+  const reasons: string[] = [];
+  let phaseScore = {
+    accumulation: 0,
+    uptrend: 0,
+    distribution: 0,
+    downtrend: 0
+  };
+  
+  // Need at least 20 candles for phase detection
+  if (prices.length < 20) {
+    return {
+      phase: 'accumulation',
+      confidence: 50,
+      reasoning: ['Insufficient data for phase detection']
+    };
+  }
+  
+  const currentPrice = prices[prices.length - 1];
+  const recentPrices = prices.slice(-20);
+  const recentVolumes = volumes.slice(-20);
+  
+  // Calculate price statistics
+  const priceHigh = Math.max(...recentPrices);
+  const priceLow = Math.min(...recentPrices);
+  const priceRange = priceHigh - priceLow;
+  const avgPrice = recentPrices.reduce((a, b) => a + b, 0) / recentPrices.length;
+  const priceStdDev = Math.sqrt(
+    recentPrices.reduce((sum, p) => sum + Math.pow(p - avgPrice, 2), 0) / recentPrices.length
+  );
+  const volatilityRatio = priceStdDev / avgPrice;
+  
+  // Calculate volume statistics
+  const avgVolume = recentVolumes.reduce((a, b) => a + b, 0) / recentVolumes.length;
+  const recentAvgVolume = recentVolumes.slice(-5).reduce((a, b) => a + b, 0) / 5;
+  const volumeChange = (recentAvgVolume - avgVolume) / avgVolume;
+  
+  // Detect higher highs and higher lows (uptrend)
+  let higherHighs = 0;
+  let higherLows = 0;
+  for (let i = 5; i < recentPrices.length; i++) {
+    const prevHigh = Math.max(...recentPrices.slice(i - 5, i));
+    const currHigh = Math.max(...recentPrices.slice(i - 2, i + 1));
+    if (currHigh > prevHigh) higherHighs++;
+    
+    const prevLow = Math.min(...recentPrices.slice(i - 5, i));
+    const currLow = Math.min(...recentPrices.slice(i - 2, i + 1));
+    if (currLow > prevLow) higherLows++;
+  }
+  
+  // Detect lower highs and lower lows (downtrend)
+  let lowerHighs = 0;
+  let lowerLows = 0;
+  for (let i = 5; i < recentPrices.length; i++) {
+    const prevHigh = Math.max(...recentPrices.slice(i - 5, i));
+    const currHigh = Math.max(...recentPrices.slice(i - 2, i + 1));
+    if (currHigh < prevHigh) lowerHighs++;
+    
+    const prevLow = Math.min(...recentPrices.slice(i - 5, i));
+    const currLow = Math.min(...recentPrices.slice(i - 2, i + 1));
+    if (currLow < prevLow) lowerLows++;
+  }
+  
+  // EMA200 slope
+  const ema200Slope = indicators.ema200 > 0 ? 'up' : 'flat';
+  const priceAboveEMA = currentPrice > indicators.ema200;
+  const emaDeviation = Math.abs((currentPrice - indicators.ema200) / indicators.ema200);
+  
+  // MACD analysis
+  const macdPositive = indicators.macd.histogram > 0;
+  const macdNearZero = Math.abs(indicators.macd.histogram) < 0.5;
+  
+  // ATR analysis (volatility)
+  const atrPercent = indicators.atr / currentPrice;
+  const lowVolatility = atrPercent < 0.02;
+  const highVolatility = atrPercent > 0.05;
+  
+  // OBV analysis
+  const obvPositive = indicators.obv > 0;
+  
+  // === ACCUMULATION PHASE ===
+  // Sideways, low volatility, stable volume
+  if (volatilityRatio < 0.015 && lowVolatility) {
+    phaseScore.accumulation += 30;
+    reasons.push('Low volatility (narrow range)');
+  }
+  
+  if (priceRange / avgPrice < 0.03) {
+    phaseScore.accumulation += 25;
+    reasons.push('Tight price range');
+  }
+  
+  if (emaDeviation < 0.02) {
+    phaseScore.accumulation += 20;
+    reasons.push('Price near EMA200');
+  }
+  
+  if (macdNearZero) {
+    phaseScore.accumulation += 15;
+    reasons.push('MACD near zero');
+  }
+  
+  if (Math.abs(volumeChange) < 0.2) {
+    phaseScore.accumulation += 10;
+    reasons.push('Stable volume');
+  }
+  
+  // === UPTREND PHASE ===
+  // Higher highs/lows, increasing volume, positive indicators
+  if (higherHighs >= 8 && higherLows >= 8) {
+    phaseScore.uptrend += 40;
+    reasons.push('Higher highs and higher lows');
+  }
+  
+  if (priceAboveEMA && emaDeviation > 0.02) {
+    phaseScore.uptrend += 20;
+    reasons.push('Price above rising EMA200');
+  }
+  
+  if (macdPositive) {
+    phaseScore.uptrend += 15;
+    reasons.push('Positive MACD');
+  }
+  
+  if (obvPositive) {
+    phaseScore.uptrend += 10;
+    reasons.push('Increasing OBV');
+  }
+  
+  if (volumeChange > 0.1) {
+    phaseScore.uptrend += 15;
+    reasons.push('Rising volume on upward moves');
+  }
+  
+  // === DISTRIBUTION PHASE ===
+  // Sideways at top of uptrend, high volume but no price movement
+  const nearTop = currentPrice > avgPrice && currentPrice >= priceHigh * 0.95;
+  
+  if (nearTop && volatilityRatio < 0.02) {
+    phaseScore.distribution += 30;
+    reasons.push('Sideways at top of range');
+  }
+  
+  if (nearTop && volumeChange > 0.3 && priceRange / avgPrice < 0.04) {
+    phaseScore.distribution += 30;
+    reasons.push('High volume without upward movement');
+  }
+  
+  if (emaDeviation < 0.02 && priceAboveEMA) {
+    phaseScore.distribution += 15;
+    reasons.push('Price consolidating above EMA200');
+  }
+  
+  if (macdNearZero && priceAboveEMA) {
+    phaseScore.distribution += 15;
+    reasons.push('MACD diverging from price');
+  }
+  
+  if (highVolatility && nearTop) {
+    phaseScore.distribution += 10;
+    reasons.push('Increased volatility at peak');
+  }
+  
+  // === DOWNTREND PHASE ===
+  // Lower highs/lows, increasing volume on sell-offs, negative indicators
+  if (lowerHighs >= 8 && lowerLows >= 8) {
+    phaseScore.downtrend += 40;
+    reasons.push('Lower highs and lower lows');
+  }
+  
+  if (!priceAboveEMA && emaDeviation > 0.02) {
+    phaseScore.downtrend += 20;
+    reasons.push('Price below falling EMA200');
+  }
+  
+  if (!macdPositive) {
+    phaseScore.downtrend += 15;
+    reasons.push('Negative MACD');
+  }
+  
+  if (!obvPositive) {
+    phaseScore.downtrend += 10;
+    reasons.push('Decreasing OBV');
+  }
+  
+  if (volumeChange > 0.1 && currentPrice < avgPrice) {
+    phaseScore.downtrend += 15;
+    reasons.push('Rising volume on downward moves');
+  }
+  
+  // Determine winning phase
+  const maxScore = Math.max(...Object.values(phaseScore));
+  const phase = (Object.entries(phaseScore).find(([_, score]) => score === maxScore)?.[0] || 'accumulation') as MarketPhase;
+  const confidence = Math.min(95, Math.max(50, maxScore));
+  
+  return {
+    phase,
+    confidence,
+    reasoning: reasons.filter(r => 
+      (phase === 'accumulation' && r.includes('volatility') || r.includes('range') || r.includes('EMA') || r.includes('MACD') || r.includes('volume')) ||
+      (phase === 'uptrend' && (r.includes('Higher') || r.includes('above') || r.includes('Positive') || r.includes('Increasing') || r.includes('Rising'))) ||
+      (phase === 'distribution' && (r.includes('top') || r.includes('volume') || r.includes('consolidating') || r.includes('diverging'))) ||
+      (phase === 'downtrend' && (r.includes('Lower') || r.includes('below') || r.includes('Negative') || r.includes('Decreasing')))
+    )
+  };
 }
 
 // AI-powered decision making using trained models or rule-based fallback
@@ -140,6 +361,44 @@ export async function makeAITradingDecision(
     }
   }
   
+  // 🌊 MARKET PHASE ADJUSTMENT - modifies confidence, not a hard rule
+  if (state.marketPhase) {
+    const phase = state.marketPhase.phase;
+    const phaseConfidence = state.marketPhase.confidence;
+    
+    if (phase === 'accumulation' || phase === 'distribution') {
+      // Consolidation phases: reduce confidence, favor retracements
+      confidence = confidence * 0.85; // Reduce confidence by 15%
+      reasons.push(`${phase} phase: reduced confidence, favor Fib retracements`);
+      
+      // Favor only high-confidence signals
+      if (confidence < 70) {
+        action = 'HOLD';
+        reasons.push(`${phase}: confidence too low, avoid weak signals`);
+      }
+    } else if (phase === 'uptrend' && action === 'BUY') {
+      // Uptrend + BUY: boost confidence
+      const boost = Math.min(15, phaseConfidence * 0.15);
+      confidence = Math.min(95, confidence + boost);
+      reasons.push(`Uptrend phase: boosted BUY confidence by ${boost.toFixed(1)}%, favor Fib extensions`);
+    } else if (phase === 'downtrend' && action === 'SELL') {
+      // Downtrend + SELL: boost confidence
+      const boost = Math.min(15, phaseConfidence * 0.15);
+      confidence = Math.min(95, confidence + boost);
+      reasons.push(`Downtrend phase: boosted SELL confidence by ${boost.toFixed(1)}%, favor Fib extensions`);
+    } else if ((phase === 'uptrend' && action === 'SELL') || (phase === 'downtrend' && action === 'BUY')) {
+      // Counter-trend trade: reduce confidence significantly
+      confidence = confidence * 0.7;
+      reasons.push(`${phase}: counter-trend trade, reduced confidence by 30%`);
+      
+      // Only take counter-trend if very high confidence
+      if (confidence < 75) {
+        action = 'HOLD';
+        reasons.push(`${phase}: counter-trend confidence too low, avoid trade`);
+      }
+    }
+  }
+  
   // Add Fibonacci information to reasoning if available
   const fibLevels = state.indicators.fibonacci?.levels || [];
   if (fibLevels.length > 0) {
@@ -156,9 +415,14 @@ export async function makeAITradingDecision(
   }
   
   // Calculate stop loss and take profit using Fibonacci retracements/extensions + ATR
+  // 🌊 Market phase influences whether we favor retracements or extensions
   const atr = state.indicators.atr;
   let stopLoss = 0;
   let takeProfit = 0;
+  
+  const phase = state.marketPhase?.phase || 'accumulation';
+  const favorRetracements = phase === 'accumulation' || phase === 'distribution';
+  const favorExtensions = phase === 'uptrend' || phase === 'downtrend';
   
   if (action === 'BUY') {
     // Calculate Fibonacci retracement for stop loss
@@ -178,8 +442,15 @@ export async function makeAITradingDecision(
     stopLoss = Math.min(fibStopLoss, atrStopLoss);
     
     // Calculate Fibonacci extension for take profit
-    // Use 161.8% extension for high confidence, 127.2% for moderate
-    const fibExtensionLevel = confidence > 80 ? 1.618 : 1.272;
+    // 🌊 Phase adjustment: favor extensions in trends, retracements in consolidation
+    let fibExtensionLevel: number;
+    if (favorExtensions) {
+      // Uptrend: use aggressive Fibonacci extensions
+      fibExtensionLevel = confidence > 80 ? 1.618 : 1.272;
+    } else {
+      // Accumulation/Distribution: use conservative Fibonacci retracements
+      fibExtensionLevel = confidence > 80 ? 1.272 : 1.0;
+    }
     const fibTakeProfit = state.price + (priceRange * (fibExtensionLevel - 1));
     
     // Use ATR-based take profit as backup
@@ -206,8 +477,15 @@ export async function makeAITradingDecision(
     stopLoss = Math.max(fibStopLoss, atrStopLoss);
     
     // Calculate Fibonacci extension for take profit
-    // Use 161.8% extension for high confidence, 127.2% for moderate
-    const fibExtensionLevel = confidence > 80 ? 1.618 : 1.272;
+    // 🌊 Phase adjustment: favor extensions in trends, retracements in consolidation
+    let fibExtensionLevel: number;
+    if (favorExtensions) {
+      // Downtrend: use aggressive Fibonacci extensions
+      fibExtensionLevel = confidence > 80 ? 1.618 : 1.272;
+    } else {
+      // Accumulation/Distribution: use conservative Fibonacci retracements
+      fibExtensionLevel = confidence > 80 ? 1.272 : 1.0;
+    }
     const fibTakeProfit = state.price - (priceRange * (fibExtensionLevel - 1));
     
     // Use ATR-based take profit as backup

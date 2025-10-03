@@ -164,6 +164,18 @@ export const RetrainModelsButton: React.FC = () => {
           <p>✅ Using real Bybit prices for cryptocurrencies</p>
           <p>✅ Technical indicators calculated from real OHLCV data</p>
           <p>✅ Multi-timeframe analysis from actual price trends</p>
+          <p>🌊 Market phase detection for adaptive trading</p>
+        </div>
+        <div className="mt-4 space-y-2 text-sm text-muted-foreground">
+          <p><strong>Enhanced Training Features:</strong></p>
+          <ul className="list-disc list-inside space-y-1 ml-2">
+            <li>🌊 Market Phase Detection: Identifies accumulation, uptrend, distribution, and downtrend phases</li>
+            <li>📊 Multi-timeframe analysis: Hourly, 4-hour, and daily perspectives</li>
+            <li>📐 Fibonacci levels: 38.2%, 50%, 61.8% retracements and 127.2%, 161.8% extensions</li>
+            <li>🎯 Support/Resistance: Dynamic levels based on swing highs/lows</li>
+            <li>🧠 Adaptive learning: Models adjust based on past performance</li>
+            <li>⚡ Phase-aware trading: Confidence adjusted by market phase (accumulation/distribution favor retracements, trends favor extensions)</li>
+          </ul>
         </div>
       </CardContent>
     </Card>

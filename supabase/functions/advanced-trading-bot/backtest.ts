@@ -2,6 +2,7 @@ import {
   makeAITradingDecision, 
   calculateConfluenceScore, 
   calculateRiskParameters,
+  detectMarketPhase,
   TradingState,
   TradingAction,
   RiskLevel
@@ -427,6 +428,36 @@ function buildTradingState(historicalData: any[], index: number): TradingState {
     }
   }
   
+  // 🌊 Detect market phase based on price action, volume, and indicators
+  const marketPhase = detectMarketPhase(prices, volumes, {
+    ichimoku: {
+      tenkanSen,
+      kijunSen,
+      signal: ichimokuSignal
+    },
+    ema200,
+    macd: {
+      macd: macdLine,
+      signal: signalLine,
+      histogram
+    },
+    atr,
+    obv,
+    bollinger: {
+      upper: upperBand,
+      middle: mean,
+      lower: lowerBand,
+      position: bbPosition
+    },
+    fibonacci: {
+      levels: fibLevels,
+      high: fibHigh,
+      low: fibLow,
+      range: fibHigh - fibLow
+    },
+    supportResistance: supportResistance
+  });
+  
   return {
     price: currentBar.close,
     volume: currentBar.volume,
@@ -461,7 +492,8 @@ function buildTradingState(historicalData: any[], index: number): TradingState {
     marketCondition,
     volatility,
     confluenceScore: 0, // Will be calculated
-    historicalPerformance: []
+    historicalPerformance: [],
+    marketPhase // 🌊 Add market phase information
   };
 }
 
