@@ -3,6 +3,7 @@ import AdvancedTradingBot from "@/components/AdvancedTradingBot";
 import { MarketActivityFeed } from "@/components/MarketActivityFeed";
 import { PortfolioDashboard } from "@/components/PortfolioDashboard";
 import { PortfolioProvider } from "@/components/PortfolioProvider";
+import { TradingLearningLogs } from "@/components/TradingLearningLogs";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
@@ -112,12 +113,15 @@ const AdvancedTrading = () => {
           </div>
           
           <Tabs defaultValue="trading" className="space-y-6">
-            <TabsList className="grid w-full grid-cols-5 bg-slate-800/50 border border-slate-700">
+            <TabsList className="grid w-full grid-cols-6 bg-slate-800/50 border border-slate-700">
               <TabsTrigger value="trading" className="text-white data-[state=active]:bg-purple-600">
                 Advanced Trading
               </TabsTrigger>
               <TabsTrigger value="portfolio" className="text-white data-[state=active]:bg-purple-600">
                 Portfolio
+              </TabsTrigger>
+              <TabsTrigger value="learning" className="text-white data-[state=active]:bg-purple-600">
+                AI Learning
               </TabsTrigger>
               <TabsTrigger value="market" className="text-white data-[state=active]:bg-purple-600">
                 Market Activity
@@ -138,6 +142,10 @@ const AdvancedTrading = () => {
 
             <TabsContent value="portfolio" className="space-y-6">
               <PortfolioDashboard />
+            </TabsContent>
+
+            <TabsContent value="learning" className="space-y-6">
+              <TradingLearningLogs />
             </TabsContent>
 
             <TabsContent value="market" className="space-y-6">
