@@ -113,23 +113,23 @@ const AdvancedTrading = () => {
           </div>
           
           <Tabs defaultValue="trading" className="space-y-6">
-            <TabsList className="grid w-full grid-cols-6 bg-slate-800/50 border border-slate-700">
-              <TabsTrigger value="trading" className="text-white data-[state=active]:bg-purple-600">
+            <TabsList className="grid w-full grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2 bg-slate-800/50 border border-slate-700 p-2 h-auto">
+              <TabsTrigger value="trading" className="text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white">
                 Advanced Trading
               </TabsTrigger>
-              <TabsTrigger value="portfolio" className="text-white data-[state=active]:bg-purple-600">
+              <TabsTrigger value="portfolio" className="text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white">
                 Portfolio
               </TabsTrigger>
-              <TabsTrigger value="learning" className="text-white data-[state=active]:bg-purple-600">
+              <TabsTrigger value="learning" className="text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white">
                 AI Learning
               </TabsTrigger>
-              <TabsTrigger value="market" className="text-white data-[state=active]:bg-purple-600">
+              <TabsTrigger value="market" className="text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white">
                 Market Activity
               </TabsTrigger>
-              <TabsTrigger value="analyzer" className="text-white data-[state=active]:bg-purple-600">
+              <TabsTrigger value="analyzer" className="text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white">
                 Stock Analyzer
               </TabsTrigger>
-              <TabsTrigger value="news" className="text-white data-[state=active]:bg-purple-600">
+              <TabsTrigger value="news" className="text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white">
                 Market News
               </TabsTrigger>
             </TabsList>
