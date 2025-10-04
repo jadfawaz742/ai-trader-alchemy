@@ -26,8 +26,13 @@ export const TrainAssetModel = () => {
     setResult(null);
 
     try {
+      const { data: { session } } = await supabase.auth.getSession();
+      
       const { data, error } = await supabase.functions.invoke('train-asset-model', {
-        body: { symbol: symbol.trim().toUpperCase() }
+        body: { symbol: symbol.trim().toUpperCase() },
+        headers: {
+          Authorization: `Bearer ${session?.access_token}`
+        }
       });
 
       if (error) throw error;
