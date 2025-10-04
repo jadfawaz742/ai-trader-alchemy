@@ -104,17 +104,19 @@ serve(async (req) => {
       throw new Error(`Insufficient data for ${normalizedSymbol}. Need at least 100 data points.`);
     }
 
-    // Get the general base model
+    // Get the general base model (optional - will create from scratch if not found)
     const { data: baseModel } = await supabaseClient
       .from('base_models')
       .select('*')
       .eq('model_type', 'general_ppo')
       .order('created_at', { ascending: false })
       .limit(1)
-      .single();
+      .maybeSingle();
 
-    if (!baseModel) {
-      throw new Error('No general base model found. Please train the base model first.');
+    if (baseModel) {
+      console.log(`Using base model ${baseModel.id} for fine-tuning`);
+    } else {
+      console.log('No base model found - training from scratch');
     }
 
     // Determine asset type
@@ -129,8 +131,11 @@ serve(async (req) => {
     const trainData = historicalData.slice(0, splitIndex);
     const testData = historicalData.slice(splitIndex);
 
-    // Fine-tune the model
-    const trainer = new AssetSpecificPPOTrainer(assetType, baseModel.model_weights);
+    // Fine-tune the model (or train from scratch)
+    const trainer = new AssetSpecificPPOTrainer(
+      assetType, 
+      baseModel ? baseModel.model_weights : null
+    );
     const metrics = await trainer.trainOnSymbol(normalizedSymbol, trainData, testData);
 
     // Save the fine-tuned model
@@ -143,7 +148,7 @@ serve(async (req) => {
         symbol: normalizedSymbol,
         model_type: `${assetType}_ppo`,
         model_weights: modelWeights,
-        base_model_id: baseModel.id,
+        base_model_id: baseModel?.id || null,
         performance_metrics: {
           train: metrics.train,
           test: metrics.test
@@ -152,7 +157,8 @@ serve(async (req) => {
           data_points: historicalData.length,
           train_size: trainData.length,
           test_size: testData.length,
-          asset_type: assetType
+          asset_type: assetType,
+          trained_from_base: !!baseModel
         }
       });
 
