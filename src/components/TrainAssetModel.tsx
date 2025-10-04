@@ -26,12 +26,23 @@ export const TrainAssetModel = () => {
     setResult(null);
 
     try {
-      const { data: { session } } = await supabase.auth.getSession();
+      // Get fresh session
+      const { data: { session }, error: sessionError } = await supabase.auth.getSession();
       
+      if (sessionError || !session) {
+        toast({
+          title: "Authentication Required",
+          description: "Please log in to train models",
+          variant: "destructive"
+        });
+        setIsTraining(false);
+        return;
+      }
+
       const { data, error } = await supabase.functions.invoke('train-asset-model', {
         body: { symbol: symbol.trim().toUpperCase() },
         headers: {
-          Authorization: `Bearer ${session?.access_token}`
+          Authorization: `Bearer ${session.access_token}`
         }
       });
 
