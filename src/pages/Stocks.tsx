@@ -8,6 +8,7 @@ import { ScrollArea } from '@/components/ui/scroll-area';
 import { ArrowLeft, Search, TrendingUp, TrendingDown, Activity, DollarSign } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
+import { useAuth } from '@/hooks/useAuth';
 
 // Stock symbols to fetch - no hardcoded prices
 const STOCK_SYMBOLS = [
@@ -72,8 +73,49 @@ const StocksPage: React.FC = () => {
   const [sortOrder, setSortOrder] = useState<'asc' | 'desc'>('asc');
   const [stockPrices, setStockPrices] = useState<Record<string, any>>({});
   const [isLoading, setIsLoading] = useState(true);
+  const [trainedAssets, setTrainedAssets] = useState<string[]>([]);
+  const [allSymbols, setAllSymbols] = useState(STOCK_SYMBOLS);
   const navigate = useNavigate();
   const { toast } = useToast();
+  const { user } = useAuth();
+
+  useEffect(() => {
+    const fetchTrainedAssets = async () => {
+      if (!user) return;
+      
+      try {
+        const { data, error } = await supabase
+          .from('asset_models')
+          .select('symbol')
+          .eq('user_id', user.id);
+        
+        if (error) throw error;
+        
+        const trainedSymbols = [...new Set(data?.map(d => d.symbol) || [])];
+        setTrainedAssets(trainedSymbols);
+        
+        // Merge trained assets with static list
+        const trainedNotInList = trainedSymbols.filter(
+          symbol => !STOCK_SYMBOLS.find(s => s.symbol === symbol)
+        );
+        
+        const newSymbols = trainedNotInList.map(symbol => ({
+          symbol,
+          name: symbol,
+          sector: 'Trained',
+          cap: 'Medium' as const
+        }));
+        
+        if (newSymbols.length > 0) {
+          setAllSymbols([...STOCK_SYMBOLS, ...newSymbols]);
+        }
+      } catch (error) {
+        console.error('Error fetching trained assets:', error);
+      }
+    };
+    
+    fetchTrainedAssets();
+  }, [user]);
 
   useEffect(() => {
     const fetchRealPrices = async () => {
@@ -81,8 +123,8 @@ const StocksPage: React.FC = () => {
       const priceData: Record<string, any> = {};
       
       // Separate stocks and crypto
-      const stocks = STOCK_SYMBOLS.filter(s => s.sector !== 'Crypto');
-      const cryptos = STOCK_SYMBOLS.filter(s => s.sector === 'Crypto');
+      const stocks = allSymbols.filter(s => s.sector !== 'Crypto');
+      const cryptos = allSymbols.filter(s => s.sector === 'Crypto');
       
       // Fetch crypto prices from Bybit
       try {
@@ -128,12 +170,12 @@ const StocksPage: React.FC = () => {
     };
     
     fetchRealPrices();
-  }, []);
+  }, [allSymbols]);
 
-  const sectors = ['All', ...Array.from(new Set(STOCK_SYMBOLS.map(stock => stock.sector)))];
+  const sectors = ['All', 'Trained Models', ...Array.from(new Set(allSymbols.map(stock => stock.sector)))];
   const caps = ['All', 'Large', 'Medium', 'Small'];
 
-  const filteredAndSortedStocks = STOCK_SYMBOLS
+  const filteredAndSortedStocks = allSymbols
     .map(stock => {
       // Only show stocks with real data from Yahoo Finance or Bybit
       const realData = stockPrices[stock.symbol];
@@ -152,7 +194,9 @@ const StocksPage: React.FC = () => {
     .filter(stock => {
       const matchesSearch = stock.symbol.toLowerCase().includes(searchTerm.toLowerCase()) ||
                            stock.name.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesSector = selectedSector === 'All' || stock.sector === selectedSector;
+      const matchesSector = selectedSector === 'All' || 
+                           (selectedSector === 'Trained Models' && trainedAssets.includes(stock.symbol)) ||
+                           stock.sector === selectedSector;
       const matchesCap = selectedCap === 'All' || stock.cap === selectedCap;
       
       return matchesSearch && matchesSector && matchesCap;
@@ -315,11 +359,16 @@ const StocksPage: React.FC = () => {
               >
                 <CardHeader className="pb-3">
                   <div className="flex items-center justify-between">
-                    <div>
-                      <div className="flex items-center gap-2">
+                  <div>
+                      <div className="flex items-center gap-2 flex-wrap">
                         <CardTitle className="text-lg font-mono">{stock.symbol}</CardTitle>
                         {hasRealData && (
                           <Badge variant="secondary" className="text-xs">Live</Badge>
+                        )}
+                        {trainedAssets.includes(stock.symbol) && (
+                          <Badge className="text-xs bg-emerald-500 hover:bg-emerald-600">
+                            🤖 Trained
+                          </Badge>
                         )}
                       </div>
                       <p className="text-sm text-muted-foreground truncate">{stock.name}</p>
