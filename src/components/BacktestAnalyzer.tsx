@@ -4,8 +4,11 @@ import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, BarChart, Bar, ReferenceLine } from 'recharts';
-import { TrendingUp, TrendingDown, Target, Timer, DollarSign, BarChart3, Activity } from 'lucide-react';
+import { TrendingUp, TrendingDown, Target, Timer, DollarSign, BarChart3, Activity, AlertCircle } from 'lucide-react';
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select';
+import { supabase } from '@/integrations/supabase/client';
+import { useToast } from '@/hooks/use-toast';
+import { Alert, AlertDescription } from '@/components/ui/alert';
 
 interface BacktestTrade {
   id: string;
@@ -45,159 +48,132 @@ interface BacktestResults {
 const BacktestAnalyzer: React.FC = () => {
   const [selectedSymbol, setSelectedSymbol] = useState('AAPL');
   const [selectedPeriod, setSelectedPeriod] = useState('6m');
+  const [selectedRisk, setSelectedRisk] = useState<'low' | 'medium' | 'high'>('medium');
   const [isRunning, setIsRunning] = useState(false);
   const [results, setResults] = useState<BacktestResults | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const { toast } = useToast();
 
-  const symbols = ['AAPL', 'GOOGL', 'MSFT', 'AMZN', 'META', 'NVDA', 'TSLA'];
+  const symbols = ['AAPL', 'GOOGL', 'MSFT', 'AMZN', 'META', 'NVDA', 'TSLA', 'BTC-USD', 'ETH-USD', 'SOL-USD'];
   const periods = [
-    { value: '3m', label: '3 Months' },
-    { value: '6m', label: '6 Months' },
-    { value: '1y', label: '1 Year' },
-    { value: '2y', label: '2 Years' }
+    { value: '3months', label: '3 Months' },
+    { value: '6months', label: '6 Months' },
+    { value: '1year', label: '1 Year' },
+    { value: '2years', label: '2 Years' }
+  ];
+  const riskLevels = [
+    { value: 'low', label: 'Conservative (75%+ confluence)' },
+    { value: 'medium', label: 'Moderate (45%+ confluence)' },
+    { value: 'high', label: 'Aggressive (30%+ confluence)' }
   ];
 
   const runBacktest = async () => {
     setIsRunning(true);
+    setError(null);
     
-    // Simulate backtesting delay
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    
-    const mockResults = generateMockBacktestResults(selectedSymbol, selectedPeriod);
-    setResults(mockResults);
-    setIsRunning(false);
-  };
+    try {
+      console.log('🔬 Starting real backtest...', { selectedSymbol, selectedPeriod, selectedRisk });
+      
+      const { data: { user } } = await supabase.auth.getUser();
+      if (!user) {
+        throw new Error('You must be logged in to run backtests');
+      }
 
-  const generateMockBacktestResults = (symbol: string, period: string): BacktestResults => {
-    const days = period === '3m' ? 90 : period === '6m' ? 180 : period === '1y' ? 365 : 730;
-    const trades: BacktestTrade[] = [];
-    const equityCurve: Array<{ date: string; value: number; drawdown: number }> = [];
-    
-    let startingValue = 100000;
-    let currentValue = startingValue;
-    let maxValue = startingValue;
-    let basePrice = 150; // Starting price for AAPL
-    
-    // Generate historical data and trades
-    for (let i = 0; i < days; i++) {
-      const date = new Date();
-      date.setDate(date.getDate() - (days - i));
-      
-      // Price movement simulation
-      const dailyChange = (Math.random() - 0.5) * 0.06; // ±3% daily
-      basePrice *= (1 + dailyChange);
-      
-      // Generate mock technical indicators
-      const rsi = 30 + Math.random() * 40; // 30-70 range
-      const macd = (Math.random() - 0.5) * 2; // -1 to 1
-      const volumeSpike = Math.random() > 0.8; // 20% chance
-      const fibLevel = Math.random();
-      
-      // Strategy logic (simplified version of our auto-trade function)
-      const rsiSignal = rsi < 35 ? 'BUY' : rsi > 65 ? 'SELL' : 'HOLD';
-      const macdSignal = macd > 0.3 ? 'BUY' : macd < -0.3 ? 'SELL' : 'HOLD';
-      const fibSignal = fibLevel < 0.4 ? 'BUY' : fibLevel > 0.6 ? 'SELL' : 'HOLD';
-      
-      const signals = [rsiSignal, macdSignal, fibSignal];
-      const buySignals = signals.filter(s => s === 'BUY').length;
-      const sellSignals = signals.filter(s => s === 'SELL').length;
-      
-      let action: 'BUY' | 'SELL' | null = null;
-      let confidence = 50;
-      
-      if (buySignals >= 2 && Math.random() > 0.85) { // 15% chance to trade
-        action = 'BUY';
-        confidence = 70 + (buySignals * 10) + (volumeSpike ? 10 : 0);
-      } else if (sellSignals >= 2 && Math.random() > 0.85) {
-        action = 'SELL';
-        confidence = 70 + (sellSignals * 10) + (volumeSpike ? 10 : 0);
+      // Call the real edge function
+      const { data, error: functionError } = await supabase.functions.invoke('advanced-trading-bot', {
+        body: {
+          mode: 'scan',
+          symbols: [selectedSymbol],
+          risk: selectedRisk,
+          portfolioBalance: 100000,
+          tradingFrequency: 'aggressive',
+          maxDailyTrades: 20,
+          enableShorts: false,
+          backtestMode: true,
+          backtestPeriod: selectedPeriod
+        }
+      });
+
+      if (functionError) {
+        console.error('Edge function error:', functionError);
+        throw new Error(functionError.message || 'Failed to run backtest');
       }
-      
-      if (action && confidence >= 70) {
-        const quantity = Math.floor(1000 / basePrice);
-        const trade: BacktestTrade = {
-          id: `trade-${i}`,
-          date: date.toISOString().split('T')[0],
-          action,
-          price: Math.round(basePrice * 100) / 100,
-          quantity,
-          confidence: Math.round(confidence),
-          rsi: Math.round(rsi * 10) / 10,
-          macd: Math.round(macd * 1000) / 1000,
-          volumeSpike,
-          fibLevel: Math.round(fibLevel * 100) / 100,
-          outcome: 'open'
+
+      console.log('✅ Backtest results received:', data);
+
+      // Transform the API response to our BacktestResults interface
+      if (data && data.backtestResults) {
+        const apiResults = data.backtestResults;
+        
+        // Map trades to our interface
+        const trades: BacktestTrade[] = apiResults.trades?.map((trade: any, index: number) => ({
+          id: `trade-${index}`,
+          date: trade.timestamp || new Date().toISOString().split('T')[0],
+          action: trade.action as 'BUY' | 'SELL',
+          price: trade.entryPrice || trade.price,
+          quantity: trade.quantity || 1,
+          confidence: trade.confidence || 0,
+          rsi: trade.indicators?.rsi || 0,
+          macd: trade.indicators?.macd?.histogram || 0,
+          volumeSpike: trade.indicators?.volumeSpike || false,
+          fibLevel: trade.indicators?.fibonacci || 0,
+          pnl: trade.pnl || 0,
+          closePrice: trade.exitPrice,
+          closeDate: trade.exitDate,
+          duration: trade.duration,
+          outcome: trade.outcome as 'win' | 'loss' | 'open'
+        })) || [];
+
+        // Map equity curve
+        const equityCurve = apiResults.equityCurve?.map((point: any) => ({
+          date: point.date || point.timestamp,
+          value: point.value || point.balance,
+          drawdown: point.drawdown || 0
+        })) || [];
+
+        const transformedResults: BacktestResults = {
+          symbol: selectedSymbol,
+          period: selectedPeriod,
+          totalTrades: apiResults.totalTrades || trades.length,
+          winningTrades: apiResults.winningTrades || trades.filter(t => t.outcome === 'win').length,
+          losingTrades: apiResults.losingTrades || trades.filter(t => t.outcome === 'loss').length,
+          successRate: apiResults.winRate || 0,
+          totalReturn: apiResults.roi || 0,
+          maxDrawdown: apiResults.maxDrawdown || 0,
+          sharpeRatio: apiResults.sharpeRatio || 0,
+          avgWin: apiResults.avgWin || 0,
+          avgLoss: apiResults.avgLoss || 0,
+          profitFactor: apiResults.profitFactor || 0,
+          trades,
+          equityCurve
         };
+
+        setResults(transformedResults);
         
-        // Simulate trade outcomes
-        const holdDays = 3 + Math.floor(Math.random() * 10); // 3-12 days
-        const futurePrice = basePrice * (1 + (Math.random() - 0.45) * 0.15); // ±7.5% with slight positive bias
-        
-        const pnl = action === 'BUY' 
-          ? (futurePrice - basePrice) * quantity
-          : (basePrice - futurePrice) * quantity;
-        
-        trade.pnl = Math.round(pnl * 100) / 100;
-        trade.closePrice = Math.round(futurePrice * 100) / 100;
-        trade.duration = holdDays;
-        trade.outcome = pnl > 0 ? 'win' : 'loss';
-        
-        trades.push(trade);
-        currentValue += pnl;
-      }
-      
-      // Update max value and calculate drawdown
-      if (currentValue > maxValue) maxValue = currentValue;
-      const drawdown = ((maxValue - currentValue) / maxValue) * 100;
-      
-      // Add to equity curve (sample every 7 days for chart)
-      if (i % 7 === 0) {
-        equityCurve.push({
-          date: date.toISOString().split('T')[0],
-          value: Math.round(currentValue),
-          drawdown: Math.round(drawdown * 100) / 100
+        toast({
+          title: "Backtest Complete",
+          description: `Analyzed ${transformedResults.totalTrades} trades with ${transformedResults.successRate.toFixed(1)}% win rate`,
         });
+      } else {
+        throw new Error('Invalid backtest response format');
       }
+    } catch (err: any) {
+      console.error('Backtest error:', err);
+      setError(err.message || 'Failed to run backtest');
+      toast({
+        title: "Backtest Failed",
+        description: err.message || 'Failed to run backtest. Please try again.',
+        variant: "destructive"
+      });
+    } finally {
+      setIsRunning(false);
     }
-    
-    // Calculate results
-    const winningTrades = trades.filter(t => t.outcome === 'win').length;
-    const losingTrades = trades.filter(t => t.outcome === 'loss').length;
-    const successRate = trades.length > 0 ? (winningTrades / trades.length) * 100 : 0;
-    const totalReturn = ((currentValue - startingValue) / startingValue) * 100;
-    
-    const wins = trades.filter(t => t.outcome === 'win');
-    const losses = trades.filter(t => t.outcome === 'loss');
-    const avgWin = wins.length > 0 ? wins.reduce((sum, t) => sum + (t.pnl || 0), 0) / wins.length : 0;
-    const avgLoss = losses.length > 0 ? Math.abs(losses.reduce((sum, t) => sum + (t.pnl || 0), 0) / losses.length) : 0;
-    
-    const grossProfit = wins.reduce((sum, t) => sum + (t.pnl || 0), 0);
-    const grossLoss = Math.abs(losses.reduce((sum, t) => sum + (t.pnl || 0), 0));
-    const profitFactor = grossLoss > 0 ? grossProfit / grossLoss : 0;
-    
-    const maxDrawdown = Math.max(...equityCurve.map(e => e.drawdown));
-    const sharpeRatio = totalReturn > 0 ? totalReturn / Math.max(maxDrawdown, 1) : 0;
-    
-    return {
-      symbol,
-      period,
-      totalTrades: trades.length,
-      winningTrades,
-      losingTrades,
-      successRate: Math.round(successRate * 100) / 100,
-      totalReturn: Math.round(totalReturn * 100) / 100,
-      maxDrawdown: Math.round(maxDrawdown * 100) / 100,
-      sharpeRatio: Math.round(sharpeRatio * 100) / 100,
-      avgWin: Math.round(avgWin * 100) / 100,
-      avgLoss: Math.round(avgLoss * 100) / 100,
-      profitFactor: Math.round(profitFactor * 100) / 100,
-      trades,
-      equityCurve
-    };
   };
 
   useEffect(() => {
+    // Auto-run on mount only
     runBacktest();
-  }, [selectedSymbol, selectedPeriod]);
+  }, []);
 
   return (
     <div className="space-y-6">
@@ -209,11 +185,11 @@ const BacktestAnalyzer: React.FC = () => {
           </CardTitle>
         </CardHeader>
         <CardContent className="space-y-4">
-          <div className="flex gap-4">
+          <div className="flex flex-wrap gap-4">
             <div className="space-y-2">
               <label className="text-sm text-gray-300">Symbol</label>
               <Select value={selectedSymbol} onValueChange={setSelectedSymbol}>
-                <SelectTrigger className="w-32 bg-black/20 border-white/20 text-white">
+                <SelectTrigger className="w-40 bg-black/20 border-white/20 text-white">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -227,13 +203,29 @@ const BacktestAnalyzer: React.FC = () => {
             <div className="space-y-2">
               <label className="text-sm text-gray-300">Period</label>
               <Select value={selectedPeriod} onValueChange={setSelectedPeriod}>
-                <SelectTrigger className="w-32 bg-black/20 border-white/20 text-white">
+                <SelectTrigger className="w-40 bg-black/20 border-white/20 text-white">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
                   {periods.map(period => (
                     <SelectItem key={period.value} value={period.value}>
                       {period.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="space-y-2">
+              <label className="text-sm text-gray-300">Risk Level</label>
+              <Select value={selectedRisk} onValueChange={(v) => setSelectedRisk(v as 'low' | 'medium' | 'high')}>
+                <SelectTrigger className="w-56 bg-black/20 border-white/20 text-white">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {riskLevels.map(level => (
+                    <SelectItem key={level.value} value={level.value}>
+                      {level.label}
                     </SelectItem>
                   ))}
                 </SelectContent>
@@ -248,7 +240,7 @@ const BacktestAnalyzer: React.FC = () => {
               {isRunning ? (
                 <>
                   <Activity className="h-4 w-4 mr-2 animate-spin" />
-                  Running...
+                  Running Backtest...
                 </>
               ) : (
                 <>
@@ -258,6 +250,13 @@ const BacktestAnalyzer: React.FC = () => {
               )}
             </Button>
           </div>
+
+          {error && (
+            <Alert variant="destructive">
+              <AlertCircle className="h-4 w-4" />
+              <AlertDescription>{error}</AlertDescription>
+            </Alert>
+          )}
         </CardContent>
       </Card>
 
