@@ -14,6 +14,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import { toast } from "sonner";
 import { LiveTradingView } from './LiveTradingView';
 import { TradeDecisionLogs } from './TradeDecisionLogs';
+import { TrainAssetModel } from './TrainAssetModel';
 import { supabase } from "@/integrations/supabase/client";
 import { useAuth } from "@/hooks/useAuth";
 import { 
@@ -468,11 +469,12 @@ ${data.backtestResults.tradeDecisionLogs?.slice(-5).map((log: any, i: number) =>
         <CardContent>
           <div className="space-y-6">
             <Tabs value={activeTab} onValueChange={setActiveTab} className="w-full">
-              <TabsList className="grid w-full grid-cols-5">
+              <TabsList className="grid w-full grid-cols-6">
                 <TabsTrigger value="config">Configuration</TabsTrigger>
                 <TabsTrigger value="backtest">Backtesting</TabsTrigger>
                 <TabsTrigger value="logs">Trade Logs</TabsTrigger>
                 <TabsTrigger value="live">Live Trading</TabsTrigger>
+                <TabsTrigger value="train">Train Asset</TabsTrigger>
                 <TabsTrigger value="chat">AI Learning</TabsTrigger>
               </TabsList>
 
@@ -812,6 +814,12 @@ ${data.backtestResults.tradeDecisionLogs?.slice(-5).map((log: any, i: number) =>
               <TabsContent value="live">
                 <div className="space-y-6">
                   <LiveTradingView symbols={botConfig.symbols} />
+                </div>
+              </TabsContent>
+
+              <TabsContent value="train">
+                <div className="space-y-6">
+                  <TrainAssetModel />
                 </div>
               </TabsContent>
 
