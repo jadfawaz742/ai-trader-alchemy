@@ -6,7 +6,11 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, TrendingUp, CheckCircle2, AlertCircle } from "lucide-react";
 
-export const TrainAssetModel = () => {
+interface TrainAssetModelProps {
+  onTrainingComplete?: () => void;
+}
+
+export const TrainAssetModel = ({ onTrainingComplete }: TrainAssetModelProps) => {
   const [symbol, setSymbol] = useState("");
   const [isTraining, setIsTraining] = useState(false);
   const [result, setResult] = useState<any>(null);
@@ -64,6 +68,11 @@ export const TrainAssetModel = () => {
           title: "Model Trained Successfully! 🎉",
           description: `Fine-tuned model created for ${data.symbol} with ${data.dataPoints} data points`
         });
+        
+        // Call the callback to refresh the trained assets list
+        if (onTrainingComplete) {
+          onTrainingComplete();
+        }
       }
     } catch (error: any) {
       console.error('Training error:', error);

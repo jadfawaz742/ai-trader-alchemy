@@ -87,9 +87,15 @@ interface BotStats {
 const AdvancedTradingBot: React.FC = () => {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState("config");
+  const [trainedAssets, setTrainedAssets] = useState<string[]>([]);
 
   // Symbol categories for easier selection
   const symbolCategories = {
+    trained: {
+      name: "🤖 Trained Assets", 
+      symbols: trainedAssets,
+      color: "text-purple-600"
+    },
     crypto: {
       name: "🪙 Cryptocurrencies", 
       symbols: ['BTC-USD', 'ETH-USD', 'SOL-USD', 'ADA-USD', 'DOT-USD', 'AVAX-USD', 'MATIC-USD', 'LINK-USD', 'UNI-USD', 'AAVE-USD'],
@@ -152,6 +158,52 @@ const AdvancedTradingBot: React.FC = () => {
   // Chat functionality
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [inputMessage, setInputMessage] = useState('');
+
+  // Fetch trained assets on mount
+  useEffect(() => {
+    const fetchTrainedAssets = async () => {
+      if (!user) return;
+      
+      try {
+        const { data, error } = await supabase
+          .from('asset_models')
+          .select('symbol')
+          .eq('user_id', user.id);
+        
+        if (error) throw error;
+        
+        if (data && data.length > 0) {
+          const uniqueSymbols = [...new Set(data.map(row => row.symbol))];
+          setTrainedAssets(uniqueSymbols);
+        }
+      } catch (error) {
+        console.error('Error fetching trained assets:', error);
+      }
+    };
+
+    fetchTrainedAssets();
+  }, [user]);
+
+  // Refresh trained assets list
+  const refreshTrainedAssets = async () => {
+    if (!user) return;
+    
+    try {
+      const { data, error } = await supabase
+        .from('asset_models')
+        .select('symbol')
+        .eq('user_id', user.id);
+      
+      if (error) throw error;
+      
+      if (data && data.length > 0) {
+        const uniqueSymbols = [...new Set(data.map(row => row.symbol))];
+        setTrainedAssets(uniqueSymbols);
+      }
+    } catch (error) {
+      console.error('Error refreshing trained assets:', error);
+    }
+  };
 
   // Add message to chat
   const addMessage = (message: ChatMessage) => {
@@ -485,27 +537,38 @@ ${data.backtestResults.tradeDecisionLogs?.slice(-5).map((log: any, i: number) =>
                     <Label className="text-base font-semibold">Trading Symbols</Label>
                     <div className="mt-2 space-y-4">
                       {Object.entries(symbolCategories).map(([key, category]) => (
-                        <div key={key} className="border rounded-lg p-4">
-                          <h4 className={`font-medium mb-2 ${category.color}`}>
-                            {category.name}
-                          </h4>
-                          <div className="flex flex-wrap gap-2">
-                            {category.symbols.map(symbol => (
-                              <Badge
-                                key={symbol}
-                                variant={botConfig.symbols.includes(symbol) ? "default" : "outline"}
-                                className="cursor-pointer hover:bg-primary/20"
-                                onClick={() => 
-                                  botConfig.symbols.includes(symbol) 
-                                    ? removeSymbol(symbol)
-                                    : addSymbol(symbol)
-                                }
-                              >
-                                {symbol}
-                              </Badge>
-                            ))}
+                        category.symbols.length > 0 ? (
+                          <div key={key} className="border rounded-lg p-4">
+                            <h4 className={`font-medium mb-2 ${category.color}`}>
+                              {category.name}
+                            </h4>
+                            <div className="flex flex-wrap gap-2">
+                              {category.symbols.map(symbol => (
+                                <Badge
+                                  key={symbol}
+                                  variant={botConfig.symbols.includes(symbol) ? "default" : "outline"}
+                                  className="cursor-pointer hover:bg-primary/20"
+                                  onClick={() => 
+                                    botConfig.symbols.includes(symbol) 
+                                      ? removeSymbol(symbol)
+                                      : addSymbol(symbol)
+                                  }
+                                >
+                                  {symbol}
+                                </Badge>
+                              ))}
+                            </div>
                           </div>
-                        </div>
+                        ) : key === 'trained' ? (
+                          <div key={key} className="border rounded-lg p-4 bg-muted/20">
+                            <h4 className={`font-medium mb-2 ${category.color}`}>
+                              {category.name}
+                            </h4>
+                            <p className="text-sm text-muted-foreground">
+                              No trained assets yet. Go to the "Train Asset" tab to create custom models.
+                            </p>
+                          </div>
+                        ) : null
                       ))}
                     </div>
                     
@@ -819,7 +882,7 @@ ${data.backtestResults.tradeDecisionLogs?.slice(-5).map((log: any, i: number) =>
 
               <TabsContent value="train">
                 <div className="space-y-6">
-                  <TrainAssetModel />
+                  <TrainAssetModel onTrainingComplete={refreshTrainedAssets} />
                 </div>
               </TabsContent>
 
