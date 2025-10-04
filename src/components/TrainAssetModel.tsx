@@ -37,6 +37,16 @@ export const TrainAssetModel = () => {
 
       if (error) throw error;
 
+      if (data.alreadyExists) {
+        setResult(null);
+        toast({
+          title: "Model Already Exists",
+          description: `A trained model for ${data.symbol} already exists. Use it for trading or delete it to retrain.`,
+          variant: "default"
+        });
+        return;
+      }
+
       if (data.success) {
         setResult(data);
         toast({
@@ -160,11 +170,15 @@ export const TrainAssetModel = () => {
         <div className="space-y-2 text-xs text-muted-foreground">
           <p className="font-semibold">How it works:</p>
           <ul className="space-y-1 list-disc list-inside">
-            <li>Fetches 2 years of historical data</li>
+            <li>Checks if model already exists for this asset</li>
+            <li>Fetches 2 years of historical data for new assets</li>
             <li>Fine-tunes the general PPO model on asset-specific patterns</li>
             <li>Learns volatility, trends, and indicators unique to this asset</li>
             <li>Stores the specialized model for future trading decisions</li>
           </ul>
+          <p className="text-amber-600 dark:text-amber-400 font-medium mt-2">
+            ⚠️ Training only works for NEW assets. If a model exists, it will be used automatically.
+          </p>
         </div>
       </CardContent>
     </Card>

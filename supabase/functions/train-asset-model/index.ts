@@ -57,6 +57,31 @@ serve(async (req) => {
     const normalizedSymbol = symbol.trim().toUpperCase();
     console.log(`Training model for asset: ${normalizedSymbol}`);
 
+    // Check if model already exists for this asset
+    const { data: existingModel, error: checkError } = await supabaseClient
+      .from('asset_models')
+      .select('id, created_at, performance_metrics')
+      .eq('user_id', user.id)
+      .eq('symbol', normalizedSymbol)
+      .maybeSingle();
+
+    if (existingModel) {
+      console.log(`Model already exists for ${normalizedSymbol}`);
+      return new Response(
+        JSON.stringify({
+          success: false,
+          alreadyExists: true,
+          symbol: normalizedSymbol,
+          message: `A trained model already exists for ${normalizedSymbol}`,
+          existingModel: {
+            createdAt: existingModel.created_at,
+            metrics: existingModel.performance_metrics
+          }
+        }),
+        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+      );
+    }
+
     // Fetch historical data
     const historicalData = await fetchHistoricalData(normalizedSymbol);
     
