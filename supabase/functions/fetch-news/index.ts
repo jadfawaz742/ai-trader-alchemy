@@ -1,7 +1,7 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
-const newsApiKey = Deno.env.get('NEWS_API_KEY');
+const fmpApiKey = Deno.env.get('BcRIbmG53ng386EskNaLED4kG5VTYUtE');
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -16,42 +16,38 @@ serve(async (req) => {
   try {
     const { symbol, company } = await req.json();
     
-    if (!newsApiKey) {
-      throw new Error('NEWS_API_KEY is not configured');
+    if (!fmpApiKey) {
+      throw new Error('FMP_API_KEY is not configured');
     }
 
     console.log(`Fetching news for ${symbol} (${company})`);
 
-    // Fetch news from NewsAPI
+    // Fetch news from Financial Modeling Prep
     const newsResponse = await fetch(
-      `https://newsapi.org/v2/everything?q=${encodeURIComponent(company || symbol)}&sortBy=publishedAt&pageSize=10&apiKey=${newsApiKey}`
+      `https://financialmodelingprep.com/api/v3/stock_news?tickers=${symbol}&limit=10&apikey=${fmpApiKey}`
     );
 
     if (!newsResponse.ok) {
-      throw new Error(`News API error: ${newsResponse.status}`);
+      throw new Error(`FMP API error: ${newsResponse.status}`);
     }
 
     const newsData = await newsResponse.json();
     
-    // Filter and format news articles
-    const relevantNews = newsData.articles
+    // Format news articles from FMP
+    const relevantNews = newsData
       ?.filter((article: any) => 
         article.title && 
-        article.description && 
-        article.publishedAt &&
-        (article.title.toLowerCase().includes(symbol.toLowerCase()) ||
-         article.title.toLowerCase().includes(company?.toLowerCase()) ||
-         article.description.toLowerCase().includes(symbol.toLowerCase()) ||
-         article.description.toLowerCase().includes(company?.toLowerCase()))
+        article.text && 
+        article.publishedDate
       )
       .slice(0, 5)
       .map((article: any) => ({
         title: article.title,
-        description: article.description,
+        description: article.text,
         url: article.url,
-        source: article.source.name,
-        publishedAt: article.publishedAt,
-        sentiment: analyzeSentiment(article.title + ' ' + article.description)
+        source: article.site || 'Financial Modeling Prep',
+        publishedAt: article.publishedDate,
+        sentiment: analyzeSentiment(article.title + ' ' + article.text)
       })) || [];
 
     return new Response(JSON.stringify({ 
