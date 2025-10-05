@@ -36,55 +36,34 @@ const NewsWidget = ({ symbol, company }: NewsWidgetProps) => {
 
     setLoading(true);
     
-    // Simulate API delay
-    await new Promise(resolve => setTimeout(resolve, 1500));
-    
-    // Demo news articles
-    const demoArticles: NewsArticle[] = [
-      {
-        title: `${symbol} Reports Strong Q4 Earnings, Beats Analyst Expectations`,
-        description: `${company || symbol} exceeded revenue projections with a 15% year-over-year growth, driving investor confidence and market optimism.`,
-        url: "#",
-        source: "MarketWatch",
-        publishedAt: new Date(Date.now() - 2 * 60 * 60 * 1000).toISOString(), // 2 hours ago
-        sentiment: 'positive'
-      },
-      {
-        title: `Regulatory Concerns Emerge Around ${symbol}'s New Product Line`,
-        description: `Industry regulators are reviewing the company's latest offerings, raising questions about compliance and potential market impact.`,
-        url: "#",
-        source: "Financial Times",
-        publishedAt: new Date(Date.now() - 5 * 60 * 60 * 1000).toISOString(), // 5 hours ago
-        sentiment: 'negative'
-      },
-      {
-        title: `${symbol} Announces Strategic Partnership with Tech Giant`,
-        description: `The collaboration is expected to enhance operational efficiency and expand market reach in the digital transformation space.`,
-        url: "#",
-        source: "Reuters",
-        publishedAt: new Date(Date.now() - 8 * 60 * 60 * 1000).toISOString(), // 8 hours ago
-        sentiment: 'positive'
-      },
-      {
-        title: `Market Analysis: ${symbol} Stock Price Consolidation Continues`,
-        description: `Technical indicators suggest the stock is in a consolidation phase, with analysts maintaining neutral outlook pending earnings.`,
-        url: "#",
-        source: "Bloomberg",
-        publishedAt: new Date(Date.now() - 12 * 60 * 60 * 1000).toISOString(), // 12 hours ago
-        sentiment: 'neutral'
-      },
-      {
-        title: `${symbol} CEO Discusses Long-term Growth Strategy in Investor Call`,
-        description: `Leadership outlined ambitious expansion plans and innovation initiatives designed to capture emerging market opportunities.`,
-        url: "#",
-        source: "CNBC",
-        publishedAt: new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString(), // 1 day ago
-        sentiment: 'positive'
-      }
-    ];
+    try {
+      const { data, error } = await supabase.functions.invoke('fetch-news', {
+        body: { symbol, company }
+      });
 
-    setArticles(demoArticles);
-    setLoading(false);
+      if (error) throw error;
+
+      if (data?.articles && data.articles.length > 0) {
+        setArticles(data.articles);
+      } else {
+        setArticles([]);
+        toast({
+          title: "No news found",
+          description: `No recent news articles found for ${symbol}`,
+          variant: "default"
+        });
+      }
+    } catch (error) {
+      console.error('Error fetching news:', error);
+      toast({
+        title: "Failed to fetch news",
+        description: "Could not retrieve news articles. Please try again.",
+        variant: "destructive"
+      });
+      setArticles([]);
+    } finally {
+      setLoading(false);
+    }
   };
 
   const getSentimentIcon = (sentiment: string) => {
