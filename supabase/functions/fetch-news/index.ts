@@ -1,7 +1,7 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
-const fmpApiKey = 'BcRIbmG53ng386EskNaLED4kG5VTYUtE';
+const fmpApiKey = Deno.env.get('BcRIbmG53ng386EskNaLED4kG5VTYUtE');
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -21,14 +21,20 @@ serve(async (req) => {
     }
 
     console.log(`Fetching news for ${symbol} (${company})`);
+    console.log(`FMP API Key exists: ${!!fmpApiKey}, length: ${fmpApiKey?.length || 0}`);
 
     // Fetch news from Financial Modeling Prep
-    const newsResponse = await fetch(
-      `https://financialmodelingprep.com/api/v3/stock_news?tickers=${symbol}&limit=10&apikey=${fmpApiKey}`
-    );
+    const newsUrl = `https://financialmodelingprep.com/api/v3/stock_news?tickers=${symbol}&limit=10&apikey=${fmpApiKey}`;
+    console.log(`Fetching from FMP: ${newsUrl.replace(fmpApiKey || '', 'API_KEY_HIDDEN')}`);
+    
+    const newsResponse = await fetch(newsUrl);
+
+    console.log(`FMP API Response Status: ${newsResponse.status} ${newsResponse.statusText}`);
 
     if (!newsResponse.ok) {
-      throw new Error(`FMP API error: ${newsResponse.status}`);
+      const errorBody = await newsResponse.text();
+      console.error(`FMP API error response body: ${errorBody}`);
+      throw new Error(`FMP API error: ${newsResponse.status} - ${errorBody}`);
     }
 
     const newsData = await newsResponse.json();
