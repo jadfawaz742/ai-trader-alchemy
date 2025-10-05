@@ -15,6 +15,50 @@ const bybitApiKey = Deno.env.get('8j5LzBaYWK7liqhBNn');
 
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+// Fetch news and analyze sentiment for a symbol
+async function fetchNewsSentiment(symbol: string): Promise<number> {
+  try {
+    const response = await fetch(`${supabaseUrl}/functions/v1/fetch-news`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${supabaseServiceKey}`
+      },
+      body: JSON.stringify({ 
+        symbol: symbol,
+        company: symbol 
+      })
+    });
+    
+    if (!response.ok) {
+      console.log(`⚠️ News fetch failed for ${symbol}: ${response.status}`);
+      return 0; // Neutral sentiment on error
+    }
+    
+    const newsData = await response.json();
+    const articles = newsData.articles || [];
+    
+    if (articles.length === 0) {
+      return 0; // Neutral sentiment if no news
+    }
+    
+    // Calculate average sentiment from articles
+    let sentimentSum = 0;
+    articles.forEach((article: any) => {
+      if (article.sentiment === 'positive') sentimentSum += 1;
+      else if (article.sentiment === 'negative') sentimentSum -= 1;
+      // neutral articles add 0
+    });
+    
+    const avgSentiment = sentimentSum / articles.length;
+    console.log(`📰 ${symbol}: News sentiment = ${(avgSentiment * 100).toFixed(0)}% (${articles.length} articles)`);
+    return avgSentiment;
+  } catch (error) {
+    console.log(`⚠️ Error fetching news for ${symbol}:`, error);
+    return 0; // Neutral sentiment on error
+  }
+}
+
 // Enhanced PPO Agent Configuration with Adaptive Learning
 interface PPOConfig {
   learningRate: number;
@@ -1723,6 +1767,9 @@ serve(async (req) => {
         // Analyze current market state with enhanced confluence scoring and asset-specific model
         const latestData = historicalData.slice(-100); // Use recent 100 periods for current analysis
         
+        // 📰 Fetch news sentiment for this symbol
+        const newsSentiment = await fetchNewsSentiment(symbol);
+        
         // Apply asset-specific model adjustments if available
         let modelAdjustments = { confidenceBoost: 0, riskMultiplier: 1.0 };
         if (assetModel?.modelWeights) {
@@ -1733,6 +1780,9 @@ serve(async (req) => {
         }
         
         const currentState = await analyzeMarketStateWithConfluence(latestData, symbol, trainingResult, RISK_LEVELS[risk], modelAdjustments);
+        
+        // Add news sentiment to current state
+        currentState.newsSentiment = newsSentiment;
         
         // 🚀 PHASE 3: Multi-timeframe analysis
         console.log(`\n🔍 PHASE 3: Analyzing ${symbol} across multiple timeframes...`);

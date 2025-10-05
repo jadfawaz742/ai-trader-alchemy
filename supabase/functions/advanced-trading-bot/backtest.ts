@@ -14,6 +14,50 @@ import {
 } from './multi-timeframe.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
 
+// Fetch news and analyze sentiment for a symbol
+async function fetchNewsSentiment(symbol: string, supabaseUrl: string, serviceRoleKey: string): Promise<number> {
+  try {
+    const response = await fetch(`${supabaseUrl}/functions/v1/fetch-news`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': `Bearer ${serviceRoleKey}`
+      },
+      body: JSON.stringify({ 
+        symbol: symbol,
+        company: symbol 
+      })
+    });
+    
+    if (!response.ok) {
+      console.log(`⚠️ News fetch failed for ${symbol}: ${response.status}`);
+      return 0; // Neutral sentiment on error
+    }
+    
+    const newsData = await response.json();
+    const articles = newsData.articles || [];
+    
+    if (articles.length === 0) {
+      return 0; // Neutral sentiment if no news
+    }
+    
+    // Calculate average sentiment from articles
+    let sentimentSum = 0;
+    articles.forEach((article: any) => {
+      if (article.sentiment === 'positive') sentimentSum += 1;
+      else if (article.sentiment === 'negative') sentimentSum -= 1;
+      // neutral articles add 0
+    });
+    
+    const avgSentiment = sentimentSum / articles.length;
+    console.log(`📰 ${symbol}: News sentiment = ${(avgSentiment * 100).toFixed(0)}% (${articles.length} articles)`);
+    return avgSentiment;
+  } catch (error) {
+    console.log(`⚠️ Error fetching news for ${symbol}:`, error);
+    return 0; // Neutral sentiment on error
+  }
+}
+
 // Trade Decision Log Interface
 interface TradeDecisionLog {
   symbol: string;
@@ -737,6 +781,11 @@ async function processBatch(
         continue;
       }
       
+      // 📰 Fetch news sentiment for this symbol
+      const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
+      const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
+      const newsSentiment = await fetchNewsSentiment(symbol, supabaseUrl, serviceRoleKey);
+      
       // 🧠 Load trained model weights for this symbol (if available)
       const trainedModel = await loadTrainedModel(symbol, userId, supabaseClient);
       
@@ -823,6 +872,9 @@ async function processBatch(
         
         // ✅ BUILD AI TRADING STATE from historical data
         const tradingState = buildTradingState(historicalData, i);
+        
+        // Add news sentiment to trading state
+        tradingState.newsSentiment = newsSentiment;
         
         // ✅ CALCULATE CONFLUENCE SCORE using shared logic
         tradingState.confluenceScore = calculateConfluenceScore(tradingState, riskConfig);

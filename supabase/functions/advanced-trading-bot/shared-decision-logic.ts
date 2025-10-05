@@ -26,6 +26,7 @@ export interface TradingState {
   confluenceScore: number;
   historicalPerformance: number[];
   marketPhase?: MarketPhaseInfo;
+  newsSentiment?: number; // -1 to 1, where -1 is bearish, 0 is neutral, 1 is bullish
 }
 
 export interface TradingAction {
@@ -275,13 +276,14 @@ export async function makeAITradingDecision(
   
   // 🧠 ADAPTIVE WEIGHTS: Use learned weights or defaults
   const weights = modelWeights?.indicatorWeights || {
-    ichimoku: 20,
-    ema200: 15,
-    macd: 20,
-    bollinger: 15,
-    volume: 10,
-    marketCondition: 10,
-    volatility: 10
+    ichimoku: 18,
+    ema200: 13,
+    macd: 18,
+    bollinger: 13,
+    volume: 9,
+    marketCondition: 9,
+    volatility: 9,
+    newsSentiment: 11 // News sentiment weight
   };
   
   // Ichimoku analysis
@@ -344,6 +346,17 @@ export async function makeAITradingDecision(
     bullishScore += weights.volatility;
     bearishScore += weights.volatility;
     reasons.push("Optimal volatility");
+  }
+  
+  // News sentiment analysis
+  if (state.newsSentiment !== undefined && weights.newsSentiment) {
+    if (state.newsSentiment > 0.2) {
+      bullishScore += weights.newsSentiment * state.newsSentiment;
+      reasons.push(`Positive news sentiment (${(state.newsSentiment * 100).toFixed(0)}%)`);
+    } else if (state.newsSentiment < -0.2) {
+      bearishScore += weights.newsSentiment * Math.abs(state.newsSentiment);
+      reasons.push(`Negative news sentiment (${(state.newsSentiment * 100).toFixed(0)}%)`);
+    }
   }
   
   // Determine action
