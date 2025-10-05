@@ -1,7 +1,7 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
-const fmpApiKey = Deno.env.get('NEWS_API_KEY');
+const marketauxApiKey = Deno.env.get('NEWS_API_KEY');
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -16,44 +16,44 @@ serve(async (req) => {
   try {
     const { symbol, company } = await req.json();
     
-    if (!fmpApiKey) {
-      throw new Error('FMP_API_KEY is not configured');
+    if (!marketauxApiKey) {
+      throw new Error('NEWS_API_KEY is not configured');
     }
 
     console.log(`Fetching news for ${symbol} (${company})`);
-    console.log(`FMP API Key exists: ${!!fmpApiKey}, length: ${fmpApiKey?.length || 0}`);
+    console.log(`Marketaux API Key exists: ${!!marketauxApiKey}, length: ${marketauxApiKey?.length || 0}`);
 
-    // Fetch news from Financial Modeling Prep
-    const newsUrl = `https://financialmodelingprep.com/api/v3/stock_news?tickers=${symbol}&limit=10&apikey=${fmpApiKey}`;
-    console.log(`Fetching from FMP: ${newsUrl.replace(fmpApiKey || '', 'API_KEY_HIDDEN')}`);
+    // Fetch news from Marketaux
+    const newsUrl = `https://api.marketaux.com/v1/news/all?symbols=${symbol}&filter_entities=true&limit=10&api_token=${marketauxApiKey}`;
+    console.log(`Fetching from Marketaux: ${newsUrl.replace(marketauxApiKey || '', 'API_KEY_HIDDEN')}`);
     
     const newsResponse = await fetch(newsUrl);
 
-    console.log(`FMP API Response Status: ${newsResponse.status} ${newsResponse.statusText}`);
+    console.log(`Marketaux API Response Status: ${newsResponse.status} ${newsResponse.statusText}`);
 
     if (!newsResponse.ok) {
       const errorBody = await newsResponse.text();
-      console.error(`FMP API error response body: ${errorBody}`);
-      throw new Error(`FMP API error: ${newsResponse.status} - ${errorBody}`);
+      console.error(`Marketaux API error response body: ${errorBody}`);
+      throw new Error(`Marketaux API error: ${newsResponse.status} - ${errorBody}`);
     }
 
     const newsData = await newsResponse.json();
     
-    // Format news articles from FMP
-    const relevantNews = newsData
+    // Format news articles from Marketaux
+    const relevantNews = newsData?.data
       ?.filter((article: any) => 
         article.title && 
-        article.text && 
-        article.publishedDate
+        article.description && 
+        article.published_at
       )
       .slice(0, 5)
       .map((article: any) => ({
         title: article.title,
-        description: article.text,
+        description: article.description,
         url: article.url,
-        source: article.site || 'Financial Modeling Prep',
-        publishedAt: article.publishedDate,
-        sentiment: analyzeSentiment(article.title + ' ' + article.text)
+        source: article.source || 'Marketaux',
+        publishedAt: article.published_at,
+        sentiment: analyzeSentiment(article.title + ' ' + article.description)
       })) || [];
 
     return new Response(JSON.stringify({ 
