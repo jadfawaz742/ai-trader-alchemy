@@ -51,24 +51,36 @@ Deno.serve(async (req) => {
 
   try {
     console.log('🔍 Testing Binance connection...');
+    
+    // Debug: Log available environment variable names (not values)
+    const envVars = Object.keys(Deno.env.toObject());
+    console.log('📋 Available env vars:', envVars.filter(k => k.includes('BINANCE')).join(', '));
 
-    // Load API credentials from environment
-    const apiKey = Deno.env.get('Binance_API_KEY') || Deno.env.get('BINANCE_API_KEY');
-    const apiSecret = Deno.env.get('Binance_value') || Deno.env.get('BINANCE_API_SECRET');
+    // Load API credentials from environment - only check standard names
+    const apiKey = Deno.env.get('BINANCE_API_KEY');
+    const apiSecret = Deno.env.get('BINANCE_API_SECRET');
 
-    if (!apiKey || !apiSecret) {
-      console.error('❌ Missing API credentials');
+    // Detailed error reporting
+    const missingSecrets = [];
+    if (!apiKey) missingSecrets.push('BINANCE_API_KEY');
+    if (!apiSecret) missingSecrets.push('BINANCE_API_SECRET');
+
+    if (missingSecrets.length > 0) {
+      console.error('❌ Missing API credentials:', missingSecrets.join(', '));
       return new Response(
         JSON.stringify({
           success: false,
           error: 'API credentials not configured',
-          details: 'Please add BINANCE_API_KEY and BINANCE_API_SECRET to Supabase secrets',
+          missing: missingSecrets,
+          details: `Please ensure ${missingSecrets.join(' and ')} are set in Supabase Edge Function secrets`,
+          availableEnvVars: envVars.filter(k => k.includes('BINANCE')),
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' }, status: 400 }
       );
     }
 
     console.log('✅ API key found:', apiKey.substring(0, 8) + '...');
+    console.log('✅ API secret found:', apiSecret.substring(0, 4) + '...');
 
     // Generate signature for authenticated request
     const timestamp = Date.now();
