@@ -88,6 +88,14 @@ const AdvancedTradingBot: React.FC = () => {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState("config");
   const [trainedAssets, setTrainedAssets] = useState<string[]>([]);
+  const [isTesting, setIsTesting] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<{
+    success: boolean;
+    connection?: any;
+    balances?: any[];
+    error?: string;
+    details?: string;
+  } | null>(null);
 
   // Symbol categories for easier selection
   const symbolCategories = {
@@ -431,6 +439,44 @@ ${data.backtestResults.tradeDecisionLogs?.slice(-5).map((log: any, i: number) =>
     return `${value.toFixed(1)}%`;
   };
 
+  const testBinanceConnection = async () => {
+    setIsTesting(true);
+    setConnectionStatus(null);
+    
+    try {
+      const { data, error } = await supabase.functions.invoke('test-binance-connection');
+      
+      if (error) {
+        console.error('Error testing connection:', error);
+        setConnectionStatus({
+          success: false,
+          error: 'Failed to connect',
+          details: error.message
+        });
+        toast.error('Failed to test Binance connection');
+        return;
+      }
+
+      setConnectionStatus(data);
+      
+      if (data.success) {
+        toast.success('Successfully connected to Binance!');
+      } else {
+        toast.error(data.error || 'Connection failed');
+      }
+    } catch (error: any) {
+      console.error('Unexpected error:', error);
+      setConnectionStatus({
+        success: false,
+        error: 'Unexpected error',
+        details: error.message
+      });
+      toast.error('An unexpected error occurred');
+    } finally {
+      setIsTesting(false);
+    }
+  };
+
   return (
     <div className="container mx-auto p-6 space-y-6">
       <div className="flex items-center justify-between">
@@ -587,6 +633,119 @@ ${data.backtestResults.tradeDecisionLogs?.slice(-5).map((log: any, i: number) =>
                           </Badge>
                         ))}
                       </div>
+                    </div>
+                  </div>
+
+                  <Separator />
+
+                  {/* Binance Connection Test */}
+                  <div className="space-y-4">
+                    <Label className="text-base font-semibold flex items-center gap-2">
+                      <Zap className="h-4 w-4" />
+                      Binance Exchange Connection
+                    </Label>
+                    <div className="border rounded-lg p-4 space-y-4">
+                      <p className="text-sm text-muted-foreground">
+                        Test your Binance API connection before running live trades. This verifies your API credentials and shows your account balances.
+                      </p>
+                      
+                      <Button 
+                        onClick={testBinanceConnection}
+                        disabled={isTesting}
+                        variant="outline"
+                        className="w-full"
+                      >
+                        {isTesting ? (
+                          <>
+                            <Activity className="h-4 w-4 mr-2 animate-spin" />
+                            Testing Connection...
+                          </>
+                        ) : (
+                          <>
+                            <Zap className="h-4 w-4 mr-2" />
+                            Test Binance Connection
+                          </>
+                        )}
+                      </Button>
+
+                      {connectionStatus && (
+                        <div className={`rounded-lg p-4 ${
+                          connectionStatus.success 
+                            ? 'bg-green-500/10 border border-green-500/20' 
+                            : 'bg-red-500/10 border border-red-500/20'
+                        }`}>
+                          <div className="flex items-center gap-2 mb-2">
+                            {connectionStatus.success ? (
+                              <>
+                                <div className="h-2 w-2 rounded-full bg-green-500" />
+                                <span className="font-semibold text-green-600">Connected Successfully</span>
+                              </>
+                            ) : (
+                              <>
+                                <AlertCircle className="h-4 w-4 text-red-500" />
+                                <span className="font-semibold text-red-600">Connection Failed</span>
+                              </>
+                            )}
+                          </div>
+
+                          {connectionStatus.success && connectionStatus.connection && (
+                            <div className="space-y-2 text-sm">
+                              <div className="grid grid-cols-2 gap-2">
+                                <div>
+                                  <span className="text-muted-foreground">Account Type:</span>
+                                  <span className="ml-2 font-medium">{connectionStatus.connection.accountType}</span>
+                                </div>
+                                <div>
+                                  <span className="text-muted-foreground">Trading Enabled:</span>
+                                  <span className="ml-2 font-medium">
+                                    {connectionStatus.connection.canTrade ? '✅ Yes' : '❌ No'}
+                                  </span>
+                                </div>
+                              </div>
+
+                              {connectionStatus.balances && connectionStatus.balances.length > 0 && (
+                                <div className="mt-3">
+                                  <p className="font-medium mb-2">Account Balances:</p>
+                                  <div className="space-y-1">
+                                    {connectionStatus.balances.slice(0, 5).map((balance: any) => (
+                                      <div key={balance.asset} className="flex justify-between text-xs">
+                                        <span className="font-medium">{balance.asset}:</span>
+                                        <span>{balance.total.toFixed(8)}</span>
+                                      </div>
+                                    ))}
+                                    {connectionStatus.balances.length > 5 && (
+                                      <p className="text-xs text-muted-foreground italic">
+                                        +{connectionStatus.balances.length - 5} more assets...
+                                      </p>
+                                    )}
+                                  </div>
+                                </div>
+                              )}
+
+                              {connectionStatus.connection.permissions && (
+                                <div className="mt-2">
+                                  <p className="text-xs text-muted-foreground">
+                                    Permissions: {connectionStatus.connection.permissions.join(', ')}
+                                  </p>
+                                </div>
+                              )}
+                            </div>
+                          )}
+
+                          {!connectionStatus.success && (
+                            <div className="space-y-2 text-sm">
+                              <p className="text-red-600 font-medium">
+                                {connectionStatus.error}
+                              </p>
+                              {connectionStatus.details && (
+                                <p className="text-muted-foreground text-xs">
+                                  {connectionStatus.details}
+                                </p>
+                              )}
+                            </div>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
 

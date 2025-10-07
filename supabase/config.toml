@@ -1,5 +1,8 @@
 project_id = "ncetkhcryoxchkodlzgj"
 
+[functions.test-binance-connection]
+verify_jwt = false
+
 [functions.analyze-stock]
 verify_jwt = true
 
