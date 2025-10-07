@@ -1,3 +1,4 @@
+// Force redeploy to pick up new Binance API secrets
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.56.0';
 
 const corsHeaders = {
