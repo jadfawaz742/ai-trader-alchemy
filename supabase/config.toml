@@ -7,7 +7,7 @@ verify_jwt = false
 verify_jwt = true
 
 [functions.execute-trade]
-verify_jwt = true
+verify_jwt = false
 
 [functions.auto-trade]
 verify_jwt = true
@@ -34,4 +34,16 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.fetch-stock-history]
+verify_jwt = false
+
+[functions.connect-broker]
+verify_jwt = true
+
+[functions.generate-signals]
+verify_jwt = false
+
+[functions.health-check]
+verify_jwt = false
+
+[functions.execute-signal]
 verify_jwt = false
