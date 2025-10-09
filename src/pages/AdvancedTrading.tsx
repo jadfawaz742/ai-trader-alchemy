@@ -13,6 +13,9 @@ import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigge
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import StockAnalyzer from "@/components/StockAnalyzer";
 import NewsWidget from "@/components/NewsWidget";
+import { OnlineLearningProgress } from "@/components/OnlineLearningProgress";
+import { ModelManagementDashboard } from "@/components/ModelManagementDashboard";
+import { SafetyMonitorDashboard } from "@/components/SafetyMonitorDashboard";
 
 const AdvancedTrading = () => {
   const { user, loading, signOut, isAuthenticated } = useAuth();
@@ -114,9 +117,9 @@ const AdvancedTrading = () => {
           </div>
           
           <Tabs defaultValue="trading" className="space-y-6">
-            <TabsList className="grid w-full grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-2 bg-slate-800/50 border border-slate-700 p-2 h-auto">
+            <TabsList className="grid w-full grid-cols-2 md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-9 gap-2 bg-slate-800/50 border border-slate-700 p-2 h-auto">
               <TabsTrigger value="trading" className="text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white">
-                Advanced Trading
+                Trading Bot
               </TabsTrigger>
               <TabsTrigger value="portfolio" className="text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white">
                 Portfolio
@@ -124,14 +127,23 @@ const AdvancedTrading = () => {
               <TabsTrigger value="learning" className="text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white">
                 AI Learning
               </TabsTrigger>
+              <TabsTrigger value="online" className="text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white">
+                Online Learning
+              </TabsTrigger>
+              <TabsTrigger value="models" className="text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white">
+                Model Management
+              </TabsTrigger>
+              <TabsTrigger value="safety" className="text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white">
+                Safety Monitor
+              </TabsTrigger>
               <TabsTrigger value="market" className="text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white">
-                Market Activity
+                Market Feed
               </TabsTrigger>
               <TabsTrigger value="analyzer" className="text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white">
-                Stock Analyzer
+                Analyzer
               </TabsTrigger>
               <TabsTrigger value="news" className="text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white">
-                Market News
+                News
               </TabsTrigger>
             </TabsList>
 
@@ -147,6 +159,18 @@ const AdvancedTrading = () => {
 
             <TabsContent value="learning" className="space-y-6">
               <TradingLearningLogs />
+            </TabsContent>
+
+            <TabsContent value="online" className="space-y-6">
+              <OnlineLearningProgress />
+            </TabsContent>
+
+            <TabsContent value="models" className="space-y-6">
+              <ModelManagementDashboard />
+            </TabsContent>
+
+            <TabsContent value="safety" className="space-y-6">
+              <SafetyMonitorDashboard />
             </TabsContent>
 
             <TabsContent value="market" className="space-y-6">
