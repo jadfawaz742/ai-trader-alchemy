@@ -338,6 +338,36 @@ export type Database = {
         }
         Relationships: []
       }
+      cron_job_history: {
+        Row: {
+          completed_at: string | null
+          details: Json | null
+          error_message: string | null
+          id: string
+          job_name: string
+          started_at: string
+          status: string
+        }
+        Insert: {
+          completed_at?: string | null
+          details?: Json | null
+          error_message?: string | null
+          id?: string
+          job_name: string
+          started_at?: string
+          status: string
+        }
+        Update: {
+          completed_at?: string | null
+          details?: Json | null
+          error_message?: string | null
+          id?: string
+          job_name?: string
+          started_at?: string
+          status?: string
+        }
+        Relationships: []
+      }
       episodes: {
         Row: {
           asset: string
@@ -1196,6 +1226,10 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      trigger_online_ppo_updates: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
       }
     }
     Enums: {
