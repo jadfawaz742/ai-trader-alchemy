@@ -56,3 +56,6 @@ verify_jwt = true
 
 [functions.safety-monitor]
 verify_jwt = false
+
+[functions.live-trading-orchestrator]
+verify_jwt = false

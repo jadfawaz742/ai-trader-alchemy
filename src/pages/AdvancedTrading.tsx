@@ -16,6 +16,8 @@ import NewsWidget from "@/components/NewsWidget";
 import { OnlineLearningProgress } from "@/components/OnlineLearningProgress";
 import { ModelManagementDashboard } from "@/components/ModelManagementDashboard";
 import { SafetyMonitorDashboard } from "@/components/SafetyMonitorDashboard";
+import { BrokerConnectionManager } from "@/components/BrokerConnectionManager";
+import { LiveTradingControls } from "@/components/LiveTradingControls";
 
 const AdvancedTrading = () => {
   const { user, loading, signOut, isAuthenticated } = useAuth();
@@ -117,32 +119,38 @@ const AdvancedTrading = () => {
           </div>
           
           <Tabs defaultValue="trading" className="space-y-6">
-            <TabsList className="grid w-full grid-cols-2 md:grid-cols-3 lg:grid-cols-5 xl:grid-cols-9 gap-2 bg-slate-800/50 border border-slate-700 p-2 h-auto">
-              <TabsTrigger value="trading" className="text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white">
+            <TabsList className="grid w-full grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-11 gap-2 bg-slate-800/50 border border-slate-700 p-2 h-auto">
+              <TabsTrigger value="trading" className="text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white text-xs sm:text-sm">
                 Trading Bot
               </TabsTrigger>
-              <TabsTrigger value="portfolio" className="text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white">
+              <TabsTrigger value="live" className="text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white text-xs sm:text-sm">
+                Live Trading
+              </TabsTrigger>
+              <TabsTrigger value="brokers" className="text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white text-xs sm:text-sm">
+                Brokers
+              </TabsTrigger>
+              <TabsTrigger value="portfolio" className="text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white text-xs sm:text-sm">
                 Portfolio
               </TabsTrigger>
-              <TabsTrigger value="learning" className="text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white">
+              <TabsTrigger value="learning" className="text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white text-xs sm:text-sm">
                 AI Learning
               </TabsTrigger>
-              <TabsTrigger value="online" className="text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white">
+              <TabsTrigger value="online" className="text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white text-xs sm:text-sm">
                 Online Learning
               </TabsTrigger>
-              <TabsTrigger value="models" className="text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white">
-                Model Management
+              <TabsTrigger value="models" className="text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white text-xs sm:text-sm">
+                Models
               </TabsTrigger>
-              <TabsTrigger value="safety" className="text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white">
-                Safety Monitor
+              <TabsTrigger value="safety" className="text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white text-xs sm:text-sm">
+                Safety
               </TabsTrigger>
-              <TabsTrigger value="market" className="text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white">
-                Market Feed
+              <TabsTrigger value="market" className="text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white text-xs sm:text-sm">
+                Market
               </TabsTrigger>
-              <TabsTrigger value="analyzer" className="text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white">
+              <TabsTrigger value="analyzer" className="text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white text-xs sm:text-sm">
                 Analyzer
               </TabsTrigger>
-              <TabsTrigger value="news" className="text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white">
+              <TabsTrigger value="news" className="text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white text-xs sm:text-sm">
                 News
               </TabsTrigger>
             </TabsList>
@@ -151,6 +159,14 @@ const AdvancedTrading = () => {
               <div className="grid grid-cols-1 gap-6">
                 <AdvancedTradingBot />
               </div>
+            </TabsContent>
+
+            <TabsContent value="live" className="space-y-6">
+              <LiveTradingControls />
+            </TabsContent>
+
+            <TabsContent value="brokers" className="space-y-6">
+              <BrokerConnectionManager />
             </TabsContent>
 
             <TabsContent value="portfolio" className="space-y-6">
