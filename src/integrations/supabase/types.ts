@@ -163,6 +163,145 @@ export type Database = {
         }
         Relationships: []
       }
+      broker_assets: {
+        Row: {
+          asset: string
+          broker_id: string
+          broker_symbol: string
+          created_at: string
+          id: string
+          min_notional: number
+          min_qty: number
+          step_size: number
+          tick_size: number
+          trading_session: string | null
+          updated_at: string
+        }
+        Insert: {
+          asset: string
+          broker_id: string
+          broker_symbol: string
+          created_at?: string
+          id?: string
+          min_notional?: number
+          min_qty?: number
+          step_size?: number
+          tick_size?: number
+          trading_session?: string | null
+          updated_at?: string
+        }
+        Update: {
+          asset?: string
+          broker_id?: string
+          broker_symbol?: string
+          created_at?: string
+          id?: string
+          min_notional?: number
+          min_qty?: number
+          step_size?: number
+          tick_size?: number
+          trading_session?: string | null
+          updated_at?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "broker_assets_broker_id_fkey"
+            columns: ["broker_id"]
+            isOneToOne: false
+            referencedRelation: "brokers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      broker_connections: {
+        Row: {
+          auth_type: string
+          broker_id: string
+          created_at: string
+          encrypted_credentials: Json
+          error_message: string | null
+          id: string
+          last_checked_at: string | null
+          status: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          auth_type: string
+          broker_id: string
+          created_at?: string
+          encrypted_credentials: Json
+          error_message?: string | null
+          id?: string
+          last_checked_at?: string | null
+          status?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          auth_type?: string
+          broker_id?: string
+          created_at?: string
+          encrypted_credentials?: Json
+          error_message?: string | null
+          id?: string
+          last_checked_at?: string | null
+          status?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "broker_connections_broker_id_fkey"
+            columns: ["broker_id"]
+            isOneToOne: false
+            referencedRelation: "brokers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      brokers: {
+        Row: {
+          created_at: string
+          id: string
+          name: string
+          notes: string | null
+          supports_crypto: boolean
+          supports_fractional: boolean
+          supports_futures: boolean
+          supports_margin: boolean
+          supports_oco: boolean
+          supports_stocks: boolean
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          name: string
+          notes?: string | null
+          supports_crypto?: boolean
+          supports_fractional?: boolean
+          supports_futures?: boolean
+          supports_margin?: boolean
+          supports_oco?: boolean
+          supports_stocks?: boolean
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          name?: string
+          notes?: string | null
+          supports_crypto?: boolean
+          supports_fractional?: boolean
+          supports_futures?: boolean
+          supports_margin?: boolean
+          supports_oco?: boolean
+          supports_stocks?: boolean
+          updated_at?: string
+        }
+        Relationships: []
+      }
       bybit_usage: {
         Row: {
           api_key_name: string
@@ -196,6 +335,138 @@ export type Database = {
           response_code?: number | null
           response_json?: Json | null
           success?: boolean | null
+        }
+        Relationships: []
+      }
+      episodes: {
+        Row: {
+          asset: string
+          bucket_uri: string | null
+          created_at: string
+          end_ts: string | null
+          id: string
+          metadata: Json | null
+          pnl: number | null
+          reward_sum: number | null
+          start_ts: string
+          user_id: string
+          version: string
+        }
+        Insert: {
+          asset: string
+          bucket_uri?: string | null
+          created_at?: string
+          end_ts?: string | null
+          id?: string
+          metadata?: Json | null
+          pnl?: number | null
+          reward_sum?: number | null
+          start_ts: string
+          user_id: string
+          version: string
+        }
+        Update: {
+          asset?: string
+          bucket_uri?: string | null
+          created_at?: string
+          end_ts?: string | null
+          id?: string
+          metadata?: Json | null
+          pnl?: number | null
+          reward_sum?: number | null
+          start_ts?: string
+          user_id?: string
+          version?: string
+        }
+        Relationships: []
+      }
+      executions: {
+        Row: {
+          asset: string
+          broker_id: string
+          created_at: string
+          executed_price: number | null
+          executed_qty: number | null
+          id: string
+          latency_ms: number | null
+          order_id: string | null
+          qty: number
+          raw_response: Json | null
+          side: string
+          signal_id: string
+          status: string
+          user_id: string
+        }
+        Insert: {
+          asset: string
+          broker_id: string
+          created_at?: string
+          executed_price?: number | null
+          executed_qty?: number | null
+          id?: string
+          latency_ms?: number | null
+          order_id?: string | null
+          qty: number
+          raw_response?: Json | null
+          side: string
+          signal_id: string
+          status: string
+          user_id: string
+        }
+        Update: {
+          asset?: string
+          broker_id?: string
+          created_at?: string
+          executed_price?: number | null
+          executed_qty?: number | null
+          id?: string
+          latency_ms?: number | null
+          order_id?: string | null
+          qty?: number
+          raw_response?: Json | null
+          side?: string
+          signal_id?: string
+          status?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "executions_broker_id_fkey"
+            columns: ["broker_id"]
+            isOneToOne: false
+            referencedRelation: "brokers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "executions_signal_id_fkey"
+            columns: ["signal_id"]
+            isOneToOne: false
+            referencedRelation: "signals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      feature_flags: {
+        Row: {
+          description: string | null
+          enabled: boolean
+          id: string
+          key: string
+          updated_at: string
+        }
+        Insert: {
+          description?: string | null
+          enabled?: boolean
+          id?: string
+          key: string
+          updated_at?: string
+        }
+        Update: {
+          description?: string | null
+          enabled?: boolean
+          id?: string
+          key?: string
+          updated_at?: string
         }
         Relationships: []
       }
@@ -238,6 +509,81 @@ export type Database = {
           raw_data?: Json | null
           symbol?: string
           volume?: number | null
+        }
+        Relationships: []
+      }
+      model_metrics: {
+        Row: {
+          asset: string
+          avg_rr: number | null
+          id: string
+          max_dd: number | null
+          profitable_trades: number | null
+          sharpe: number | null
+          total_trades: number | null
+          updated_at: string
+          version: string
+          win_rate: number | null
+        }
+        Insert: {
+          asset: string
+          avg_rr?: number | null
+          id?: string
+          max_dd?: number | null
+          profitable_trades?: number | null
+          sharpe?: number | null
+          total_trades?: number | null
+          updated_at?: string
+          version: string
+          win_rate?: number | null
+        }
+        Update: {
+          asset?: string
+          avg_rr?: number | null
+          id?: string
+          max_dd?: number | null
+          profitable_trades?: number | null
+          sharpe?: number | null
+          total_trades?: number | null
+          updated_at?: string
+          version?: string
+          win_rate?: number | null
+        }
+        Relationships: []
+      }
+      models: {
+        Row: {
+          asset: string
+          created_at: string
+          id: string
+          location: string
+          metadata: Json | null
+          model_type: string
+          status: string
+          updated_at: string
+          version: string
+        }
+        Insert: {
+          asset: string
+          created_at?: string
+          id?: string
+          location: string
+          metadata?: Json | null
+          model_type?: string
+          status?: string
+          updated_at?: string
+          version: string
+        }
+        Update: {
+          asset?: string
+          created_at?: string
+          id?: string
+          location?: string
+          metadata?: Json | null
+          model_type?: string
+          status?: string
+          updated_at?: string
+          version?: string
         }
         Relationships: []
       }
@@ -413,6 +759,84 @@ export type Database = {
           },
         ]
       }
+      signals: {
+        Row: {
+          asset: string
+          broker_id: string
+          created_at: string
+          dedupe_key: string | null
+          error_message: string | null
+          executed_at: string | null
+          id: string
+          limit_price: number | null
+          model_id: string | null
+          model_version: string | null
+          order_type: string
+          qty: number
+          sent_at: string | null
+          side: string
+          sl: number | null
+          status: string
+          tp: number | null
+          user_id: string
+        }
+        Insert: {
+          asset: string
+          broker_id: string
+          created_at?: string
+          dedupe_key?: string | null
+          error_message?: string | null
+          executed_at?: string | null
+          id?: string
+          limit_price?: number | null
+          model_id?: string | null
+          model_version?: string | null
+          order_type?: string
+          qty: number
+          sent_at?: string | null
+          side: string
+          sl?: number | null
+          status?: string
+          tp?: number | null
+          user_id: string
+        }
+        Update: {
+          asset?: string
+          broker_id?: string
+          created_at?: string
+          dedupe_key?: string | null
+          error_message?: string | null
+          executed_at?: string | null
+          id?: string
+          limit_price?: number | null
+          model_id?: string | null
+          model_version?: string | null
+          order_type?: string
+          qty?: number
+          sent_at?: string | null
+          side?: string
+          sl?: number | null
+          status?: string
+          tp?: number | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "signals_broker_id_fkey"
+            columns: ["broker_id"]
+            isOneToOne: false
+            referencedRelation: "brokers"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "signals_model_id_fkey"
+            columns: ["model_id"]
+            isOneToOne: false
+            referencedRelation: "models"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       stock_analysis: {
         Row: {
           analysis_type: string
@@ -457,6 +881,38 @@ export type Database = {
           user_id?: string | null
         }
         Relationships: []
+      }
+      symbol_map: {
+        Row: {
+          asset: string
+          broker_id: string
+          broker_symbol: string
+          created_at: string
+          id: string
+        }
+        Insert: {
+          asset: string
+          broker_id: string
+          broker_symbol: string
+          created_at?: string
+          id?: string
+        }
+        Update: {
+          asset?: string
+          broker_id?: string
+          broker_symbol?: string
+          created_at?: string
+          id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "symbol_map_broker_id_fkey"
+            columns: ["broker_id"]
+            isOneToOne: false
+            referencedRelation: "brokers"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       test_table: {
         Row: {
@@ -622,15 +1078,128 @@ export type Database = {
         }
         Relationships: []
       }
+      training_runs: {
+        Row: {
+          artifact_uri: string | null
+          asset: string
+          completed_at: string | null
+          created_at: string
+          error_message: string | null
+          id: string
+          metrics_json: Json | null
+          started_at: string | null
+          status: string
+          updated_at: string
+          version: string
+        }
+        Insert: {
+          artifact_uri?: string | null
+          asset: string
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          metrics_json?: Json | null
+          started_at?: string | null
+          status?: string
+          updated_at?: string
+          version: string
+        }
+        Update: {
+          artifact_uri?: string | null
+          asset?: string
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          metrics_json?: Json | null
+          started_at?: string | null
+          status?: string
+          updated_at?: string
+          version?: string
+        }
+        Relationships: []
+      }
+      user_asset_prefs: {
+        Row: {
+          asset: string
+          broker_id: string
+          created_at: string
+          enabled: boolean
+          id: string
+          max_exposure_usd: number
+          risk_mode: string
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          asset: string
+          broker_id: string
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          max_exposure_usd?: number
+          risk_mode?: string
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          asset?: string
+          broker_id?: string
+          created_at?: string
+          enabled?: boolean
+          id?: string
+          max_exposure_usd?: number
+          risk_mode?: string
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "user_asset_prefs_broker_id_fkey"
+            columns: ["broker_id"]
+            isOneToOne: false
+            referencedRelation: "brokers"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      user_roles: {
+        Row: {
+          created_at: string
+          id: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          role: Database["public"]["Enums"]["app_role"]
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never
     }
     Functions: {
-      [_ in never]: never
+      has_role: {
+        Args: {
+          _role: Database["public"]["Enums"]["app_role"]
+          _user_id: string
+        }
+        Returns: boolean
+      }
     }
     Enums: {
-      [_ in never]: never
+      app_role: "admin" | "moderator" | "user"
     }
     CompositeTypes: {
       [_ in never]: never
@@ -757,6 +1326,8 @@ export type CompositeTypes<
 
 export const Constants = {
   public: {
-    Enums: {},
+    Enums: {
+      app_role: ["admin", "moderator", "user"],
+    },
   },
 } as const
