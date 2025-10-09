@@ -56,9 +56,10 @@ Deno.serve(async (req) => {
     const envVars = Object.keys(Deno.env.toObject());
     console.log('📋 Available env vars:', envVars.filter(k => k.includes('BINANCE')).join(', '));
 
-    // Load API credentials from environment - only check standard names
+    // Load API credentials and proxy URL from environment
     const apiKey = Deno.env.get('BINANCE_API_KEY');
     const apiSecret = Deno.env.get('BINANCE_API_SECRET');
+    const vpsProxyUrl = Deno.env.get('VPS_PROXY_URL');
 
     // Detailed error reporting
     const missingSecrets = [];
@@ -82,6 +83,14 @@ Deno.serve(async (req) => {
     console.log('✅ API key found:', apiKey.substring(0, 8) + '...');
     console.log('✅ API secret found:', apiSecret.substring(0, 4) + '...');
 
+    // Check if VPS proxy is configured
+    const usingProxy = !!vpsProxyUrl;
+    if (usingProxy) {
+      console.log('🌐 Using VPS proxy:', vpsProxyUrl);
+    } else {
+      console.log('⚠️ No VPS proxy configured, using direct connection');
+    }
+
     // Generate signature for authenticated request
     const timestamp = Date.now();
     const queryString = `timestamp=${timestamp}`;
@@ -89,12 +98,19 @@ Deno.serve(async (req) => {
 
     console.log('🔐 Signature generated');
 
-    // Call Binance API
-    const url = `https://api.binance.com/api/v3/account?${queryString}&signature=${signature}`;
-    const response = await fetch(url, {
+    // Call Binance API - through proxy if available
+    const binanceEndpoint = `/api/v3/account?${queryString}&signature=${signature}`;
+    const targetUrl = usingProxy 
+      ? `${vpsProxyUrl}${binanceEndpoint}`
+      : `https://api.binance.com${binanceEndpoint}`;
+    
+    console.log('📡 Calling:', targetUrl.substring(0, 50) + '...');
+
+    const response = await fetch(targetUrl, {
       method: 'GET',
       headers: {
         'X-MBX-APIKEY': apiKey,
+        ...(usingProxy ? { 'X-Target-Host': 'api.binance.com' } : {}),
       },
     });
 
@@ -142,6 +158,10 @@ Deno.serve(async (req) => {
         fees: {
           maker: accountInfo.makerCommission / 10000, // Convert to percentage
           taker: accountInfo.takerCommission / 10000,
+        },
+        proxy: {
+          enabled: usingProxy,
+          url: usingProxy ? vpsProxyUrl : null,
         },
         timestamp: new Date().toISOString(),
       }),
