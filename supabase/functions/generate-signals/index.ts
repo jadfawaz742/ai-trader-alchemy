@@ -1,5 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
+import { makeAITradingDecision, detectMarketPhase, type TradingState } from "./shared-decision-logic.ts";
+import { fetchMultiTimeframeData, analyzeMultiTimeframe, getMultiTimeframeBoost } from "./multi-timeframe.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -15,6 +17,9 @@ interface PPOModel {
 }
 
 interface MarketData {
+  open: number;
+  high: number;
+  low: number;
   close: number;
   volume: number;
   timestamp: number;
@@ -99,19 +104,31 @@ serve(async (req) => {
 
         const brokerSymbol = symbolMap?.broker_symbol || pref.asset;
 
-        // Fetch market data (simplified - in production, use websocket subscriptions)
+        // Fetch comprehensive market data with technical indicators
         const marketData = await fetchMarketData(brokerSymbol, pref.broker_id);
         
-        if (!marketData) {
-          console.log(`No market data for ${pref.asset}`);
+        if (!marketData || marketData.length < 50) {
+          console.log(`Insufficient market data for ${pref.asset}`);
           continue;
         }
 
-        // Extract features from market data
-        const features = extractFeatures(marketData);
+        // Build trading state with technical indicators
+        const tradingState = await buildTradingState(marketData, pref.asset);
 
-        // Run PPO inference
-        const signal = await runPPOInference(model, features, pref);
+        // Run AI trading decision with full market analysis (enableShorts = true)
+        const decision = await makeAITradingDecision(tradingState, pref.asset, true, model.metadata);
+        
+        console.log(`Decision for ${pref.asset}: ${decision.type} (confidence: ${decision.confidence.toFixed(1)}%)`);
+
+        const signal = decision.type !== 'HOLD' ? {
+          action: decision.type,
+          qty: calculatePositionSize(pref, tradingState.price),
+          order_type: 'MARKET',
+          tp: decision.takeProfit,
+          sl: decision.stopLoss,
+          confidence: decision.confidence,
+          reasoning: decision.reasoning,
+        } : null;
 
         if (signal && signal.action !== 'HOLD') {
           // Get venue constraints
@@ -189,93 +206,238 @@ serve(async (req) => {
   }
 });
 
+// Fetch real market data from Yahoo Finance
 async function fetchMarketData(symbol: string, brokerId: string): Promise<MarketData[] | null> {
-  // Simplified mock - in production, fetch from broker's websocket or REST API
-  // This would use the broker's credentials to fetch real-time data
-  console.log(`Fetching market data for ${symbol} from broker ${brokerId}`);
+  console.log(`📊 Fetching market data for ${symbol}...`);
   
-  // Mock data for demonstration
-  return [
-    { close: 100, volume: 1000, timestamp: Date.now() - 60000 },
-    { close: 101, volume: 1100, timestamp: Date.now() - 30000 },
-    { close: 102, volume: 1200, timestamp: Date.now() },
-  ];
+  try {
+    // Fetch 6 months of daily data for comprehensive analysis
+    const response = await fetch(
+      `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?range=6mo&interval=1d`,
+      {
+        headers: {
+          'User-Agent': 'Mozilla/5.0'
+        }
+      }
+    );
+    
+    if (!response.ok) {
+      console.error(`Failed to fetch data for ${symbol}: ${response.status}`);
+      return null;
+    }
+    
+    const data = await response.json();
+    const result = data.chart?.result?.[0];
+    
+    if (!result) {
+      console.error(`No data returned for ${symbol}`);
+      return null;
+    }
+    
+    const timestamps = result.timestamp;
+    const quotes = result.indicators.quote[0];
+    
+    const historicalData: MarketData[] = [];
+    for (let i = 0; i < timestamps.length; i++) {
+      if (quotes.close[i] !== null) {
+        historicalData.push({
+          timestamp: timestamps[i] * 1000,
+          open: quotes.open[i],
+          high: quotes.high[i],
+          low: quotes.low[i],
+          close: quotes.close[i],
+          volume: quotes.volume[i]
+        });
+      }
+    }
+    
+    console.log(`✅ Fetched ${historicalData.length} candles for ${symbol}`);
+    return historicalData;
+  } catch (error) {
+    console.error(`Error fetching market data for ${symbol}:`, error);
+    return null;
+  }
 }
 
-function extractFeatures(marketData: MarketData[]): number[] {
-  // Extract technical indicators as features for PPO model
-  // This is simplified - production would include RSI, MACD, BB, etc.
-  
+// Build comprehensive trading state with technical indicators
+async function buildTradingState(marketData: MarketData[], symbol: string): Promise<TradingState> {
   const prices = marketData.map(d => d.close);
   const volumes = marketData.map(d => d.volume);
+  const highs = marketData.map(d => d.high);
+  const lows = marketData.map(d => d.low);
   
-  // Price momentum
-  const momentum = prices[prices.length - 1] - prices[0];
-  const momentumPct = momentum / prices[0];
+  const currentPrice = prices[prices.length - 1];
+  const currentVolume = volumes[volumes.length - 1];
   
-  // Volume trend
-  const avgVolume = volumes.reduce((a, b) => a + b, 0) / volumes.length;
-  const volumeRatio = volumes[volumes.length - 1] / avgVolume;
+  // Calculate EMA 200
+  const ema200 = calculateEMA(prices, 200);
   
-  // Simple moving average
-  const sma = prices.reduce((a, b) => a + b, 0) / prices.length;
-  const priceToSma = prices[prices.length - 1] / sma;
+  // Calculate MACD
+  const macd = calculateMACD(prices);
   
-  return [
-    momentumPct,
-    volumeRatio,
-    priceToSma,
-    prices[prices.length - 1] / 100, // Normalized price
-  ];
+  // Calculate ATR
+  const atr = calculateATR(highs, lows, prices, 14);
+  
+  // Calculate OBV
+  const obv = calculateOBV(prices, volumes);
+  
+  // Calculate Bollinger Bands
+  const bollinger = calculateBollingerBands(prices, 20, 2);
+  
+  // Calculate Ichimoku
+  const ichimoku = calculateIchimoku(highs, lows, prices);
+  
+  // Detect market phase
+  const marketPhase = detectMarketPhase(prices, volumes, {
+    ichimoku,
+    ema200,
+    macd,
+    atr,
+    obv,
+    bollinger
+  });
+  
+  // Determine market condition
+  let marketCondition: 'bullish' | 'bearish' | 'sideways' = 'sideways';
+  if (currentPrice > ema200 && macd.histogram > 0) {
+    marketCondition = 'bullish';
+  } else if (currentPrice < ema200 && macd.histogram < 0) {
+    marketCondition = 'bearish';
+  }
+  
+  // Calculate volatility
+  const avgPrice = prices.slice(-20).reduce((a, b) => a + b, 0) / 20;
+  const priceStdDev = Math.sqrt(
+    prices.slice(-20).reduce((sum, p) => sum + Math.pow(p - avgPrice, 2), 0) / 20
+  );
+  const volatility = priceStdDev / avgPrice;
+  
+  // Simple confluence score
+  const confluenceScore = (
+    (currentPrice > ema200 ? 0.25 : 0) +
+    (macd.histogram > 0 ? 0.25 : 0) +
+    (bollinger.position > 0.3 && bollinger.position < 0.7 ? 0.25 : 0) +
+    (obv > 0 ? 0.25 : 0)
+  );
+  
+  return {
+    price: currentPrice,
+    volume: currentVolume,
+    indicators: {
+      ichimoku,
+      ema200,
+      macd,
+      atr,
+      obv,
+      bollinger,
+      fibonacci: { levels: [Math.max(...prices.slice(-50)), Math.min(...prices.slice(-50))] }
+    },
+    marketCondition,
+    volatility,
+    confluenceScore,
+    historicalPerformance: prices.slice(-30),
+    marketPhase
+  };
 }
 
-async function runPPOInference(
-  model: PPOModel, 
-  features: number[], 
-  pref: any
-): Promise<any> {
-  // Simplified PPO inference
-  // In production, load actual model weights and run forward pass
-  
-  console.log(`Running PPO inference for ${model.asset} v${model.version}`);
-  
-  // Mock action selection based on features
-  const actionScore = features.reduce((a, b) => a + b, 0);
-  
-  let action = 'HOLD';
-  let confidence = 0;
-  
-  if (actionScore > 1.05) {
-    action = 'BUY';
-    confidence = Math.min((actionScore - 1.05) * 100, 95);
-  } else if (actionScore < 0.95) {
-    action = 'SELL';
-    confidence = Math.min((0.95 - actionScore) * 100, 95);
+// Technical indicator calculations
+function calculateEMA(prices: number[], period: number): number {
+  if (prices.length < period) return prices[prices.length - 1];
+  const k = 2 / (period + 1);
+  let ema = prices.slice(0, period).reduce((a, b) => a + b, 0) / period;
+  for (let i = period; i < prices.length; i++) {
+    ema = (prices[i] * k) + (ema * (1 - k));
   }
+  return ema;
+}
+
+function calculateMACD(prices: number[]): { macd: number; signal: number; histogram: number } {
+  const ema12 = calculateEMA(prices, 12);
+  const ema26 = calculateEMA(prices, 26);
+  const macd = ema12 - ema26;
   
-  if (confidence < 65) {
-    action = 'HOLD';
+  const macdValues = [];
+  for (let i = 26; i < prices.length; i++) {
+    const slice = prices.slice(0, i + 1);
+    const e12 = calculateEMA(slice, 12);
+    const e26 = calculateEMA(slice, 26);
+    macdValues.push(e12 - e26);
   }
+  const signal = calculateEMA(macdValues, 9);
   
-  if (action === 'HOLD') return null;
+  return {
+    macd,
+    signal,
+    histogram: macd - signal
+  };
+}
+
+function calculateATR(highs: number[], lows: number[], closes: number[], period: number): number {
+  const trueRanges = [];
+  for (let i = 1; i < closes.length; i++) {
+    const tr = Math.max(
+      highs[i] - lows[i],
+      Math.abs(highs[i] - closes[i - 1]),
+      Math.abs(lows[i] - closes[i - 1])
+    );
+    trueRanges.push(tr);
+  }
+  return trueRanges.slice(-period).reduce((a, b) => a + b, 0) / period;
+}
+
+function calculateOBV(prices: number[], volumes: number[]): number {
+  let obv = 0;
+  for (let i = 1; i < prices.length; i++) {
+    if (prices[i] > prices[i - 1]) {
+      obv += volumes[i];
+    } else if (prices[i] < prices[i - 1]) {
+      obv -= volumes[i];
+    }
+  }
+  return obv;
+}
+
+function calculateBollingerBands(prices: number[], period: number, stdDev: number): { upper: number; middle: number; lower: number; position: number } {
+  const slice = prices.slice(-period);
+  const middle = slice.reduce((a, b) => a + b, 0) / period;
+  const std = Math.sqrt(
+    slice.reduce((sum, p) => sum + Math.pow(p - middle, 2), 0) / period
+  );
+  const upper = middle + (std * stdDev);
+  const lower = middle - (std * stdDev);
+  const currentPrice = prices[prices.length - 1];
+  const position = (currentPrice - lower) / (upper - lower);
   
-  // Calculate position size based on risk mode
+  return { upper, middle, lower, position };
+}
+
+function calculateIchimoku(highs: number[], lows: number[], prices: number[]): { signal: number; cloud: any } {
+  const tenkanPeriod = 9;
+  const kijunPeriod = 26;
+  
+  const tenkanHigh = Math.max(...highs.slice(-tenkanPeriod));
+  const tenkanLow = Math.min(...lows.slice(-tenkanPeriod));
+  const tenkan = (tenkanHigh + tenkanLow) / 2;
+  
+  const kijunHigh = Math.max(...highs.slice(-kijunPeriod));
+  const kijunLow = Math.min(...lows.slice(-kijunPeriod));
+  const kijun = (kijunHigh + kijunLow) / 2;
+  
+  const currentPrice = prices[prices.length - 1];
+  const signal = currentPrice > tenkan && tenkan > kijun ? 1 : 
+                 currentPrice < tenkan && tenkan < kijun ? -1 : 0;
+  
+  return { signal, cloud: { tenkan, kijun } };
+}
+
+function calculatePositionSize(pref: any, currentPrice: number): number {
   const riskMultiplier = {
     'low': 0.5,
     'medium': 1.0,
     'high': 1.5,
   }[pref.risk_mode] || 1.0;
   
-  const qty = Math.floor(pref.max_exposure_usd / features[3] * riskMultiplier);
-  
-  return {
-    action,
-    qty,
-    order_type: 'MARKET',
-    tp: features[3] * 1.03, // 3% take profit
-    sl: features[3] * 0.98, // 2% stop loss
-    confidence,
-  };
+  return Math.floor((pref.max_exposure_usd / currentPrice) * riskMultiplier);
 }
 
 function normalizeQuantity(qty: number, minQty: number, stepSize: number): number {
