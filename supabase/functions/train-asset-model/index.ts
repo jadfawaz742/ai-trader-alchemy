@@ -1,6 +1,8 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
+import { fetchMarketData as fetchUnifiedData, type MarketDataPoint } from '../_shared/market-data-fetcher.ts';
+import { isCryptoSymbol } from '../_shared/symbol-utils.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -191,71 +193,37 @@ serve(async (req) => {
   }
 });
 
-// Fetch historical data from Yahoo Finance or Bybit
+import { fetchMarketData as fetchUnifiedData, type MarketDataPoint } from '../_shared/market-data-fetcher.ts';
+import { isCryptoSymbol, convertToBybitFormat } from '../_shared/symbol-utils.ts';
+
 async function fetchHistoricalData(symbol: string): Promise<TrainingData[]> {
-  // Try Bybit first for crypto
-  if (symbol.includes('USD') || symbol.includes('-USD')) {
-    try {
-      return await fetchBybitData(symbol);
-    } catch (e) {
-      console.log('Bybit fetch failed, trying Yahoo Finance:', e.message);
-    }
-  }
+  console.log(`📡 Fetching training data for ${symbol}...`);
   
-  // Try Yahoo Finance
-  return await fetchYahooFinanceData(symbol);
+  try {
+    // Use unified data fetcher (2 years of daily data)
+    const data = await fetchUnifiedData({
+      symbol,
+      range: '2y',
+      interval: '1d'
+    });
+    
+    // Convert to TrainingData format
+    return data.map((d: MarketDataPoint) => ({
+      timestamp: new Date(d.timestamp).toISOString(),
+      open: d.open,
+      high: d.high,
+      low: d.low,
+      close: d.close,
+      volume: d.volume
+    }));
+  } catch (error) {
+    console.error(`❌ Error fetching training data:`, error);
+    throw error;
+  }
 }
 
-async function fetchBybitData(symbol: string): Promise<TrainingData[]> {
-  const bybitSymbol = symbol.replace('-', '');
-  const endTime = Date.now();
-  const startTime = endTime - (730 * 24 * 60 * 60 * 1000); // 2 years
-  
-  const url = `https://api.bybit.com/v5/market/kline?category=spot&symbol=${bybitSymbol}&interval=D&start=${startTime}&end=${endTime}&limit=730`;
-  
-  const response = await fetch(url);
-  const data = await response.json();
-  
-  if (data.retCode !== 0 || !data.result?.list) {
-    throw new Error(`Bybit API error: ${data.retMsg || 'Unknown error'}`);
-  }
-
-  return data.result.list.reverse().map((candle: any) => ({
-    timestamp: new Date(parseInt(candle[0])).toISOString(),
-    open: parseFloat(candle[1]),
-    high: parseFloat(candle[2]),
-    low: parseFloat(candle[3]),
-    close: parseFloat(candle[4]),
-    volume: parseFloat(candle[5])
-  }));
-}
-
-async function fetchYahooFinanceData(symbol: string): Promise<TrainingData[]> {
-  const period1 = Math.floor((Date.now() - (730 * 24 * 60 * 60 * 1000)) / 1000);
-  const period2 = Math.floor(Date.now() / 1000);
-  
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?period1=${period1}&period2=${period2}&interval=1d`;
-  
-  const response = await fetch(url);
-  const data = await response.json();
-  
-  if (!data.chart?.result?.[0]) {
-    throw new Error(`Yahoo Finance: Symbol ${symbol} not found or no data available`);
-  }
-
-  const result = data.chart.result[0];
-  const timestamps = result.timestamp;
-  const quotes = result.indicators.quote[0];
-  
-  return timestamps.map((timestamp: number, i: number) => ({
-    timestamp: new Date(timestamp * 1000).toISOString(),
-    open: quotes.open[i],
-    high: quotes.high[i],
-    low: quotes.low[i],
-    close: quotes.close[i],
-    volume: quotes.volume[i]
-  })).filter((d: TrainingData) => d.close !== null);
-}
+// Remove old Bybit and Yahoo Finance functions - now using shared utilities
+// These are replaced by the unified fetcher in _shared/market-data-fetcher.ts
 
 // PPO Trainer Class
 class AssetSpecificPPOTrainer {

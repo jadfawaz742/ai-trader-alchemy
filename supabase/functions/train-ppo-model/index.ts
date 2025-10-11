@@ -1,6 +1,8 @@
 import "https://deno.land/x/xhr@0.1.0/mod.ts";
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2";
+import { fetchMarketData as fetchUnifiedData } from '../_shared/market-data-fetcher.ts';
+import { isCryptoSymbol } from '../_shared/symbol-utils.ts';
 
 // Initialize Supabase client
 const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
@@ -637,135 +639,34 @@ class AssetSpecificPPOTrainer {
   }
 }
 
-// Fetch real cryptocurrency data from Bybit
-async function fetchBybitData(symbol: string): Promise<TrainingData[]> {
-  console.log(`📡 Fetching Bybit data for ${symbol}`)
-  
-  try {
-    // Convert symbol format for Bybit API
-    const bybitSymbol = symbol.includes('BTC') ? 'BTCUSDT' : 
-                        symbol.includes('ETH') ? 'ETHUSDT' : 
-                        symbol.includes('SOL') ? 'SOLUSDT' :
-                        symbol.includes('ADA') ? 'ADAUSDT' :
-                        symbol.includes('DOT') ? 'DOTUSDT' :
-                        symbol.includes('AVAX') ? 'AVAXUSDT' :
-                        symbol.includes('MATIC') ? 'MATICUSDT' :
-                        symbol + 'USDT';
-    
-    // Fetch 300 klines (4-hour intervals for sufficient training data)
-    const response = await fetch(`https://api.bybit.com/v5/market/kline?category=spot&symbol=${bybitSymbol}&interval=240&limit=300`, {
-      method: 'GET',
-      headers: {
-        'Content-Type': 'application/json',
-      }
-    });
+import { fetchMarketData as fetchUnifiedData } from '../_shared/market-data-fetcher.ts';
+import { isCryptoSymbol } from '../_shared/symbol-utils.ts';
 
-    if (!response.ok) {
-      throw new Error(`Bybit API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    
-    if (data.retCode !== 0 || !data.result?.list) {
-      throw new Error(`Bybit API error: ${data.retMsg || 'No data'}`);
-    }
-
-    console.log(`✅ Bybit: Fetched ${data.result.list.length} data points for ${symbol}`);
-    
-    // Convert Bybit data format to our TrainingData interface
-    // Bybit returns: [startTime, openPrice, highPrice, lowPrice, closePrice, volume, turnover]
-    return data.result.list.map((item: any[]) => ({
-      timestamp: parseInt(item[0]),
-      open: parseFloat(item[1]),
-      high: parseFloat(item[2]),
-      low: parseFloat(item[3]),
-      close: parseFloat(item[4]),
-      price: parseFloat(item[4]), // Use close price as main price
-      volume: parseFloat(item[5])
-    })).reverse(); // Bybit returns newest first, we want oldest first
-    
-  } catch (error) {
-    console.error(`❌ Bybit fetch failed for ${symbol}:`, error);
-    throw error;
-  }
-}
-
-// Fetch real stock data from Yahoo Finance
-async function fetchYahooFinanceData(symbol: string): Promise<TrainingData[]> {
-  console.log(`📡 Fetching Yahoo Finance data for ${symbol}`)
-  
-  try {
-    // Fetch 6 months of daily data (approximately 126 trading days)
-    const response = await fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?range=6mo&interval=1d`, {
-      method: 'GET',
-      headers: {
-        'User-Agent': 'Mozilla/5.0'
-      }
-    });
-
-    if (!response.ok) {
-      throw new Error(`Yahoo Finance API error: ${response.status}`);
-    }
-
-    const data = await response.json();
-    
-    if (!data.chart?.result?.[0]) {
-      throw new Error('Yahoo Finance: No data returned');
-    }
-
-    const result = data.chart.result[0];
-    const timestamps = result.timestamp;
-    const quotes = result.indicators.quote[0];
-    
-    if (!timestamps || !quotes) {
-      throw new Error('Yahoo Finance: Invalid data format');
-    }
-
-    console.log(`✅ Yahoo Finance: Fetched ${timestamps.length} data points for ${symbol}`);
-    
-    // Convert Yahoo Finance data to our TrainingData interface
-    const trainingData: TrainingData[] = [];
-    for (let i = 0; i < timestamps.length; i++) {
-      // Skip entries with null values
-      if (quotes.close[i] !== null && quotes.open[i] !== null && 
-          quotes.high[i] !== null && quotes.low[i] !== null && quotes.volume[i] !== null) {
-        trainingData.push({
-          timestamp: timestamps[i] * 1000, // Convert to milliseconds
-          open: quotes.open[i],
-          high: quotes.high[i],
-          low: quotes.low[i],
-          close: quotes.close[i],
-          price: quotes.close[i],
-          volume: quotes.volume[i]
-        });
-      }
-    }
-    
-    return trainingData;
-    
-  } catch (error) {
-    console.error(`❌ Yahoo Finance fetch failed for ${symbol}:`, error);
-    throw error;
-  }
-}
-
-// Fetch historical data with proper source routing
+// Remove duplicate fetch functions - now using shared utilities
 async function fetchHistoricalData(symbol: string): Promise<TrainingData[]> {
-  // Determine if this is a crypto symbol
-  const cryptoSymbols = ['BTC', 'ETH', 'SOL', 'ADA', 'DOT', 'AVAX', 'MATIC'];
-  const isCrypto = cryptoSymbols.some(crypto => symbol.includes(crypto));
+  console.log(`📡 Fetching training data for ${symbol}...`);
   
   try {
-    if (isCrypto) {
-      // Use Bybit for crypto
-      return await fetchBybitData(symbol);
-    } else {
-      // Use Yahoo Finance for stocks
-      return await fetchYahooFinanceData(symbol);
-    }
+    // Use unified data fetcher
+    const data = await fetchUnifiedData({
+      symbol,
+      range: '6mo',
+      interval: '1d'
+    });
+    
+    // Convert to TrainingData format
+    return data.map((d: any) => ({
+      timestamp: d.timestamp,
+      open: d.open,
+      high: d.high,
+      low: d.low,
+      close: d.close,
+      price: d.close,
+      volume: d.volume
+    }));
   } catch (error) {
-    console.error(`❌ Failed to fetch data for ${symbol}:`, error);
-    throw new Error(`Unable to fetch real data for ${symbol}: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    console.error(`❌ Error fetching training data:`, error);
+    throw error;
   }
 }
 

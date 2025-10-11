@@ -1,6 +1,9 @@
 // Multi-Timeframe Analysis Module
 // Fetches and analyzes multiple timeframes (1h, 4h, 1d) to improve decision quality
 
+import { fetchMarketData, type MarketDataPoint } from '../_shared/market-data-fetcher.ts';
+import { isCryptoSymbol, getAssetType } from '../_shared/symbol-utils.ts';
+
 interface MultiTimeframeData {
   hourly: any[];
   fourHourly: any[];
@@ -33,63 +36,26 @@ export function deriveMultiTimeframeFromHistorical(historicalData: any[]): Multi
   return { hourly, fourHourly, daily };
 }
 
-// Fetch multiple timeframes from Yahoo Finance (for live trading)
+// LIVE: Fetch from unified data source (Bybit for crypto, Yahoo for stocks)
 export async function fetchMultiTimeframeData(symbol: string): Promise<MultiTimeframeData> {
-  console.log(`🔍 Fetching multi-timeframe data for ${symbol}...`);
+  const assetType = getAssetType(symbol);
+  console.log(`🔍 Fetching multi-timeframe ${assetType} data for ${symbol}...`);
   
-  const fetchTimeframe = async (interval: string, range: string) => {
-    try {
-      const response = await fetch(
-        `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?range=${range}&interval=${interval}`,
-        {
-          headers: {
-            'User-Agent': 'Mozilla/5.0'
-          }
-        }
-      );
-      
-      if (!response.ok) {
-        console.log(`⚠️ Failed to fetch ${interval} data for ${symbol}`);
-        return [];
-      }
-      
-      const data = await response.json();
-      const result = data.chart?.result?.[0];
-      
-      if (!result) return [];
-      
-      const timestamps = result.timestamp;
-      const quotes = result.indicators.quote[0];
-      
-      const historicalData = [];
-      for (let i = 0; i < timestamps.length; i++) {
-        if (quotes.close[i] !== null) {
-          historicalData.push({
-            timestamp: timestamps[i] * 1000,
-            open: quotes.open[i],
-            high: quotes.high[i],
-            low: quotes.low[i],
-            close: quotes.close[i],
-            volume: quotes.volume[i]
-          });
-        }
-      }
-      
-      return historicalData;
-    } catch (error) {
-      console.log(`❌ Error fetching ${interval} for ${symbol}:`, error);
-      return [];
-    }
-  };
-  
-  // Fetch all timeframes in parallel
-  const [hourly, fourHourly, daily] = await Promise.all([
-    fetchTimeframe('1h', '1mo'),   // 1 month of hourly data
-    fetchTimeframe('4h', '3mo'),   // 3 months of 4-hour data
-    fetchTimeframe('1d', '1y')     // 1 year of daily data
-  ]);
-  
-  return { hourly, fourHourly, daily };
+  try {
+    // Fetch all timeframes in parallel for efficiency
+    const [hourly, fourHourly, daily] = await Promise.all([
+      fetchMarketData({ symbol, range: '1mo', interval: '1h' }),
+      fetchMarketData({ symbol, range: '3mo', interval: '4h' }),
+      fetchMarketData({ symbol, range: '1y', interval: '1d' })
+    ]);
+    
+    console.log(`✅ Multi-timeframe from ${assetType === 'crypto' ? 'Bybit' : 'Yahoo'}: ${hourly.length}h / ${fourHourly.length}×4h / ${daily.length}d`);
+    
+    return { hourly, fourHourly, daily };
+  } catch (error) {
+    console.error(`❌ Error fetching multi-timeframe data:`, error);
+    return { hourly: [], fourHourly: [], daily: [] };
+  }
 }
 
 // Analyze trend across a timeframe

@@ -2,6 +2,8 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
 import { makeAITradingDecision, detectMarketPhase, type TradingState } from "./shared-decision-logic.ts";
 import { fetchMultiTimeframeData, analyzeMultiTimeframe, getMultiTimeframeBoost } from "./multi-timeframe.ts";
+import { fetchMarketData as fetchUnifiedData, type MarketDataPoint } from "../_shared/market-data-fetcher.ts";
+import { isCryptoSymbol, getAssetType } from "../_shared/symbol-utils.ts";
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -206,55 +208,22 @@ serve(async (req) => {
   }
 });
 
-// Fetch real market data from Yahoo Finance
+// Fetch real market data using unified hybrid approach
 async function fetchMarketData(symbol: string, brokerId: string): Promise<MarketData[] | null> {
-  console.log(`📊 Fetching market data for ${symbol}...`);
+  const assetType = getAssetType(symbol);
+  console.log(`📊 Fetching ${assetType} data for ${symbol}...`);
   
   try {
-    // Fetch 6 months of daily data for comprehensive analysis
-    const response = await fetch(
-      `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?range=6mo&interval=1d`,
-      {
-        headers: {
-          'User-Agent': 'Mozilla/5.0'
-        }
-      }
-    );
+    const data = await fetchUnifiedData({
+      symbol,
+      range: '6mo',
+      interval: '1d'
+    });
     
-    if (!response.ok) {
-      console.error(`Failed to fetch data for ${symbol}: ${response.status}`);
-      return null;
-    }
-    
-    const data = await response.json();
-    const result = data.chart?.result?.[0];
-    
-    if (!result) {
-      console.error(`No data returned for ${symbol}`);
-      return null;
-    }
-    
-    const timestamps = result.timestamp;
-    const quotes = result.indicators.quote[0];
-    
-    const historicalData: MarketData[] = [];
-    for (let i = 0; i < timestamps.length; i++) {
-      if (quotes.close[i] !== null) {
-        historicalData.push({
-          timestamp: timestamps[i] * 1000,
-          open: quotes.open[i],
-          high: quotes.high[i],
-          low: quotes.low[i],
-          close: quotes.close[i],
-          volume: quotes.volume[i]
-        });
-      }
-    }
-    
-    console.log(`✅ Fetched ${historicalData.length} candles for ${symbol}`);
-    return historicalData;
+    console.log(`✅ Fetched ${data.length} candles from ${assetType === 'crypto' ? 'Bybit' : 'Yahoo Finance'}`);
+    return data as MarketData[];
   } catch (error) {
-    console.error(`Error fetching market data for ${symbol}:`, error);
+    console.error(`❌ Error fetching market data for ${symbol}:`, error);
     return null;
   }
 }

@@ -13,6 +13,8 @@ import {
   getMultiTimeframeBoost 
 } from './multi-timeframe.ts';
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
+import { fetchMarketData as fetchUnifiedData } from '../_shared/market-data-fetcher.ts';
+import { isCryptoSymbol, getAssetType } from '../_shared/symbol-utils.ts';
 
 // Fetch news and analyze sentiment for a symbol
 async function fetchNewsSentiment(symbol: string, supabaseUrl: string, serviceRoleKey: string): Promise<number> {
@@ -132,217 +134,29 @@ async function loadTrainedModel(
   }
 }
 
-// Fetch real historical data from Yahoo Finance or Bybit with OPTIMIZED intervals
+// Fetch real historical data using unified hybrid approach
 async function fetchRealHistoricalData(symbol: string, period: string): Promise<any[]> {
+  const assetType = getAssetType(symbol);
+  console.log(`📡 Fetching ${assetType} data for ${symbol} over ${period}...`);
+  
   try {
-    console.log(`📡 Fetching data for ${symbol} over ${period}...`);
+    const data = await fetchUnifiedData({
+      symbol,
+      range: period,
+      interval: '1d'
+    });
     
-    // 🚀 CRYPTO: Use Bybit for crypto symbols (ending in -USD)
-    if (symbol.endsWith('-USD')) {
-      console.log(`   Using Bybit for crypto ${symbol}`);
-      return await fetchBybitHistoricalData(symbol, period);
-    }
-    
-    // 📈 STOCKS: Use Yahoo Finance for regular stocks
-    console.log(`   Using Yahoo Finance for stock ${symbol}`);
-    return await fetchYahooFinanceData(symbol, period);
-    
+    console.log(`✅ Fetched ${data.length} data points from ${assetType === 'crypto' ? 'Bybit' : 'Yahoo Finance'}`);
+    return data;
   } catch (error) {
     console.error(`❌ Failed to fetch historical data for ${symbol}:`, error);
     return [];
   }
 }
 
-// Fetch historical data from Bybit for crypto
-async function fetchBybitHistoricalData(symbol: string, period: string): Promise<any[]> {
-  try {
-    // Convert BTC-USD to BTCUSDT format for Bybit
-    const bybitSymbol = symbol.replace('-USD', 'USDT');
-    
-    // Determine interval and limit based on period
-    let interval: string;
-    let limit: number;
-    
-    switch (period) {
-      case '1day':
-        interval = '5'; // 5-minute candles
-        limit = 288; // 24 hours worth
-        break;
-      case '1week':
-        interval = '15'; // 15-minute candles
-        limit = 672; // 1 week worth
-        break;
-      case '2weeks':
-        interval = '30'; // 30-minute candles
-        limit = 672; // 2 weeks worth
-        break;
-      case '1month':
-        interval = '60'; // 1-hour candles
-        limit = 720; // 1 month worth
-        break;
-      case '3months':
-        interval = 'D'; // Daily candles
-        limit = 90; // 3 months worth
-        break;
-      default:
-        interval = '60';
-        limit = 720;
-    }
-    
-    const response = await fetch(
-      `https://api.bybit.com/v5/market/kline?category=spot&symbol=${bybitSymbol}&interval=${interval}&limit=${limit}`,
-      {
-        headers: {
-          'User-Agent': 'Mozilla/5.0'
-        }
-      }
-    );
-    
-    if (!response.ok) {
-      console.log(`⚠️ Bybit API error for ${symbol}: ${response.status}`);
-      return [];
-    }
-    
-    const data = await response.json();
-    
-    if (!data.result?.list || data.result.list.length === 0) {
-      console.log(`⚠️ No Bybit data returned for ${symbol}`);
-      return [];
-    }
-    
-    // Convert Bybit format to our standard format
-    const historicalData = data.result.list.reverse().map((kline: any[]) => ({
-      timestamp: parseInt(kline[0]),
-      open: parseFloat(kline[1]),
-      high: parseFloat(kline[2]),
-      low: parseFloat(kline[3]),
-      close: parseFloat(kline[4]),
-      volume: parseFloat(kline[5])
-    }));
-    
-    console.log(`✅ Fetched ${historicalData.length} Bybit data points for ${symbol}`);
-    return historicalData;
-    
-  } catch (error) {
-    console.error(`❌ Bybit fetch error for ${symbol}:`, error);
-    return [];
-  }
-}
-
-// Fetch historical data from Yahoo Finance for stocks
-async function fetchYahooFinanceData(symbol: string, period: string): Promise<any[]> {
-  try {
-    // Determine date range based on backtest period
-    let range: string;
-    let primaryInterval: string;
-    
-    switch (period) {
-      case '1day':
-        range = '5d'; // Need more data for indicators
-        primaryInterval = '5m'; // 5-minute for granular short-term trading
-        break;
-      case '1week':
-        range = '1mo'; // Need more data for indicators
-        primaryInterval = '15m'; // 15-minute candles
-        break;
-      case '2weeks':
-        range = '1mo';
-        primaryInterval = '30m'; // 30-minute candles
-        break;
-      case '1month':
-        range = '3mo'; // Need more data for indicators
-        primaryInterval = '1h'; // Hourly candles
-        break;
-      case '3months':
-        range = '6mo'; // Need more data for indicators
-        primaryInterval = '1d'; // Daily candles
-        break;
-      default:
-        range = '3mo';
-        primaryInterval = '1h';
-    }
-    
-    // Fetch primary timeframe data from Yahoo Finance with retry logic
-    let attempts = 0;
-    let data;
-    
-    while (attempts < 2) {
-      try {
-        const response = await fetch(
-          `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?range=${range}&interval=${primaryInterval}`,
-          {
-            headers: {
-              'User-Agent': 'Mozilla/5.0'
-            }
-          }
-        );
-        
-        if (!response.ok) {
-          if (attempts === 0) {
-            console.log(`⚠️ First attempt failed for ${symbol}, retrying...`);
-            attempts++;
-            await new Promise(resolve => setTimeout(resolve, 1000));
-            continue;
-          }
-          throw new Error(`Yahoo Finance API error: ${response.status}`);
-        }
-        
-        data = await response.json();
-        break;
-      } catch (error) {
-        if (attempts === 0) {
-          console.log(`⚠️ Error fetching ${symbol}, retrying...`);
-          attempts++;
-          await new Promise(resolve => setTimeout(resolve, 1000));
-          continue;
-        }
-        throw error;
-      }
-    }
-    
-    if (!data?.chart?.result?.[0]) {
-      console.log(`⚠️ No data returned for ${symbol}, may be invalid symbol`);
-      return [];
-    }
-    
-    const result = data.chart.result[0];
-    const timestamps = result.timestamp;
-    const quotes = result.indicators.quote[0];
-    
-    if (!timestamps || !quotes) {
-      console.log(`⚠️ Invalid data format for ${symbol}`);
-      return [];
-    }
-    
-    // Format historical data
-    const historicalData = [];
-    for (let i = 0; i < timestamps.length; i++) {
-      if (quotes.close[i] !== null && quotes.open[i] !== null && 
-          quotes.high[i] !== null && quotes.low[i] !== null && quotes.volume[i] !== null) {
-        historicalData.push({
-          timestamp: timestamps[i] * 1000,
-          open: quotes.open[i],
-          high: quotes.high[i],
-          low: quotes.low[i],
-          close: quotes.close[i],
-          volume: quotes.volume[i]
-        });
-      }
-    }
-    
-    if (historicalData.length < 20) {
-      console.log(`⚠️ Insufficient data for ${symbol}: only ${historicalData.length} points (minimum 20 required)`);
-      return [];
-    }
-    
-    console.log(`✅ Fetched ${historicalData.length} data points for ${symbol}`);
-    return historicalData;
-    
-  } catch (error) {
-    console.error(`❌ Failed to fetch historical data for ${symbol}:`, error);
-    return [];
-  }
-}
+// Old individual data fetching functions removed
+// Now using unified hybrid data fetcher from _shared/market-data-fetcher.ts
+// This ensures consistency between training and live trading
 
 function buildTradingState(historicalData: any[], index: number): TradingState {
   const currentBar = historicalData[index];
