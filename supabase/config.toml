@@ -1,43 +1,40 @@
 project_id = "ncetkhcryoxchkodlzgj"
 
-[functions.test-binance-connection]
-verify_jwt = false
+[functions.advanced-trading-bot]
+verify_jwt = true
+
+[functions.admin-dashboard]
+verify_jwt = true
 
 [functions.analyze-stock]
 verify_jwt = true
 
-[functions.execute-trade]
-verify_jwt = false
-
 [functions.auto-trade]
 verify_jwt = true
 
-[functions.advanced-trading-bot]
+[functions.connect-broker]
 verify_jwt = true
 
-[functions.fetch-news]
+[functions.dashboard]
 verify_jwt = true
 
-[functions.update-positions]
-verify_jwt = true
+[functions.execute-signal]
+verify_jwt = false
 
-[functions.train-ppo-model]
-verify_jwt = true
-
-[functions.train-asset-model]
-verify_jwt = true
+[functions.execute-trade]
+verify_jwt = false
 
 [functions.fetch-crypto-prices]
 verify_jwt = false
 
-[functions.fetch-stock-price]
-verify_jwt = false
+[functions.fetch-news]
+verify_jwt = true
 
 [functions.fetch-stock-history]
 verify_jwt = false
 
-[functions.connect-broker]
-verify_jwt = true
+[functions.fetch-stock-price]
+verify_jwt = false
 
 [functions.generate-signals]
 verify_jwt = false
@@ -45,7 +42,10 @@ verify_jwt = false
 [functions.health-check]
 verify_jwt = false
 
-[functions.execute-signal]
+[functions.inference-service]
+verify_jwt = false
+
+[functions.live-trading-orchestrator]
 verify_jwt = false
 
 [functions.online-ppo-update]
@@ -54,8 +54,23 @@ verify_jwt = false
 [functions.promote-model]
 verify_jwt = true
 
+[functions.request-asset-training]
+verify_jwt = true
+
 [functions.safety-monitor]
 verify_jwt = false
 
-[functions.live-trading-orchestrator]
+[functions.test-binance-connection]
 verify_jwt = false
+
+[functions.train-asset-model]
+verify_jwt = true
+
+[functions.train-ppo-model]
+verify_jwt = true
+
+[functions.update-asset-prefs]
+verify_jwt = true
+
+[functions.update-positions]
+verify_jwt = true
