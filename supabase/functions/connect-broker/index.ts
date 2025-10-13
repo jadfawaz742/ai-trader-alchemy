@@ -14,7 +14,7 @@ serve(async (req) => {
   try {
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
       {
         global: {
           headers: { Authorization: req.headers.get('Authorization')! },
@@ -24,6 +24,7 @@ serve(async (req) => {
 
     const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
     if (authError || !user) {
+      console.error('Auth error:', authError);
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -134,6 +135,7 @@ serve(async (req) => {
 });
 
 async function validateBinance(credentials: any): Promise<{ valid: boolean; error: string }> {
+  console.log('Validating Binance credentials...');
   try {
     const timestamp = Date.now();
     const queryString = `timestamp=${timestamp}`;
@@ -155,6 +157,7 @@ async function validateBinance(credentials: any): Promise<{ valid: boolean; erro
       .map(b => b.toString(16).padStart(2, '0'))
       .join('');
 
+    console.log('Making request to Binance API...');
     const response = await fetch(
       `https://api.binance.com/api/v3/account?${queryString}&signature=${signatureHex}`,
       {
@@ -165,12 +168,15 @@ async function validateBinance(credentials: any): Promise<{ valid: boolean; erro
     );
 
     if (response.ok) {
+      console.log('Binance validation successful');
       return { valid: true, error: '' };
     } else {
       const error = await response.json();
+      console.error('Binance validation failed:', error);
       return { valid: false, error: error.msg || 'Invalid Binance credentials' };
     }
   } catch (error) {
+    console.error('Binance validation exception:', error);
     return { valid: false, error: 'Failed to validate Binance credentials' };
   }
 }

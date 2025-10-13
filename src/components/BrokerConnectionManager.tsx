@@ -99,7 +99,16 @@ export function BrokerConnectionManager() {
         },
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error connecting broker:', error);
+        toast.error(error.message || 'Failed to connect broker');
+        return;
+      }
+
+      if (data?.error) {
+        toast.error(data.error);
+        return;
+      }
 
       if (data?.success) {
         toast.success('Broker connected successfully!');
@@ -107,8 +116,6 @@ export function BrokerConnectionManager() {
         setApiSecret('');
         setSelectedBroker('');
         await loadData();
-      } else {
-        throw new Error(data?.message || 'Failed to connect broker');
       }
     } catch (error: any) {
       console.error('Error connecting broker:', error);
@@ -133,13 +140,20 @@ export function BrokerConnectionManager() {
         },
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error('Error testing connection:', error);
+        toast.error(error.message || 'Connection test failed');
+        return;
+      }
+
+      if (data?.error) {
+        toast.error(data.error);
+        return;
+      }
 
       if (data?.success) {
         toast.success('Connection test successful!');
         await loadData();
-      } else {
-        throw new Error(data?.message || 'Connection test failed');
       }
     } catch (error: any) {
       console.error('Error testing connection:', error);
