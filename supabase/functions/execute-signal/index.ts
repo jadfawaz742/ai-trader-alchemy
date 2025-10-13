@@ -117,28 +117,27 @@ serve(async (req) => {
     const normalizedTp = signal.tp ? 
       Math.round(signal.tp / tickSize) * tickSize : null;
 
-    // Helper function to generate HMAC signature
-    async function generateSignature(timestampMs: number) {
+    // Helper function to generate HMAC signature using VPS canonical format
+    async function generateSignature(ts: number) {
       const hmacSecret = Deno.env.get('HMAC_SECRET');
       if (!hmacSecret) {
         throw new Error('HMAC_SECRET not configured');
       }
 
-      const payload = {
-        signal_id: signal.id,
-        asset: signal.asset,
-        broker_symbol: brokerAsset.broker_symbol,
-        side: signal.side,
-        qty: normalizedQty,
-        order_type: signal.order_type,
-        limit_price: normalizedLimitPrice,
-        sl: normalizedSl,
-        tp: normalizedTp,
-        broker_id: signal.broker_connections.broker_id,
-        user_id: signal.user_id,
-        credentials: signal.broker_connections.encrypted_credentials,
-        timestamp: timestampMs,
-      };
+      // Canonical format: signal_id|asset|side|qty|order_type|limit_price|tp|sl|ts
+      const canonical = [
+        signal.id,
+        signal.asset,
+        signal.side,
+        normalizedQty.toString(),
+        signal.order_type,
+        normalizedLimitPrice?.toString() || 'null',
+        normalizedTp?.toString() || 'null',
+        normalizedSl?.toString() || 'null',
+        ts.toString()
+      ].join('|');
+
+      console.log('Canonical string for signature:', canonical);
 
       const encoder = new TextEncoder();
       const key = await crypto.subtle.importKey(
@@ -152,18 +151,19 @@ serve(async (req) => {
       const signature = await crypto.subtle.sign(
         'HMAC',
         key,
-        encoder.encode(JSON.stringify(payload))
+        encoder.encode(canonical)
       );
 
       const signatureHex = Array.from(new Uint8Array(signature))
         .map(b => b.toString(16).padStart(2, '0'))
         .join('');
 
-      return { payload, signature: signatureHex };
+      return signatureHex;
     }
 
-    let timestamp = Date.now();
-    let { payload, signature: signatureHex } = await generateSignature(timestamp);
+    let ts = Math.floor(Date.now() / 1000); // Unix timestamp in seconds
+    let signatureHex = await generateSignature(ts);
+    const dedupeKey = `${signal.id}-${ts}`;
 
     // Update signal status to 'sent'
     await supabaseClient
@@ -184,24 +184,42 @@ serve(async (req) => {
 
     for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        console.log(`Attempt ${attempt}/${maxRetries}: Sending to VPS`);
+        console.log(`Attempt ${attempt}/${maxRetries}: Sending to VPS at ${vpsEndpoint}`);
         
         // Validate timestamp is within ±30s window
-        const now = Date.now();
-        const timeDiff = Math.abs(now - timestamp);
-        if (timeDiff > 30000) {
+        const now = Math.floor(Date.now() / 1000);
+        const timeDiff = Math.abs(now - ts);
+        if (timeDiff > 30) {
           console.log('Timestamp outside window, regenerating');
-          timestamp = now;
-          const sigData = await generateSignature(timestamp);
-          payload = sigData.payload;
-          signatureHex = sigData.signature;
+          ts = now;
+          signatureHex = await generateSignature(ts);
         }
+        
+        // Build payload matching VPS specification
+        const payload = {
+          signal_id: signal.id,
+          user_id: signal.user_id,
+          broker_conn_id: signal.broker_connections.id,
+          asset: signal.asset,
+          side: signal.side.toLowerCase(),
+          qty: normalizedQty,
+          order_type: signal.order_type.toLowerCase(),
+          limit_price: normalizedLimitPrice,
+          tp: normalizedTp,
+          sl: normalizedSl,
+          model_id: signal.model_id || 'ppo_default',
+          model_version: signal.model_version || 'v1.0',
+          ts: ts,
+          dedupe_key: dedupeKey,
+          sig: signatureHex  // Signature in body, not header
+        };
+
+        console.log('Sending payload to VPS:', JSON.stringify(payload, null, 2));
         
         vpsResponse = await fetch(vpsEndpoint, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'X-Signature': signatureHex,
           },
           body: JSON.stringify(payload),
         });
@@ -219,10 +237,8 @@ serve(async (req) => {
         if (vpsResponse.status === 401 && attempt < maxRetries) {
           // Invalid HMAC - regenerate with fresh timestamp
           console.log('401 Unauthorized - regenerating signature with fresh timestamp');
-          timestamp = Date.now();
-          const sigData = await generateSignature(timestamp);
-          payload = sigData.payload;
-          signatureHex = sigData.signature;
+          ts = Math.floor(Date.now() / 1000);
+          signatureHex = await generateSignature(ts);
           await new Promise(resolve => setTimeout(resolve, attempt * 500));
           continue;
         }
@@ -230,10 +246,8 @@ serve(async (req) => {
         if (vpsResponse.status === 400 && attempt < maxRetries) {
           // Stale timestamp - generate new one immediately
           console.log('400 Bad Request - likely stale timestamp, regenerating');
-          timestamp = Date.now();
-          const sigData = await generateSignature(timestamp);
-          payload = sigData.payload;
-          signatureHex = sigData.signature;
+          ts = Math.floor(Date.now() / 1000);
+          signatureHex = await generateSignature(ts);
           await new Promise(resolve => setTimeout(resolve, 200));
           continue;
         }
@@ -259,7 +273,9 @@ serve(async (req) => {
         }
 
         if (vpsResponse.ok) {
-          // Success - update signal and create execution record
+          // Success - VPS returns {"status":"executed","latency_ms":42}
+          console.log(`✅ VPS execution successful:`, responseData);
+          
           await supabaseClient
             .from('signals')
             .update({ 
@@ -274,13 +290,13 @@ serve(async (req) => {
             .insert({
               user_id: signal.user_id,
               asset: signal.asset,
-              version: signal.model_version,
+              version: signal.model_version || 'v1.0',
               start_ts: new Date().toISOString(),
               metadata: {
                 signal_id: signal.id,
-                entry_price: responseData.executed_price,
                 side: signal.side,
                 qty: normalizedQty,
+                vps_latency_ms: responseData.latency_ms || latency,
               },
             });
 
@@ -289,15 +305,12 @@ serve(async (req) => {
             .insert({
               signal_id: signal.id,
               user_id: signal.user_id,
-              broker_id: signal.broker_id,
+              broker_id: signal.broker_connections.broker_id,
               asset: signal.asset,
               side: signal.side,
               qty: normalizedQty,
-              executed_price: responseData.executed_price,
-              executed_qty: responseData.executed_qty,
-              order_id: responseData.order_id,
-              status: responseData.status || 'filled',
-              latency_ms: latency,
+              status: responseData.status || 'executed',
+              latency_ms: responseData.latency_ms || latency,
               raw_response: responseData,
             });
 

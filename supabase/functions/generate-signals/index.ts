@@ -435,7 +435,25 @@ function normalizeQuantity(qty: number, minQty: number, stepSize: number): numbe
 }
 
 async function queueSignalExecution(signal: any, pref: any) {
-  // This will be called by the execute-trade edge function
-  // For now, just log
-  console.log(`Queueing signal ${signal.id} for execution`);
+  try {
+    const supabaseClient = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
+    );
+    
+    console.log(`Queueing signal ${signal.id} for VPS execution`);
+    
+    // Call execute-signal edge function to send to VPS
+    const { data, error } = await supabaseClient.functions.invoke('execute-signal', {
+      body: { signal_id: signal.id }
+    });
+    
+    if (error) {
+      console.error(`❌ Failed to queue signal ${signal.id}:`, error);
+    } else {
+      console.log(`✅ Successfully queued signal ${signal.id} for execution`);
+    }
+  } catch (error) {
+    console.error(`❌ Error queueing signal ${signal.id}:`, error);
+  }
 }
