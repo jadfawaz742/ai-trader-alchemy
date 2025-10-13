@@ -51,11 +51,11 @@ serve(async (req) => {
 
     // Generate HMAC signature
     const hmacSecret = Deno.env.get('HMAC_SECRET') || '';
-    const vpsEndpoint = Deno.env.get('VPS_ENDPOINT');
+    const vpsEndpoint = 'https://projectai.duckdns.org/execute_trade';
 
-    if (!vpsEndpoint) {
-      console.error('VPS_ENDPOINT not configured');
-      return new Response(JSON.stringify({ error: 'VPS not configured' }), {
+    if (!hmacSecret) {
+      console.error('HMAC_SECRET not configured');
+      return new Response(JSON.stringify({ error: 'HMAC secret not configured' }), {
         status: 500,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
@@ -133,7 +133,44 @@ serve(async (req) => {
         });
 
         const latency = Date.now() - startTime;
-        const responseData = await vpsResponse.json();
+        let responseData;
+        
+        try {
+          responseData = await vpsResponse.json();
+        } catch (e) {
+          responseData = { error: 'Invalid JSON response from VPS' };
+        }
+
+        // Handle specific VPS response codes
+        if (vpsResponse.status === 401) {
+          console.error('VPS returned 401: Invalid HMAC signature');
+          throw new Error('Invalid HMAC signature - verify HMAC_SECRET');
+        }
+
+        if (vpsResponse.status === 400) {
+          console.error('VPS returned 400: Stale timestamp or invalid request');
+          throw new Error(responseData.detail || 'Stale timestamp or invalid request');
+        }
+
+        if (vpsResponse.status === 429) {
+          console.log('VPS returned 429: Duplicate signal - skipping');
+          await supabaseClient
+            .from('signals')
+            .update({ 
+              status: 'executed', 
+              executed_at: new Date().toISOString(),
+              error_message: 'Duplicate signal - already processed'
+            })
+            .eq('id', signal.id);
+
+          return new Response(JSON.stringify({
+            success: true,
+            message: 'Signal already processed (duplicate)',
+            latency_ms: latency,
+          }), {
+            headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+          });
+        }
 
         if (vpsResponse.ok) {
           // Success - update signal and create execution record
@@ -171,14 +208,19 @@ serve(async (req) => {
           }), {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           });
-        } else {
+        } else if (vpsResponse.status === 500) {
           lastError = responseData;
-          console.error(`VPS execution failed (attempt ${attempt}/3):`, responseData);
+          console.error(`VPS internal error (attempt ${attempt}/3):`, responseData);
           
           if (attempt < 3) {
-            // Exponential backoff
+            // Exponential backoff for 500 errors
             await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
           }
+        } else {
+          // Other errors - don't retry
+          lastError = responseData;
+          console.error(`VPS execution failed with status ${vpsResponse.status}:`, responseData);
+          break; // Exit retry loop for non-500 errors
         }
       } catch (error) {
         lastError = error;
