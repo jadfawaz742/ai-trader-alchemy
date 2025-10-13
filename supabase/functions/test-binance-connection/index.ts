@@ -1,4 +1,4 @@
-// Force redeploy to pick up new Binance API secrets
+// Version 2.0 - VPS Proxy with Domain - Forced Redeploy
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.56.0';
 
 const corsHeaders = {
