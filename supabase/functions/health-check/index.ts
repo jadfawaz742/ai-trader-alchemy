@@ -47,17 +47,19 @@ serve(async (req) => {
       try {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 5000);
+        const startTime = Date.now();
         
-        const vpsResponse = await fetch(vpsEndpoint, {
+        const vpsResponse = await fetch(vpsEndpoint + '/health', {
           method: 'GET',
           signal: controller.signal,
         });
         
         clearTimeout(timeoutId);
+        const latency = Date.now() - startTime;
         
         checks.checks.vps = {
           status: vpsResponse.ok ? 'healthy' : 'degraded',
-          latency_ms: Date.now(),
+          latency_ms: latency,
           endpoint: vpsEndpoint,
         };
       } catch (error) {
@@ -73,6 +75,32 @@ serve(async (req) => {
         error: 'VPS_ENDPOINT not set',
       };
     }
+
+    // Check broker connections
+    const { data: brokerConns } = await supabaseClient
+      .from('broker_connections')
+      .select('id, broker_id, status, error_message, brokers(name)')
+      .eq('status', 'active');
+
+    const brokerHealth = [];
+    for (const conn of brokerConns || []) {
+      try {
+        // Simple connectivity check - just verify connection exists
+        brokerHealth.push({
+          broker: conn.brokers?.name || 'Unknown',
+          status: conn.error_message ? 'degraded' : 'healthy',
+          error: conn.error_message,
+        });
+      } catch (error) {
+        brokerHealth.push({
+          broker: conn.brokers?.name || 'Unknown',
+          status: 'unhealthy',
+          error: error instanceof Error ? error.message : 'Unknown error',
+        });
+      }
+    }
+
+    checks.checks.broker_connections = brokerHealth;
 
     // Get feature flags status
     const { data: flags } = await supabaseClient

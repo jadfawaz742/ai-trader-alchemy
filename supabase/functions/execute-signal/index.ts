@@ -26,7 +26,7 @@ serve(async (req) => {
       });
     }
 
-    // Fetch signal with related data
+    // Fetch signal with related data including broker capabilities
     const { data: signal, error: signalError } = await supabaseClient
       .from('signals')
       .select(`
@@ -34,7 +34,12 @@ serve(async (req) => {
         broker_connections!inner(
           id,
           broker_id,
-          encrypted_credentials
+          encrypted_credentials,
+          brokers!inner(
+            name,
+            supports_crypto,
+            supports_stocks
+          )
         )
       `)
       .eq('id', signal_id)
@@ -49,85 +54,154 @@ serve(async (req) => {
       });
     }
 
-    // Generate HMAC signature
-    const hmacSecret = Deno.env.get('HMAC_SECRET') || '';
-    const vpsEndpoint = 'https://projectai.duckdns.org/execute_trade';
+    console.log('Processing signal:', signal_id, 'for asset:', signal.asset);
 
-    if (!hmacSecret) {
-      console.error('HMAC_SECRET not configured');
-      return new Response(JSON.stringify({ error: 'HMAC secret not configured' }), {
-        status: 500,
+    // Validate broker asset support
+    const { data: brokerAsset, error: assetError } = await supabaseClient
+      .from('broker_assets')
+      .select('*')
+      .eq('broker_id', signal.broker_connections.broker_id)
+      .eq('asset', signal.asset)
+      .single();
+
+    if (assetError || !brokerAsset) {
+      console.error('Asset not supported by broker:', signal.asset);
+      await supabaseClient
+        .from('signals')
+        .update({ 
+          status: 'failed',
+          error_message: `Asset ${signal.asset} not supported by broker`
+        })
+        .eq('id', signal_id);
+      
+      return new Response(JSON.stringify({ 
+        error: 'Asset not supported by broker' 
+      }), {
+        status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    const timestamp = Date.now();
-    const canonicalString = [
-      signal.id,
-      signal.asset,
-      signal.side,
-      signal.qty.toString(),
-      signal.order_type,
-      signal.limit_price?.toString() || '',
-      signal.tp?.toString() || '',
-      signal.sl?.toString() || '',
-      timestamp.toString(),
-    ].join('|');
-
-    const encoder = new TextEncoder();
-    const keyData = encoder.encode(hmacSecret);
-    const messageData = encoder.encode(canonicalString);
+    // Normalize quantity and prices according to broker rules
+    let normalizedQty = signal.qty;
+    const stepSize = parseFloat(brokerAsset.step_size);
+    const minQty = parseFloat(brokerAsset.min_qty);
     
-    const cryptoKey = await crypto.subtle.importKey(
-      'raw',
-      keyData,
-      { name: 'HMAC', hash: 'SHA-256' },
-      false,
-      ['sign']
-    );
+    // Round qty to step size
+    normalizedQty = Math.floor(normalizedQty / stepSize) * stepSize;
     
-    const signatureBuffer = await crypto.subtle.sign('HMAC', cryptoKey, messageData);
-    const signature = Array.from(new Uint8Array(signatureBuffer))
-      .map(b => b.toString(16).padStart(2, '0'))
-      .join('');
+    if (normalizedQty < minQty) {
+      console.error('Quantity below minimum:', normalizedQty, '<', minQty);
+      await supabaseClient
+        .from('signals')
+        .update({ 
+          status: 'failed',
+          error_message: `Quantity ${normalizedQty} below minimum ${minQty}`
+        })
+        .eq('id', signal_id);
+      
+      return new Response(JSON.stringify({ 
+        error: 'Quantity below minimum' 
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
-    // Prepare payload for VPS
-    const payload = {
-      signal_id: signal.id,
-      user_id: signal.user_id,
-      broker_conn_id: signal.broker_connections.id,
-      asset: signal.asset,
-      side: signal.side,
-      qty: signal.qty,
-      order_type: signal.order_type,
-      limit_price: signal.limit_price,
-      tp: signal.tp,
-      sl: signal.sl,
-      model_id: signal.model_id,
-      model_version: signal.model_version,
-      ts: timestamp,
-      dedupe_key: signal.dedupe_key,
-      sig: signature,
-    };
+    // Round prices to tick size
+    const tickSize = parseFloat(brokerAsset.tick_size);
+    const normalizedLimitPrice = signal.limit_price ? 
+      Math.round(signal.limit_price / tickSize) * tickSize : null;
+    const normalizedSl = signal.sl ? 
+      Math.round(signal.sl / tickSize) * tickSize : null;
+    const normalizedTp = signal.tp ? 
+      Math.round(signal.tp / tickSize) * tickSize : null;
 
-    console.log(`Sending signal ${signal.id} to VPS`);
+    // Helper function to generate HMAC signature
+    async function generateSignature(timestampMs: number) {
+      const hmacSecret = Deno.env.get('HMAC_SECRET');
+      if (!hmacSecret) {
+        throw new Error('HMAC_SECRET not configured');
+      }
+
+      const payload = {
+        signal_id: signal.id,
+        asset: signal.asset,
+        broker_symbol: brokerAsset.broker_symbol,
+        side: signal.side,
+        qty: normalizedQty,
+        order_type: signal.order_type,
+        limit_price: normalizedLimitPrice,
+        sl: normalizedSl,
+        tp: normalizedTp,
+        broker_id: signal.broker_connections.broker_id,
+        user_id: signal.user_id,
+        credentials: signal.broker_connections.encrypted_credentials,
+        timestamp: timestampMs,
+      };
+
+      const encoder = new TextEncoder();
+      const key = await crypto.subtle.importKey(
+        'raw',
+        encoder.encode(hmacSecret),
+        { name: 'HMAC', hash: 'SHA-256' },
+        false,
+        ['sign']
+      );
+
+      const signature = await crypto.subtle.sign(
+        'HMAC',
+        key,
+        encoder.encode(JSON.stringify(payload))
+      );
+
+      const signatureHex = Array.from(new Uint8Array(signature))
+        .map(b => b.toString(16).padStart(2, '0'))
+        .join('');
+
+      return { payload, signature: signatureHex };
+    }
+
+    let timestamp = Date.now();
+    let { payload, signature: signatureHex } = await generateSignature(timestamp);
 
     // Update signal status to 'sent'
     await supabaseClient
       .from('signals')
       .update({ status: 'sent', sent_at: new Date().toISOString() })
-      .eq('id', signal.id);
+      .eq('id', signal_id);
 
-    // Send to VPS with retry logic
+    // Send to VPS with retry logic for 400/401/500 errors
+    const vpsEndpoint = Deno.env.get('VPS_ENDPOINT');
+    if (!vpsEndpoint) {
+      throw new Error('VPS_ENDPOINT not configured');
+    }
+
+    let lastError: any = null;
+    let vpsResponse: Response | null = null;
+    const maxRetries = 3;
     const startTime = Date.now();
-    let lastError = null;
-    
-    for (let attempt = 1; attempt <= 3; attempt++) {
+
+    for (let attempt = 1; attempt <= maxRetries; attempt++) {
       try {
-        const vpsResponse = await fetch(vpsEndpoint, {
+        console.log(`Attempt ${attempt}/${maxRetries}: Sending to VPS`);
+        
+        // Validate timestamp is within ±30s window
+        const now = Date.now();
+        const timeDiff = Math.abs(now - timestamp);
+        if (timeDiff > 30000) {
+          console.log('Timestamp outside window, regenerating');
+          timestamp = now;
+          const sigData = await generateSignature(timestamp);
+          payload = sigData.payload;
+          signatureHex = sigData.signature;
+        }
+        
+        vpsResponse = await fetch(vpsEndpoint, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
+            'X-Signature': signatureHex,
           },
           body: JSON.stringify(payload),
         });
@@ -141,15 +215,27 @@ serve(async (req) => {
           responseData = { error: 'Invalid JSON response from VPS' };
         }
 
-        // Handle specific VPS response codes
-        if (vpsResponse.status === 401) {
-          console.error('VPS returned 401: Invalid HMAC signature');
-          throw new Error('Invalid HMAC signature - verify HMAC_SECRET');
+        // Handle specific retry cases
+        if (vpsResponse.status === 401 && attempt < maxRetries) {
+          // Invalid HMAC - regenerate with fresh timestamp
+          console.log('401 Unauthorized - regenerating signature with fresh timestamp');
+          timestamp = Date.now();
+          const sigData = await generateSignature(timestamp);
+          payload = sigData.payload;
+          signatureHex = sigData.signature;
+          await new Promise(resolve => setTimeout(resolve, attempt * 500));
+          continue;
         }
 
-        if (vpsResponse.status === 400) {
-          console.error('VPS returned 400: Stale timestamp or invalid request');
-          throw new Error(responseData.detail || 'Stale timestamp or invalid request');
+        if (vpsResponse.status === 400 && attempt < maxRetries) {
+          // Stale timestamp - generate new one immediately
+          console.log('400 Bad Request - likely stale timestamp, regenerating');
+          timestamp = Date.now();
+          const sigData = await generateSignature(timestamp);
+          payload = sigData.payload;
+          signatureHex = sigData.signature;
+          await new Promise(resolve => setTimeout(resolve, 200));
+          continue;
         }
 
         if (vpsResponse.status === 429) {
@@ -161,7 +247,7 @@ serve(async (req) => {
               executed_at: new Date().toISOString(),
               error_message: 'Duplicate signal - already processed'
             })
-            .eq('id', signal.id);
+            .eq('id', signal_id);
 
           return new Response(JSON.stringify({
             success: true,
@@ -180,7 +266,23 @@ serve(async (req) => {
               status: 'executed', 
               executed_at: new Date().toISOString() 
             })
-            .eq('id', signal.id);
+            .eq('id', signal_id);
+
+          // Create episode entry for online learning
+          await supabaseClient
+            .from('episodes')
+            .insert({
+              user_id: signal.user_id,
+              asset: signal.asset,
+              version: signal.model_version,
+              start_ts: new Date().toISOString(),
+              metadata: {
+                signal_id: signal.id,
+                entry_price: responseData.executed_price,
+                side: signal.side,
+                qty: normalizedQty,
+              },
+            });
 
           await supabaseClient
             .from('executions')
@@ -190,7 +292,7 @@ serve(async (req) => {
               broker_id: signal.broker_id,
               asset: signal.asset,
               side: signal.side,
-              qty: signal.qty,
+              qty: normalizedQty,
               executed_price: responseData.executed_price,
               executed_qty: responseData.executed_qty,
               order_id: responseData.order_id,
@@ -199,7 +301,7 @@ serve(async (req) => {
               raw_response: responseData,
             });
 
-          console.log(`Signal ${signal.id} executed successfully in ${latency}ms`);
+          console.log(`Signal ${signal_id} executed successfully in ${latency}ms`);
 
           return new Response(JSON.stringify({
             success: true,
@@ -208,26 +310,26 @@ serve(async (req) => {
           }), {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           });
-        } else if (vpsResponse.status === 500) {
-          lastError = responseData;
-          console.error(`VPS internal error (attempt ${attempt}/3):`, responseData);
-          
-          if (attempt < 3) {
-            // Exponential backoff for 500 errors
-            await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
-          }
-        } else {
-          // Other errors - don't retry
-          lastError = responseData;
-          console.error(`VPS execution failed with status ${vpsResponse.status}:`, responseData);
-          break; // Exit retry loop for non-500 errors
         }
+
+        if (vpsResponse.status === 500 && attempt < maxRetries) {
+          // Server error - exponential backoff
+          lastError = responseData;
+          console.error(`VPS returned 500, retrying in ${attempt * 1000}ms`);
+          await new Promise(resolve => setTimeout(resolve, attempt * 1000));
+          continue;
+        }
+
+        // For other statuses, break the retry loop
+        lastError = responseData;
+        console.error(`VPS execution failed with status ${vpsResponse.status}:`, responseData);
+        break;
       } catch (error) {
         lastError = error;
-        console.error(`VPS request failed (attempt ${attempt}/3):`, error);
+        console.error(`Attempt ${attempt} failed:`, error);
         
-        if (attempt < 3) {
-          await new Promise(resolve => setTimeout(resolve, Math.pow(2, attempt) * 1000));
+        if (attempt < maxRetries) {
+          await new Promise(resolve => setTimeout(resolve, attempt * 1000));
         }
       }
     }
@@ -239,7 +341,7 @@ serve(async (req) => {
         status: 'failed',
         error_message: JSON.stringify(lastError),
       })
-      .eq('id', signal.id);
+      .eq('id', signal_id);
 
     await supabaseClient
       .from('executions')
@@ -249,7 +351,7 @@ serve(async (req) => {
         broker_id: signal.broker_id,
         asset: signal.asset,
         side: signal.side,
-        qty: signal.qty,
+        qty: normalizedQty,
         status: 'rejected',
         raw_response: { error: lastError },
       });

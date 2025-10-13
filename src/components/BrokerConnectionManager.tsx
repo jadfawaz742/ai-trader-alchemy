@@ -24,6 +24,7 @@ interface BrokerConnection {
   broker_id: string;
   status: string;
   auth_type: string;
+  encrypted_credentials: any;
   error_message: string | null;
   last_checked_at: string | null;
   created_at: string;
@@ -87,11 +88,15 @@ export function BrokerConnectionManager() {
     try {
       const { data, error } = await supabase.functions.invoke('connect-broker', {
         body: {
-          brokerId: selectedBroker,
-          apiKey,
-          apiSecret,
-          accountType
-        }
+          action: 'validate',
+          broker_id: selectedBroker,
+          auth_type: 'api_key',
+          credentials: {
+            api_key: apiKey,
+            api_secret: apiSecret,
+            account_type: accountType,
+          },
+        },
       });
 
       if (error) throw error;
@@ -116,11 +121,16 @@ export function BrokerConnectionManager() {
   const testConnection = async (connectionId: string) => {
     setTestingConnection(connectionId);
     try {
+      const connection = connections.find(c => c.id === connectionId);
+      if (!connection) return;
+
       const { data, error } = await supabase.functions.invoke('connect-broker', {
         body: {
-          action: 'test',
-          connectionId
-        }
+          action: 'validate',
+          broker_id: connection.broker_id,
+          auth_type: 'api_key',
+          credentials: connection.encrypted_credentials,
+        },
       });
 
       if (error) throw error;
@@ -141,10 +151,15 @@ export function BrokerConnectionManager() {
 
   const disconnectBroker = async (connectionId: string) => {
     try {
-      const { error } = await supabase
-        .from('broker_connections')
-        .delete()
-        .eq('id', connectionId);
+      const connection = connections.find(c => c.id === connectionId);
+      if (!connection) return;
+
+      const { error } = await supabase.functions.invoke('connect-broker', {
+        body: {
+          action: 'disconnect',
+          broker_id: connection.broker_id,
+        },
+      });
 
       if (error) throw error;
 

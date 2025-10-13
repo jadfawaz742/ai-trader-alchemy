@@ -3,6 +3,12 @@ project_id = "ncetkhcryoxchkodlzgj"
 [functions.advanced-trading-bot]
 verify_jwt = true
 
+[functions.kpi-refresh]
+verify_jwt = false
+
+[functions.monthly-retrain]
+verify_jwt = false
+
 [functions.admin-dashboard]
 verify_jwt = true
 
