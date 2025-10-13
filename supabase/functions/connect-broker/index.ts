@@ -6,6 +6,27 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
+function getUserIdFromJWT(authHeader: string | null): string | null {
+  if (!authHeader || !authHeader.startsWith('Bearer ')) {
+    return null;
+  }
+  
+  try {
+    const token = authHeader.substring(7); // Remove 'Bearer '
+    const parts = token.split('.');
+    if (parts.length !== 3) {
+      return null;
+    }
+    
+    // Decode the payload (middle part)
+    const payload = JSON.parse(atob(parts[1]));
+    return payload.sub || null; // 'sub' contains the user ID
+  } catch (error) {
+    console.error('Error decoding JWT:', error);
+    return null;
+  }
+}
+
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -14,22 +35,21 @@ serve(async (req) => {
   try {
     const supabaseClient = createClient(
       Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      {
-        global: {
-          headers: { Authorization: req.headers.get('Authorization')! },
-        },
-      }
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     );
 
-    const { data: { user }, error: authError } = await supabaseClient.auth.getUser();
-    if (authError || !user) {
-      console.error('Auth error:', authError);
+    const authHeader = req.headers.get('Authorization');
+    const userId = getUserIdFromJWT(authHeader);
+
+    if (!userId) {
+      console.error('Auth error: Invalid or missing JWT token');
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
+
+    console.log('Authenticated user:', userId);
 
     const { broker_id, auth_type, credentials, action } = await req.json();
 
@@ -72,7 +92,7 @@ serve(async (req) => {
       const { data: connection, error: insertError } = await supabaseClient
         .from('broker_connections')
         .upsert({
-          user_id: user.id,
+          user_id: userId,
           broker_id,
           auth_type,
           encrypted_credentials: credentials,
@@ -103,7 +123,7 @@ serve(async (req) => {
         .from('broker_connections')
         .update({ status: 'revoked' })
         .eq('broker_id', broker_id)
-        .eq('user_id', user.id);
+        .eq('user_id', userId);
 
       if (deleteError) {
         console.error('Error disconnecting broker:', deleteError);
