@@ -159,6 +159,16 @@ serve(async (req) => {
 async function validateBinance(credentials: any): Promise<{ valid: boolean; error: string }> {
   console.log('Validating Binance credentials...');
   try {
+    // Load VPS proxy URL
+    const vpsProxyUrl = Deno.env.get('VPS_PROXY_URL');
+    const usingProxy = !!vpsProxyUrl;
+    
+    if (usingProxy) {
+      console.log('Using VPS proxy for Binance validation');
+    } else {
+      console.log('Using direct connection to Binance (no proxy configured)');
+    }
+    
     const timestamp = Date.now();
     const queryString = `timestamp=${timestamp}`;
     
@@ -179,15 +189,19 @@ async function validateBinance(credentials: any): Promise<{ valid: boolean; erro
       .map(b => b.toString(16).padStart(2, '0'))
       .join('');
 
-    console.log('Making request to Binance API...');
-    const response = await fetch(
-      `https://api.binance.com/api/v3/account?${queryString}&signature=${signatureHex}`,
-      {
-        headers: {
-          'X-MBX-APIKEY': credentials.api_key,
-        },
-      }
-    );
+    // Build URL - use proxy if available
+    const binanceEndpoint = `/api/v3/account?${queryString}&signature=${signatureHex}`;
+    const targetUrl = usingProxy 
+      ? `${vpsProxyUrl}${binanceEndpoint}`
+      : `https://api.binance.com${binanceEndpoint}`;
+
+    console.log('Making request to:', usingProxy ? 'VPS proxy' : 'Binance directly');
+    const response = await fetch(targetUrl, {
+      headers: {
+        'X-MBX-APIKEY': credentials.api_key,
+        ...(usingProxy ? { 'X-Target-Host': 'api.binance.com' } : {}),
+      },
+    });
 
     if (response.ok) {
       console.log('Binance validation successful');
