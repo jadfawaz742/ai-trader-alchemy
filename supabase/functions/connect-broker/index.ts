@@ -28,6 +28,8 @@ function getUserIdFromJWT(authHeader: string | null): string | null {
 }
 
 serve(async (req) => {
+  console.log('connect-broker function invoked - v2');
+  
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
   }
