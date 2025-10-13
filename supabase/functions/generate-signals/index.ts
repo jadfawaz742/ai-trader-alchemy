@@ -64,7 +64,13 @@ serve(async (req) => {
           id,
           broker_id,
           status,
-          encrypted_credentials
+          encrypted_credentials,
+          brokers!inner(
+            id,
+            name,
+            supports_crypto,
+            supports_stocks
+          )
         )
       `)
       .eq('enabled', true)
@@ -81,6 +87,20 @@ serve(async (req) => {
 
     for (const pref of userPrefs || []) {
       try {
+        // Validate broker supports this asset type
+        const isCrypto = isCryptoSymbol(pref.asset);
+        const broker = pref.broker_connections.brokers;
+        
+        if (isCrypto && !broker.supports_crypto) {
+          console.warn(`⚠️ Skipping ${pref.asset}: Broker ${broker.name} does not support crypto`);
+          continue;
+        }
+        
+        if (!isCrypto && !broker.supports_stocks) {
+          console.warn(`⚠️ Skipping ${pref.asset}: Broker ${broker.name} does not support stocks`);
+          continue;
+        }
+
         // Load PPO model for this asset
         const { data: model } = await supabaseClient
           .from('models')
