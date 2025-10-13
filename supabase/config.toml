@@ -19,7 +19,7 @@ verify_jwt = true
 verify_jwt = true
 
 [functions.connect-broker]
-verify_jwt = true
+verify_jwt = false
 
 [functions.dashboard]
 verify_jwt = true
