@@ -143,7 +143,7 @@ serve(async (req) => {
       });
     }
     
-    // Filter out zero balances and format
+    // Filter out zero balances
     const balances = accountData.balances
       .filter((b: any) => parseFloat(b.free) > 0 || parseFloat(b.locked) > 0)
       .map((b: any) => ({
@@ -153,8 +153,59 @@ serve(async (req) => {
         total: parseFloat(b.free) + parseFloat(b.locked)
       }));
 
+    // Fetch USD prices for all assets
+    const tickerPricesUrl = usingProxy 
+      ? `${vpsProxyUrl}/api/v3/ticker/price`
+      : `https://api.binance.com/api/v3/ticker/price`;
+    
+    const pricesResponse = await fetch(tickerPricesUrl, {
+      headers: usingProxy ? { 'X-Target-Host': 'api.binance.com' } : {},
+    });
+    
+    let prices: any = {};
+    if (pricesResponse.ok) {
+      const pricesText = await pricesResponse.text();
+      const pricesData = JSON.parse(pricesText);
+      prices = pricesData.reduce((acc: any, p: any) => {
+        acc[p.symbol] = parseFloat(p.price);
+        return acc;
+      }, {});
+    }
+
+    // Calculate USD values
+    const balancesWithUSD = balances.map((b: any) => {
+      let usdValue = 0;
+      
+      if (b.asset === 'USDT' || b.asset === 'USDC' || b.asset === 'BUSD') {
+        usdValue = b.total;
+      } else {
+        const usdtSymbol = `${b.asset}USDT`;
+        const busdSymbol = `${b.asset}BUSD`;
+        const usdcSymbol = `${b.asset}USDC`;
+        
+        if (prices[usdtSymbol]) {
+          usdValue = b.total * prices[usdtSymbol];
+        } else if (prices[busdSymbol]) {
+          usdValue = b.total * prices[busdSymbol];
+        } else if (prices[usdcSymbol]) {
+          usdValue = b.total * prices[usdcSymbol];
+        }
+      }
+      
+      return {
+        ...b,
+        usdValue,
+        currentPrice: b.asset === 'USDT' || b.asset === 'USDC' || b.asset === 'BUSD' 
+          ? 1 
+          : (prices[`${b.asset}USDT`] || prices[`${b.asset}BUSD`] || prices[`${b.asset}USDC`] || 0)
+      };
+    });
+
+    const totalUsdValue = balancesWithUSD.reduce((sum: number, b: any) => sum + b.usdValue, 0);
+
     return new Response(JSON.stringify({ 
-      balances,
+      balances: balancesWithUSD,
+      totalUsdValue,
       canTrade: accountData.canTrade,
       canWithdraw: accountData.canWithdraw,
       canDeposit: accountData.canDeposit,

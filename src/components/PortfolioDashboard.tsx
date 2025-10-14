@@ -49,6 +49,13 @@ interface BinanceBalance {
   free: number;
   locked: number;
   total: number;
+  usdValue: number;
+  currentPrice: number;
+}
+
+interface BinancePortfolio {
+  balances: BinanceBalance[];
+  totalUsdValue: number;
 }
 
 export const PortfolioDashboard: React.FC = () => {
@@ -59,6 +66,7 @@ export const PortfolioDashboard: React.FC = () => {
   const [tradePrice, setTradePrice] = useState('');
   const [isTrading, setIsTrading] = useState(false);
   const [binanceBalances, setBinanceBalances] = useState<BinanceBalance[]>([]);
+  const [binanceTotalUsd, setBinanceTotalUsd] = useState<number>(0);
   const [loadingBinance, setLoadingBinance] = useState(false);
   const { toast } = useToast();
 
@@ -88,6 +96,7 @@ export const PortfolioDashboard: React.FC = () => {
       
       if (data?.balances) {
         setBinanceBalances(data.balances);
+        setBinanceTotalUsd(data.totalUsdValue || 0);
       }
     } catch (error) {
       console.error('Error loading Binance portfolio:', error);
@@ -200,7 +209,7 @@ const totalReturnPercent = portfolio && portfolio.initial_balance > 0 ? (totalPn
                   Binance Portfolio
                 </CardTitle>
                 <CardDescription>
-                  Your real Binance account balances
+                  Total Value: {formatCurrency(binanceTotalUsd)}
                 </CardDescription>
               </div>
               <Button 
@@ -214,20 +223,22 @@ const totalReturnPercent = portfolio && portfolio.initial_balance > 0 ? (totalPn
             </div>
           </CardHeader>
           <CardContent>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+            <div className="space-y-3">
               {binanceBalances.map((balance) => (
-                <div key={balance.asset} className="bg-muted/50 rounded-lg p-4">
-                  <div className="text-sm font-medium text-muted-foreground mb-1">
-                    {balance.asset}
-                  </div>
-                  <div className="text-xl font-bold">
-                    {balance.total.toFixed(8)}
-                  </div>
-                  {balance.locked > 0 && (
-                    <div className="text-xs text-muted-foreground mt-1">
-                      Locked: {balance.locked.toFixed(8)}
+                <div key={balance.asset} className="flex items-center justify-between p-4 border rounded-lg">
+                  <div className="space-y-1">
+                    <div className="font-semibold text-lg">{balance.asset}</div>
+                    <div className="text-sm text-muted-foreground">
+                      {balance.total.toFixed(8)} {balance.asset}
+                      {balance.locked > 0 && ` (${balance.locked.toFixed(8)} locked)`}
                     </div>
-                  )}
+                  </div>
+                  <div className="text-right space-y-1">
+                    <div className="font-semibold">{formatCurrency(balance.usdValue)}</div>
+                    <div className="text-sm text-muted-foreground">
+                      @ {formatCurrency(balance.currentPrice)}
+                    </div>
+                  </div>
                 </div>
               ))}
             </div>
@@ -235,49 +246,6 @@ const totalReturnPercent = portfolio && portfolio.initial_balance > 0 ? (totalPn
         </Card>
       )}
 
-      {/* Portfolio Overview */}
-      <Card>
-        <CardHeader>
-          <div className="flex items-center justify-between">
-            <div>
-              <CardTitle className="flex items-center gap-2">
-                <PieChart className="h-5 w-5" />
-                Portfolio Overview
-              </CardTitle>
-              <CardDescription>
-                {portfolio?.name || 'Demo Portfolio'}
-              </CardDescription>
-            </div>
-          </div>
-        </CardHeader>
-        <CardContent>
-          {portfolio && (
-            <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
-              <div className="space-y-2">
-                <div className="text-sm text-muted-foreground">Total Value</div>
-                <div className="text-2xl font-bold">{formatCurrency(totalPortfolioValue)}</div>
-              </div>
-              <div className="space-y-2">
-                <div className="text-sm text-muted-foreground">Cash Balance</div>
-                <div className="text-2xl font-bold">{formatCurrency(portfolio.current_balance)}</div>
-              </div>
-              <div className="space-y-2">
-                <div className="text-sm text-muted-foreground">Total Return</div>
-                <div className={`text-2xl font-bold flex items-center gap-1 ${totalReturnPercent >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                  {totalReturnPercent >= 0 ? <TrendingUp className="h-5 w-5" /> : <TrendingDown className="h-5 w-5" />}
-                  {formatPercent(totalReturnPercent)}
-                </div>
-              </div>
-<div className="space-y-2">
-  <div className="text-sm text-muted-foreground">Total P&L</div>
-  <div className={`text-2xl font-bold ${totalPnL >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-    {formatCurrency(totalPnL)}
-  </div>
-</div>
-            </div>
-          )}
-        </CardContent>
-      </Card>
 
       {/* Current Positions */}
       <Card>
