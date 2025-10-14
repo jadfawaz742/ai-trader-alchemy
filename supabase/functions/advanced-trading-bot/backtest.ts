@@ -695,8 +695,8 @@ async function processBatch(
         description: `${riskLevel} risk profile`
       };
       
-      // Iterate through historical data points with aggressive sampling for 53 symbols
-      const minDataPoints = Math.min(50, Math.floor(historicalData.length * 0.2));
+      // Iterate through historical data points with smart sampling strategy
+      const minSamplePoints = Math.min(50, Math.floor(historicalData.length * 0.2));
       // Dynamic sample rate based on available data
       const sampleRate = historicalData.length > 500 ? 8 : 
                          historicalData.length > 200 ? 4 : 
@@ -707,7 +707,7 @@ async function processBatch(
       let skippedLowConfluence = 0;
       let skippedLowConfidence = 0;
       
-      for (let i = minDataPoints; i < historicalData.length - 1; i += sampleRate) {
+      for (let i = minSamplePoints; i < historicalData.length - 1; i += sampleRate) {
         const currentBar = historicalData[i];
         const nextBar = historicalData[i + 1];
         const currentPrice = currentBar.close;
