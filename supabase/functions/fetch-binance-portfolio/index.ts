@@ -100,15 +100,23 @@ serve(async (req) => {
     const response = await fetch(targetUrl, {
       headers: {
         'X-MBX-APIKEY': credentials.api_key,
+        'Accept-Encoding': 'identity',
         ...(usingProxy ? { 'X-Target-Host': 'api.binance.com' } : {}),
       },
     });
 
     if (!response.ok) {
-      const error = await response.json();
-      console.error('Binance API error:', error);
+      const errorText = await response.text();
+      console.error('Binance API error response:', errorText);
+      let errorMsg = 'Failed to fetch Binance portfolio';
+      try {
+        const errorJson = JSON.parse(errorText);
+        errorMsg = errorJson.msg || errorMsg;
+      } catch (e) {
+        console.error('Could not parse error response:', e);
+      }
       return new Response(JSON.stringify({ 
-        error: error.msg || 'Failed to fetch Binance portfolio',
+        error: errorMsg,
         balances: []
       }), {
         status: 200,
