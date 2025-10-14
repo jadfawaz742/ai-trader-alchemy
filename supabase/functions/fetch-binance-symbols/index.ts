@@ -70,18 +70,27 @@ serve(async (req) => {
       console.log(`✅ Direct Binance API returned ${data?.symbols?.length || 0} symbols`);
     }
     
-    // Log first few symbols for debugging
+    // Log first few symbols for debugging with full structure
     if (data.symbols && data.symbols.length > 0) {
-      console.log(`📊 First 3 symbols:`, data.symbols.slice(0, 3).map((s: any) => s.symbol));
+      console.log(`📊 First symbol structure:`, JSON.stringify(data.symbols[0], null, 2));
+      console.log(`📊 First 5 symbols:`, data.symbols.slice(0, 5).map((s: any) => s.symbol));
     }
     
-    // Filter for USDT trading pairs that are actively trading
+    // Filter for USDT trading pairs that are actively trading (lenient filtering)
     let usdtPairs = (data.symbols || [])
-      .filter((s: any) => 
-        s.quoteAsset === 'USDT' && 
-        s.status === 'TRADING' &&
-        s.permissions?.includes('SPOT')
-      )
+      .filter((s: any) => {
+        const hasUSDT = s.quoteAsset === 'USDT' || s.quote === 'USDT';
+        const isTrading = s.status === 'TRADING';
+        const hasPermissions = s.permissions && Array.isArray(s.permissions);
+        const isSpot = !hasPermissions || s.permissions.includes('SPOT');
+        
+        // Log first few that don't match to debug
+        if (data.symbols.indexOf(s) < 3) {
+          console.log(`🔍 ${s.symbol}: quoteAsset=${s.quoteAsset}, status=${s.status}, permissions=${JSON.stringify(s.permissions)}, matches=${hasUSDT && isTrading && isSpot}`);
+        }
+        
+        return hasUSDT && isTrading && isSpot;
+      })
       .map((s: any) => ({
         symbol: s.symbol,
         baseAsset: s.baseAsset,
@@ -102,13 +111,15 @@ serve(async (req) => {
       data = await directResponse.json();
       console.log(`✅ Direct Binance API returned ${data?.symbols?.length || 0} symbols`);
       
-      // Re-filter for USDT pairs from direct API
+      // Re-filter for USDT pairs from direct API with same lenient logic
       usdtPairs = (data.symbols || [])
-        .filter((s: any) => 
-          s.quoteAsset === 'USDT' && 
-          s.status === 'TRADING' &&
-          s.permissions?.includes('SPOT')
-        )
+        .filter((s: any) => {
+          const hasUSDT = s.quoteAsset === 'USDT' || s.quote === 'USDT';
+          const isTrading = s.status === 'TRADING';
+          const hasPermissions = s.permissions && Array.isArray(s.permissions);
+          const isSpot = !hasPermissions || s.permissions.includes('SPOT');
+          return hasUSDT && isTrading && isSpot;
+        })
         .map((s: any) => ({
           symbol: s.symbol,
           baseAsset: s.baseAsset,
