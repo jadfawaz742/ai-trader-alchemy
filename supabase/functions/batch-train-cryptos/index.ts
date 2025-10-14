@@ -21,12 +21,14 @@ serve(async (req) => {
     const supabaseKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     const supabase = createClient(supabaseUrl, supabaseKey);
 
-    // Verify user authentication
+    // Verify user authentication using service role client
     const token = authHeader.replace('Bearer ', '');
     const { data: { user }, error: authError } = await supabase.auth.getUser(token);
     if (authError || !user) {
       throw new Error('Unauthorized');
     }
+
+    console.log(`🔐 Authenticated user: ${user.id}`);
 
     const { 
       action = 'start', 
@@ -99,7 +101,9 @@ serve(async (req) => {
       console.log(`🚀 Created ${jobs.length} training jobs in batch ${newBatchId}`);
 
       // Start processing the batch (background task)
-      EdgeRuntime.waitUntil(processBatch(supabase, user.id, newBatchId, forceRetrain));
+      processBatch(supabase, user.id, newBatchId, forceRetrain, authHeader).catch(err => {
+        console.error('❌ Background batch processing error:', err);
+      });
 
       return new Response(
         JSON.stringify({ 
@@ -178,9 +182,10 @@ async function processBatch(
   supabase: any,
   userId: string,
   batchId: string,
-  forceRetrain: boolean
+  forceRetrain: boolean,
+  userAuthHeader: string
 ) {
-  console.log(`🔄 Processing batch ${batchId}`);
+  console.log(`🔄 Processing batch ${batchId} for user ${userId}`);
 
   while (true) {
     // Fetch next queued job
@@ -208,12 +213,18 @@ async function processBatch(
       .eq('id', nextJob.id);
 
     try {
-      // Call train-asset-model function
+      // Call train-asset-model function with user authentication
       const { data, error } = await supabase.functions.invoke('train-asset-model', {
-        body: { symbol: nextJob.symbol, forceRetrain }
+        body: { symbol: nextJob.symbol, forceRetrain },
+        headers: { 
+          Authorization: userAuthHeader 
+        }
       });
 
-      if (error) throw error;
+      if (error) {
+        console.error(`❌ Function invocation error for ${nextJob.symbol}:`, error);
+        throw error;
+      }
 
       // Update job as completed
       await supabase
@@ -229,15 +240,22 @@ async function processBatch(
       console.log(`✅ ${nextJob.symbol} trained successfully`);
 
     } catch (error) {
-      console.error(`❌ Failed to train ${nextJob.symbol}:`, error);
+      const errorMessage = error?.message || String(error);
+      const errorContext = error?.context ? JSON.stringify(error.context) : '';
+      
+      console.error(`❌ Failed to train ${nextJob.symbol}:`, {
+        message: errorMessage,
+        context: errorContext,
+        stack: error?.stack
+      });
 
-      // Update job as failed
+      // Update job as failed with detailed error info
       await supabase
         .from('batch_training_jobs')
         .update({
           status: 'failed',
           completed_at: new Date().toISOString(),
-          error_message: error.message,
+          error_message: `${errorMessage} ${errorContext}`.slice(0, 500),
           attempt_count: nextJob.attempt_count + 1
         })
         .eq('id', nextJob.id);
