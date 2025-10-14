@@ -81,12 +81,14 @@ serve(async (req) => {
       .filter((s: any) => {
         const hasUSDT = s.quoteAsset === 'USDT' || s.quote === 'USDT';
         const isTrading = s.status === 'TRADING';
-        const hasPermissions = s.permissions && Array.isArray(s.permissions);
-        const isSpot = !hasPermissions || s.permissions.includes('SPOT');
+        
+        // Use isSpotTradingAllowed or check permissionSets instead of permissions array
+        const isSpot = s.isSpotTradingAllowed === true || 
+                       (s.permissionSets && s.permissionSets.some((set: any[]) => set.includes('SPOT')));
         
         // Log first few that don't match to debug
         if (data.symbols.indexOf(s) < 3) {
-          console.log(`🔍 ${s.symbol}: quoteAsset=${s.quoteAsset}, status=${s.status}, permissions=${JSON.stringify(s.permissions)}, matches=${hasUSDT && isTrading && isSpot}`);
+          console.log(`🔍 ${s.symbol}: quoteAsset=${s.quoteAsset}, status=${s.status}, isSpot=${isSpot}, matches=${hasUSDT && isTrading && isSpot}`);
         }
         
         return hasUSDT && isTrading && isSpot;
@@ -116,8 +118,11 @@ serve(async (req) => {
         .filter((s: any) => {
           const hasUSDT = s.quoteAsset === 'USDT' || s.quote === 'USDT';
           const isTrading = s.status === 'TRADING';
-          const hasPermissions = s.permissions && Array.isArray(s.permissions);
-          const isSpot = !hasPermissions || s.permissions.includes('SPOT');
+          
+          // Use isSpotTradingAllowed or check permissionSets instead of permissions array
+          const isSpot = s.isSpotTradingAllowed === true || 
+                         (s.permissionSets && s.permissionSets.some((set: any[]) => set.includes('SPOT')));
+          
           return hasUSDT && isTrading && isSpot;
         })
         .map((s: any) => ({
