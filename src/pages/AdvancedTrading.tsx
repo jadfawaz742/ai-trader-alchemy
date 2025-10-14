@@ -30,7 +30,8 @@ const AdvancedTrading = () => {
     }
   };
 
-  if (loading) {
+  // Skip loading state and go straight to content if authenticated
+  if (loading && !user) {
     return (
       <div className="min-h-screen bg-gradient-to-br from-slate-900 via-purple-900 to-slate-900 flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-white" />
