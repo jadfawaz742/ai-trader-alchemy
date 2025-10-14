@@ -1108,6 +1108,39 @@ export type Database = {
         }
         Relationships: []
       }
+      trading_sessions: {
+        Row: {
+          created_at: string
+          id: string
+          started_at: string
+          status: string
+          stopped_at: string | null
+          total_pnl: number | null
+          total_trades: number | null
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          started_at?: string
+          status: string
+          stopped_at?: string | null
+          total_pnl?: number | null
+          total_trades?: number | null
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          started_at?: string
+          status?: string
+          stopped_at?: string | null
+          total_pnl?: number | null
+          total_trades?: number | null
+          user_id?: string
+        }
+        Relationships: []
+      }
       training_runs: {
         Row: {
           artifact_uri: string | null
@@ -1211,6 +1244,42 @@ export type Database = {
           created_at?: string
           id?: string
           role?: Database["public"]["Enums"]["app_role"]
+          user_id?: string
+        }
+        Relationships: []
+      }
+      user_trading_config: {
+        Row: {
+          auto_trading_enabled: boolean
+          created_at: string
+          cron_interval_minutes: number
+          current_daily_loss_usd: number | null
+          id: string
+          last_reset_date: string | null
+          max_daily_loss_usd: number | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          auto_trading_enabled?: boolean
+          created_at?: string
+          cron_interval_minutes?: number
+          current_daily_loss_usd?: number | null
+          id?: string
+          last_reset_date?: string | null
+          max_daily_loss_usd?: number | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          auto_trading_enabled?: boolean
+          created_at?: string
+          cron_interval_minutes?: number
+          current_daily_loss_usd?: number | null
+          id?: string
+          last_reset_date?: string | null
+          max_daily_loss_usd?: number | null
+          updated_at?: string
           user_id?: string
         }
         Relationships: []
