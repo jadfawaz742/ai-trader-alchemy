@@ -54,12 +54,33 @@ serve(async (req) => {
       data = await response.json();
     }
     
+    // Validate response structure
+    console.log(`📋 Response has symbols array: ${!!data?.symbols}`);
+    console.log(`📋 Response symbols count: ${data?.symbols?.length || 0}`);
+    
+    if (!data || !data.symbols || !Array.isArray(data.symbols)) {
+      console.error('❌ Invalid response structure from VPS proxy, trying direct Binance API...');
+      
+      // Fallback to direct Binance API
+      const directResponse = await fetch('https://api.binance.com/api/v3/exchangeInfo');
+      if (!directResponse.ok) {
+        throw new Error('Both VPS proxy and direct Binance API failed');
+      }
+      data = await directResponse.json();
+      console.log(`✅ Direct Binance API returned ${data?.symbols?.length || 0} symbols`);
+    }
+    
+    // Log first few symbols for debugging
+    if (data.symbols && data.symbols.length > 0) {
+      console.log(`📊 First 3 symbols:`, data.symbols.slice(0, 3).map((s: any) => s.symbol));
+    }
+    
     // Filter for USDT trading pairs that are actively trading
-    const usdtPairs = data.symbols
+    const usdtPairs = (data.symbols || [])
       .filter((s: any) => 
         s.quoteAsset === 'USDT' && 
         s.status === 'TRADING' &&
-        s.permissions.includes('SPOT')
+        s.permissions?.includes('SPOT')
       )
       .map((s: any) => ({
         symbol: s.symbol,
@@ -68,7 +89,7 @@ serve(async (req) => {
       }))
       .sort((a: any, b: any) => a.symbol.localeCompare(b.symbol));
 
-    console.log(`Found ${usdtPairs.length} USDT trading pairs`);
+    console.log(`✅ Found ${usdtPairs.length} USDT trading pairs`);
 
     return new Response(JSON.stringify({ 
       symbols: usdtPairs,
