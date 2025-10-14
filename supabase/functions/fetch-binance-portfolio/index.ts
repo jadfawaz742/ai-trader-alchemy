@@ -153,26 +153,44 @@ serve(async (req) => {
         total: parseFloat(b.free) + parseFloat(b.locked)
       }));
 
-    // Fetch USD prices for all assets
+    // Fetch USD prices for all assets with retry logic
     const tickerPricesUrl = usingProxy 
       ? `${vpsProxyUrl}/api/v3/ticker/price`
       : `https://api.binance.com/api/v3/ticker/price`;
     
-    const pricesResponse = await fetch(tickerPricesUrl, {
-      headers: {
-        'Accept-Encoding': 'identity',
-        ...(usingProxy ? { 'X-Target-Host': 'api.binance.com' } : {}),
-      },
-    });
-    
     let prices: any = {};
-    if (pricesResponse.ok) {
-      const pricesText = await pricesResponse.text();
-      const pricesData = JSON.parse(pricesText);
-      prices = pricesData.reduce((acc: any, p: any) => {
-        acc[p.symbol] = parseFloat(p.price);
-        return acc;
-      }, {});
+    let pricesFetchError = false;
+    
+    // Retry logic with exponential backoff
+    for (let attempt = 0; attempt < 3; attempt++) {
+      try {
+        const pricesResponse = await fetch(tickerPricesUrl, {
+          headers: {
+            ...(usingProxy ? { 'X-Target-Host': 'api.binance.com' } : {}),
+          },
+        });
+        
+        if (pricesResponse.ok) {
+          // Use .json() directly - it handles decompression automatically
+          const pricesData = await pricesResponse.json();
+          prices = pricesData.reduce((acc: any, p: any) => {
+            acc[p.symbol] = parseFloat(p.price);
+            return acc;
+          }, {});
+          break; // Success, exit retry loop
+        } else {
+          console.error(`Prices fetch failed with status ${pricesResponse.status}, attempt ${attempt + 1}`);
+          if (attempt === 2) pricesFetchError = true;
+        }
+      } catch (error) {
+        console.error(`Error fetching prices (attempt ${attempt + 1}):`, error);
+        if (attempt === 2) {
+          pricesFetchError = true;
+        } else {
+          // Wait before retrying: 100ms, 500ms, then give up
+          await new Promise(resolve => setTimeout(resolve, attempt === 0 ? 100 : 500));
+        }
+      }
     }
 
     // Calculate USD values with defensive checks
@@ -214,7 +232,8 @@ serve(async (req) => {
       canTrade: accountData.canTrade,
       canWithdraw: accountData.canWithdraw,
       canDeposit: accountData.canDeposit,
-      updateTime: accountData.updateTime
+      updateTime: accountData.updateTime,
+      pricesFetchError
     }), {
       status: 200,
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
