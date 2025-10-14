@@ -605,13 +605,13 @@ async function processBatch(
         continue;
       }
       
-      // Dynamic minimum data requirements based on period
-      const minDataPoints = period === '1day' ? 20 :    // Need at least 20 hourly candles
-                            period === '1week' ? 30 :   // Need at least 30 4h candles
-                            50;                         // Default 50 for longer periods
+      // Dynamic minimum data requirements based on period (optimized for daily backtesting)
+      const minRequiredDataPoints = period === '1day' ? 20 :    // 20 hourly candles for intraday
+                                     period === '1week' ? 30 :   // 30 4h candles for swing
+                                     50;                         // 50 daily candles for position
       
-      if (historicalData.length < minDataPoints) {
-        console.log(`⚠️ Skipping ${symbol} - insufficient data: ${historicalData.length} candles (need ${minDataPoints}+)`);
+      if (historicalData.length < minRequiredDataPoints) {
+        console.log(`⚠️ Skipping ${symbol} - insufficient data: ${historicalData.length} candles (need ${minRequiredDataPoints}+)`);
         continue;
       }
       
