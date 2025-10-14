@@ -97,7 +97,7 @@ export function LiveTradingControls() {
       setAssetPrefs(prefs || []);
 
       if (connections && connections.length > 0) {
-        setNewBrokerId(connections[0].id);
+        setNewBrokerId(connections[0].brokers.id);
       }
     } catch (error) {
       console.error('Error loading data:', error);
@@ -336,7 +336,7 @@ export function LiveTradingControls() {
                 </SelectTrigger>
                 <SelectContent>
                   {brokerConnections.map(conn => (
-                    <SelectItem key={conn.id} value={conn.id}>
+                    <SelectItem key={conn.id} value={conn.brokers.id}>
                       {conn.brokers.name}
                     </SelectItem>
                   ))}
