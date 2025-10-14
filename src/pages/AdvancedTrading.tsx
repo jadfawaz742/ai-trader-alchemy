@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { TradingSetupDashboard } from "@/components/dashboards/TradingSetupDashboard";
 import { BacktestingDashboard } from "@/components/dashboards/BacktestingDashboard";
 import { MarketResearchDashboard } from "@/components/dashboards/MarketResearchDashboard";
+import { LiveTradingMasterControl } from "@/components/LiveTradingMasterControl";
 
 const AdvancedTrading = () => {
   const { user, loading, signOut, isAuthenticated } = useAuth();
@@ -125,6 +126,7 @@ const AdvancedTrading = () => {
             </TabsList>
 
             <TabsContent value="setup" className="space-y-6">
+              <LiveTradingMasterControl />
               <TradingSetupDashboard />
             </TabsContent>
 

@@ -33,6 +33,8 @@ export function LiveTradingControls() {
   const [assetPrefs, setAssetPrefs] = useState<AssetPreference[]>([]);
   const [brokerConnections, setBrokerConnections] = useState<BrokerConnection[]>([]);
   const [activeAssets, setActiveAssets] = useState<string[]>([]);
+  const [binanceSymbols, setBinanceSymbols] = useState<string[]>([]);
+  const [loadingSymbols, setLoadingSymbols] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
 
@@ -44,7 +46,26 @@ export function LiveTradingControls() {
 
   useEffect(() => {
     loadData();
+    loadBinanceSymbols();
   }, [user]);
+
+  const loadBinanceSymbols = async () => {
+    setLoadingSymbols(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('fetch-binance-symbols');
+      
+      if (error) throw error;
+      
+      if (data?.symbols) {
+        setBinanceSymbols(data.symbols.map((s: any) => s.symbol));
+      }
+    } catch (error) {
+      console.error('Error loading Binance symbols:', error);
+      toast.error('Failed to load available cryptocurrencies');
+    } finally {
+      setLoadingSymbols(false);
+    }
+  };
 
   const loadData = async () => {
     if (!user) return;
@@ -280,20 +301,28 @@ export function LiveTradingControls() {
         <CardContent className="space-y-4">
           <div className="grid md:grid-cols-2 gap-4">
             <div>
-              <Label>Asset</Label>
-              <Select value={newAsset} onValueChange={setNewAsset}>
+              <Label>Asset (All Binance USDT Pairs)</Label>
+              <Select value={newAsset} onValueChange={setNewAsset} disabled={loadingSymbols}>
                 <SelectTrigger>
-                  <SelectValue placeholder="Select asset" />
+                  <SelectValue placeholder={loadingSymbols ? "Loading cryptocurrencies..." : "Select cryptocurrency"} />
                 </SelectTrigger>
-                <SelectContent>
-                  {activeAssets
-                    .filter(a => !assetPrefs.find(p => p.asset === a))
-                    .map(asset => (
-                      <SelectItem key={asset} value={asset}>{asset}</SelectItem>
-                    ))
-                  }
+                <SelectContent className="max-h-[300px]">
+                  {binanceSymbols.length > 0 ? (
+                    binanceSymbols
+                      .filter(a => !assetPrefs.find(p => p.asset === a))
+                      .map(asset => (
+                        <SelectItem key={asset} value={asset}>{asset}</SelectItem>
+                      ))
+                  ) : (
+                    <SelectItem value="BTCUSDT" disabled>No cryptocurrencies available</SelectItem>
+                  )}
                 </SelectContent>
               </Select>
+              {binanceSymbols.length > 0 && (
+                <p className="text-xs text-muted-foreground mt-1">
+                  {binanceSymbols.length} cryptocurrencies available
+                </p>
+              )}
             </div>
 
             <div>

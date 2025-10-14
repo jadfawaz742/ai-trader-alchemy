@@ -159,7 +159,10 @@ serve(async (req) => {
       : `https://api.binance.com/api/v3/ticker/price`;
     
     const pricesResponse = await fetch(tickerPricesUrl, {
-      headers: usingProxy ? { 'X-Target-Host': 'api.binance.com' } : {},
+      headers: {
+        'Accept-Encoding': 'identity',
+        ...(usingProxy ? { 'X-Target-Host': 'api.binance.com' } : {}),
+      },
     });
     
     let prices: any = {};

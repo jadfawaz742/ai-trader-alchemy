@@ -3,6 +3,12 @@ project_id = "ncetkhcryoxchkodlzgj"
 [functions.advanced-trading-bot]
 verify_jwt = true
 
+[functions.fetch-binance-symbols]
+verify_jwt = false
+
+[functions.trigger-trading-cycle]
+verify_jwt = true
+
 [functions.kpi-refresh]
 verify_jwt = false
 
