@@ -68,18 +68,22 @@ serve(async (req) => {
       `)
       .eq('user_id', user.id)
       .eq('broker_id', broker_id)
+      .eq('status', 'connected')
       .single();
 
     if (!brokerConn) {
+      console.error(`❌ No broker connection found for user ${user.id} and broker ${broker_id}`);
       return new Response(JSON.stringify({ error: 'Broker connection not found' }), {
         status: 404,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' }
       });
     }
 
-    if (brokerConn.status !== 'active') {
+    console.log(`✅ Found broker connection: ${brokerConn.brokers.name}, status: ${brokerConn.status}`);
+
+    if (brokerConn.status !== 'connected') {
       return new Response(JSON.stringify({ 
-        error: 'Broker connection is not active',
+        error: 'Broker connection is not connected',
         status: brokerConn.status 
       }), {
         status: 400,
