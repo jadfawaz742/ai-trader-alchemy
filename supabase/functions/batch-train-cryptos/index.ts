@@ -103,11 +103,7 @@ serve(async (req) => {
       }
 
       console.log(`🚀 Created ${jobs.length} training jobs in batch ${newBatchId}`);
-
-      // Start processing the batch (background task)
-      processBatch(supabase, user.id, newBatchId, forceRetrain, authHeader).catch(err => {
-        console.error('❌ Background batch processing error:', err);
-      });
+      console.log('📋 Jobs queued for cron processing (process-training-queue)');
 
       return new Response(
         JSON.stringify({ 
@@ -182,103 +178,4 @@ serve(async (req) => {
   }
 });
 
-async function processBatch(
-  supabase: any,
-  userId: string,
-  batchId: string,
-  forceRetrain: boolean,
-  userAuthHeader: string
-) {
-  console.log(`🔄 Processing batch ${batchId} for user ${userId}`);
-
-  while (true) {
-    // Fetch next queued job
-    const { data: nextJob, error: fetchError } = await supabase
-      .from('batch_training_jobs')
-      .select('*')
-      .eq('user_id', userId)
-      .eq('batch_id', batchId)
-      .eq('status', 'queued')
-      .order('priority', { ascending: true })
-      .limit(1)
-      .single();
-
-    if (fetchError || !nextJob) {
-      console.log('✅ Batch processing complete or no more jobs');
-      break;
-    }
-
-    console.log(`🎯 Training ${nextJob.symbol}...`);
-
-    // Update status to training
-    await supabase
-      .from('batch_training_jobs')
-      .update({ status: 'training', started_at: new Date().toISOString() })
-      .eq('id', nextJob.id);
-
-    try {
-      // Call train-asset-model function with direct HTTP fetch using user auth
-      const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
-      console.log(`🎯 Training ${nextJob.symbol}...`);
-      
-      const response = await fetch(
-        `${supabaseUrl}/functions/v1/train-asset-model`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': userAuthHeader,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ symbol: nextJob.symbol, forceRetrain })
-        }
-      );
-
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`❌ HTTP ${response.status} for ${nextJob.symbol}:`, errorText);
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
-      }
-
-      const data = await response.json();
-
-      // Update job as completed
-      await supabase
-        .from('batch_training_jobs')
-        .update({
-          status: 'completed',
-          completed_at: new Date().toISOString(),
-          performance_metrics: data.result?.metrics || {},
-          training_data_points: data.result?.dataPoints || 0
-        })
-        .eq('id', nextJob.id);
-
-      console.log(`✅ ${nextJob.symbol} trained successfully`);
-
-    } catch (error) {
-      const errorMessage = error?.message || String(error);
-      const errorContext = error?.context ? JSON.stringify(error.context) : '';
-      
-      console.error(`❌ Failed to train ${nextJob.symbol}:`, {
-        message: errorMessage,
-        context: errorContext,
-        stack: error?.stack
-      });
-
-      // Update job as failed with detailed error info
-      await supabase
-        .from('batch_training_jobs')
-        .update({
-          status: 'failed',
-          completed_at: new Date().toISOString(),
-          error_message: `${errorMessage} ${errorContext}`.slice(0, 500),
-          attempt_count: nextJob.attempt_count + 1
-        })
-        .eq('id', nextJob.id);
-    }
-
-    // Rate limiting: wait 12 seconds between training jobs
-    await new Promise(resolve => setTimeout(resolve, 12000));
-  }
-
-  console.log(`🎉 Batch ${batchId} processing finished`);
-}
+// Background processing removed - now handled by cron job (process-training-queue)
