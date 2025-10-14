@@ -1,4 +1,4 @@
-// Fetch Binance portfolio balances
+// Fetch Binance portfolio balances v2.0.1 - Fixed gzip decompression
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
 
