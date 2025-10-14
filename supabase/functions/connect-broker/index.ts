@@ -91,7 +91,7 @@ serve(async (req) => {
         });
       }
 
-      // Store encrypted credentials
+      // Store encrypted credentials with proper conflict resolution
       const { data: connection, error: insertError } = await supabaseClient
         .from('broker_connections')
         .upsert({
@@ -101,6 +101,9 @@ serve(async (req) => {
           encrypted_credentials: credentials,
           status: 'connected',
           last_checked_at: new Date().toISOString(),
+          error_message: null,
+        }, {
+          onConflict: 'user_id,broker_id'
         })
         .select()
         .single();
