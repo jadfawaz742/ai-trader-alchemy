@@ -60,9 +60,9 @@ serve(async (req) => {
     }
 
     try {
-      console.log(`🎯 Training ${nextJob.symbol}...`);
+      console.log(`🎯 Training ${nextJob.symbol} for user ${nextJob.user_id}...`);
       
-      // Use Supabase client to invoke train-asset-model with proper auth
+      // Use Supabase client to invoke train-asset-model with service role auth
       const { data: trainingResult, error: trainingError } = await supabase.functions.invoke(
         'train-asset-model',
         {
@@ -73,13 +73,16 @@ serve(async (req) => {
           }
         }
       );
+      
+      console.log(`📊 Training response for ${nextJob.symbol}:`, { success: !trainingError, hasData: !!trainingResult });
 
       if (trainingError) {
-        console.error(`❌ Training error for ${nextJob.symbol}:`, trainingError);
-        throw trainingError;
+        const errorMsg = trainingError.message || JSON.stringify(trainingError);
+        console.error(`❌ Training error for ${nextJob.symbol}:`, errorMsg);
+        throw new Error(errorMsg);
       }
 
-      console.log(`✅ Training completed for ${nextJob.symbol}`);
+      console.log(`✅ Training completed for ${nextJob.symbol}:`, trainingResult);
 
       // Update job as completed
       await supabase
