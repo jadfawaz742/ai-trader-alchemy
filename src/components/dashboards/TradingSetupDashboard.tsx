@@ -27,7 +27,7 @@ export function TradingSetupDashboard() {
         .from('broker_connections')
         .select('brokers(name)')
         .eq('user_id', user.id)
-        .eq('status', 'active');
+        .eq('status', 'connected');
       
       if (data) {
         setConnectedBrokers(data.map((d: any) => d.brokers.name));
