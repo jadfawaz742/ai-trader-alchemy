@@ -172,32 +172,34 @@ serve(async (req) => {
       }, {});
     }
 
-    // Calculate USD values
+    // Calculate USD values with defensive checks
     const balancesWithUSD = balances.map((b: any) => {
       let usdValue = 0;
+      let currentPrice = 0;
       
       if (b.asset === 'USDT' || b.asset === 'USDC' || b.asset === 'BUSD') {
         usdValue = b.total;
+        currentPrice = 1;
       } else {
         const usdtSymbol = `${b.asset}USDT`;
         const busdSymbol = `${b.asset}BUSD`;
         const usdcSymbol = `${b.asset}USDC`;
         
-        if (prices[usdtSymbol]) {
-          usdValue = b.total * prices[usdtSymbol];
-        } else if (prices[busdSymbol]) {
-          usdValue = b.total * prices[busdSymbol];
-        } else if (prices[usdcSymbol]) {
-          usdValue = b.total * prices[usdcSymbol];
+        // Find the price, default to 0 if not found
+        currentPrice = prices[usdtSymbol] || prices[busdSymbol] || prices[usdcSymbol] || 0;
+        
+        if (currentPrice > 0) {
+          usdValue = b.total * currentPrice;
+        } else {
+          console.log(`⚠️ No price found for ${b.asset}, skipping USD calculation`);
+          usdValue = 0;
         }
       }
       
       return {
         ...b,
-        usdValue,
-        currentPrice: b.asset === 'USDT' || b.asset === 'USDC' || b.asset === 'BUSD' 
-          ? 1 
-          : (prices[`${b.asset}USDT`] || prices[`${b.asset}BUSD`] || prices[`${b.asset}USDC`] || 0)
+        usdValue: usdValue || 0,  // Ensure it's never NaN
+        currentPrice: currentPrice || 0
       };
     });
 
