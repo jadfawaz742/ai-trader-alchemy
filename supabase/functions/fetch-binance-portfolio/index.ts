@@ -1,4 +1,4 @@
-// Fetch Binance portfolio balances v2.0.1 - Fixed gzip decompression
+// Fetch Binance portfolio balances v3.0.0 - Manual gzip decompression
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
 
@@ -161,22 +161,39 @@ serve(async (req) => {
     let prices: any = {};
     let pricesFetchError = false;
     
-    // Retry logic with exponential backoff
+    // Retry logic with manual gzip decompression
     for (let attempt = 0; attempt < 3; attempt++) {
       try {
         const pricesResponse = await fetch(tickerPricesUrl, {
           headers: {
+            'Accept-Encoding': 'identity',  // Request uncompressed response
             ...(usingProxy ? { 'X-Target-Host': 'api.binance.com' } : {}),
           },
         });
         
         if (pricesResponse.ok) {
-          // Use .json() directly - it handles decompression automatically
-          const pricesData = await pricesResponse.json();
+          // Check if response is gzip compressed
+          const contentEncoding = pricesResponse.headers.get('content-encoding');
+          let pricesData;
+          
+          if (contentEncoding === 'gzip') {
+            console.log('Response is gzip compressed, decompressing manually...');
+            // Manual decompression using DecompressionStream
+            const decompressedStream = pricesResponse.body!
+              .pipeThrough(new DecompressionStream('gzip'));
+            const decompressedText = await new Response(decompressedStream).text();
+            pricesData = JSON.parse(decompressedText);
+          } else {
+            // Not compressed, read as text then parse
+            const responseText = await pricesResponse.text();
+            pricesData = JSON.parse(responseText);
+          }
+          
           prices = pricesData.reduce((acc: any, p: any) => {
             acc[p.symbol] = parseFloat(p.price);
             return acc;
           }, {});
+          console.log(`✅ Successfully fetched prices for ${Object.keys(prices).length} symbols`);
           break; // Success, exit retry loop
         } else {
           console.error(`Prices fetch failed with status ${pricesResponse.status}, attempt ${attempt + 1}`);

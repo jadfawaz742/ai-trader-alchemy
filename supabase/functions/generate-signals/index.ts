@@ -55,41 +55,60 @@ serve(async (req) => {
       });
     }
 
-    // Get all active user preferences
+    // Get all active user preferences with broker connections
+    // Note: Join through brokers table since there's no direct FK from user_asset_prefs to broker_connections
     const { data: userPrefs, error: prefsError } = await supabaseClient
       .from('user_asset_prefs')
-      .select(`
-        *,
-        broker_connections!inner(
-          id,
-          broker_id,
-          status,
-          encrypted_credentials,
-          brokers!inner(
-            id,
-            name,
-            supports_crypto,
-            supports_stocks
-          )
-        )
-      `)
-      .eq('enabled', true)
-      .eq('broker_connections.status', 'connected');
+      .select('*')
+      .eq('enabled', true);
 
     if (prefsError) {
       console.error('Error fetching user preferences:', prefsError);
       throw prefsError;
     }
 
-    console.log(`Processing ${userPrefs?.length || 0} active user/asset pairs`);
+    // Fetch broker connections separately and match them
+    const { data: brokerConnections, error: connError } = await supabaseClient
+      .from('broker_connections')
+      .select(`
+        *,
+        brokers(
+          id,
+          name,
+          supports_crypto,
+          supports_stocks
+        )
+      `)
+      .eq('status', 'connected');
+
+    if (connError) {
+      console.error('Error fetching broker connections:', connError);
+      throw connError;
+    }
+
+    // Match user prefs with their broker connections
+    const enrichedUserPrefs = userPrefs
+      ?.map(pref => {
+        const connection = brokerConnections?.find(
+          conn => conn.user_id === pref.user_id && conn.broker_id === pref.broker_id
+        );
+        if (!connection) return null;
+        return {
+          ...pref,
+          broker_connection: connection
+        };
+      })
+      .filter(Boolean) || [];
+
+    console.log(`Processing ${enrichedUserPrefs.length} active user/asset pairs with valid connections`);
 
     const signalsGenerated = [];
 
-    for (const pref of userPrefs || []) {
+    for (const pref of enrichedUserPrefs) {
       try {
         // Validate broker supports this asset type
         const isCrypto = isCryptoSymbol(pref.asset);
-        const broker = pref.broker_connections.brokers;
+        const broker = pref.broker_connection.brokers;
         
         if (isCrypto && !broker.supports_crypto) {
           console.warn(`⚠️ Skipping ${pref.asset}: Broker ${broker.name} does not support crypto`);
@@ -197,9 +216,9 @@ serve(async (req) => {
           }
 
           signalsGenerated.push(signalRecord);
-          console.log(`Generated ${signal.action} signal for ${pref.asset}`);
+          console.log(`✅ Generated ${signal.action} signal for ${pref.asset} (qty: ${normalizedQty}, confidence: ${signal.confidence.toFixed(1)}%)`);
 
-          // Queue signal for VPS execution (call execute-trade function)
+          // Queue signal for VPS execution (call execute-signal function)
           await queueSignalExecution(signalRecord, pref);
         }
 
