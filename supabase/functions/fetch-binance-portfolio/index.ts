@@ -124,7 +124,24 @@ serve(async (req) => {
       });
     }
 
-    const accountData = await response.json();
+    // Read as text first to avoid decompression issues
+    const responseText = await response.text();
+    console.log('Binance API response (first 200 chars):', responseText.substring(0, 200));
+    
+    let accountData;
+    try {
+      accountData = JSON.parse(responseText);
+    } catch (parseError) {
+      console.error('Failed to parse Binance response:', parseError);
+      console.error('Response text:', responseText);
+      return new Response(JSON.stringify({ 
+        error: 'Failed to parse Binance API response',
+        balances: []
+      }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
     
     // Filter out zero balances and format
     const balances = accountData.balances

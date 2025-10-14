@@ -75,11 +75,27 @@ export const PortfolioDashboard: React.FC = () => {
       
       if (error) throw error;
       
+      if (data?.error) {
+        console.error('Binance portfolio error:', data.error);
+        toast({
+          title: "Binance Connection Issue",
+          description: data.error,
+          variant: "destructive"
+        });
+        setBinanceBalances([]);
+        return;
+      }
+      
       if (data?.balances) {
         setBinanceBalances(data.balances);
       }
     } catch (error) {
       console.error('Error loading Binance portfolio:', error);
+      toast({
+        title: "Failed to Load Binance Portfolio",
+        description: error instanceof Error ? error.message : "Unknown error occurred",
+        variant: "destructive"
+      });
     } finally {
       setLoadingBinance(false);
     }
