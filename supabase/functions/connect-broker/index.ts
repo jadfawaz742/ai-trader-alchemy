@@ -1,4 +1,4 @@
-// Version 3.0 - VPS Proxy Implementation - Forced Redeploy
+// Version 3.1 - Fix reconnection for revoked broker connections
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
 
