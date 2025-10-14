@@ -140,10 +140,20 @@ async function fetchRealHistoricalData(symbol: string, period: string): Promise<
   console.log(`📡 Fetching ${assetType} data for ${symbol} over ${period}...`);
   
   try {
+    // 🎯 Smart interval selection based on period for optimal data density
+    const interval = period === '1day' ? '1h' :     // 24 candles for day trading
+                     period === '1week' ? '4h' :    // 42 candles for swing trading
+                     period === '1month' ? '1d' :   // 30 candles for position trading
+                     period === '3months' ? '1d' :  // 90 candles
+                     period === '6months' ? '1d' :  // 180 candles
+                     '1d';                          // Default to daily
+    
+    console.log(`📊 Using ${interval} candles for ${period} backtest`);
+    
     const data = await fetchUnifiedData({
       symbol,
       range: period,
-      interval: '1d'
+      interval: interval
     });
     
     console.log(`✅ Fetched ${data.length} data points from ${assetType === 'crypto' ? 'Bybit' : 'Yahoo Finance'}`);
@@ -595,9 +605,13 @@ async function processBatch(
         continue;
       }
       
-      // Minimum data validation
-      if (historicalData.length < 50) {
-        console.log(`⚠️ Skipping ${symbol} - insufficient data: ${historicalData.length} candles (need 50+)`);
+      // Dynamic minimum data requirements based on period
+      const minDataPoints = period === '1day' ? 20 :    // Need at least 20 hourly candles
+                            period === '1week' ? 30 :   // Need at least 30 4h candles
+                            50;                         // Default 50 for longer periods
+      
+      if (historicalData.length < minDataPoints) {
+        console.log(`⚠️ Skipping ${symbol} - insufficient data: ${historicalData.length} candles (need ${minDataPoints}+)`);
         continue;
       }
       

@@ -73,18 +73,6 @@ const BacktestAnalyzer: React.FC = () => {
     setIsRunning(true);
     setError(null);
     
-    // Validate period before running - need at least 1 week for 50+ candles
-    const shortPeriods = ['1day'];
-    if (shortPeriods.includes(selectedPeriod)) {
-      toast({
-        title: "Period Too Short",
-        description: "Backtesting requires at least 1 week of data (50+ candles). Please select a longer period.",
-        variant: "destructive"
-      });
-      setIsRunning(false);
-      return;
-    }
-    
     try {
       console.log('🔬 Starting real backtest...', { selectedSymbol, selectedPeriod, selectedRisk });
       
