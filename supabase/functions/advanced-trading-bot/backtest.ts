@@ -707,6 +707,10 @@ async function processBatch(
       let skippedLowConfluence = 0;
       let skippedLowConfidence = 0;
       
+      // 🚨 LOSING STREAK PROTECTION: Stop trading after consecutive losses
+      let consecutiveLosses = 0;
+      const maxConsecutiveLosses = 5;  // Stop after 5 losses in a row
+      
       for (let i = minSamplePoints; i < historicalData.length - 1; i += sampleRate) {
         const currentBar = historicalData[i];
         const nextBar = historicalData[i + 1];
@@ -721,9 +725,13 @@ async function processBatch(
         // ✅ CALCULATE CONFLUENCE SCORE using shared logic
         tradingState.confluenceScore = calculateConfluenceScore(tradingState, riskConfig);
         
+        // Require higher indicator agreement: 0.65 (65%) instead of 0.60 (60%)
+        const minConfluence = 0.65;
+        
         // Skip if confluence too low
-        if (tradingState.confluenceScore < adaptiveParams.confluenceThreshold) {
+        if (tradingState.confluenceScore < minConfluence) {
           skippedLowConfluence++;
+          console.log(`⏭️ Skip: confluence ${tradingState.confluenceScore.toFixed(2)} < ${minConfluence}`);
           continue;
         }
         
@@ -789,6 +797,15 @@ async function processBatch(
           basePositionPercent = 0.08; // Low confidence = 8% of capital
           positionMultiplier = 0.8;
           console.log(`⚠️ LOW CONFIDENCE ${symbol}: ${aiDecision.confidence.toFixed(1)}% = 8% of capital (0.8x multiplier)`);
+        }
+        
+        // 📊 ADAPTIVE POSITION SIZING: Scale down if losing money
+        const recentWinRate = winningTrades > 0 ? winningTrades / (winningTrades + (totalTrades - winningTrades)) : 0;
+        
+        if (recentWinRate < 0.40 && totalTrades >= 5) {
+          // If winning <40% of trades, cut position size by 50%
+          basePositionPercent = basePositionPercent * 0.50;
+          console.log(`⚠️ Low win rate (${(recentWinRate * 100).toFixed(1)}%): halving position size`);
         }
         
         // 🛡️ Market regime adjustment - boost/reduce based on market alignment
@@ -885,6 +902,7 @@ async function processBatch(
         
         if (isWin) {
           winningTrades++;
+          consecutiveLosses = 0;  // Reset on win
           
           // 🧠 Track which indicators contributed to this winning trade
           if (tradingState.indicators.ichimoku.signal !== 0) indicatorPerformance.ichimoku.wins++;
@@ -896,7 +914,14 @@ async function processBatch(
           const atrPct = tradingState.indicators.atr / tradingState.price;
           if (atrPct > 0.02 && atrPct < 0.06) indicatorPerformance.volatility.wins++;
         } else {
-          // Track losses
+          // Track losses and check losing streak
+          consecutiveLosses++;
+          if (consecutiveLosses >= maxConsecutiveLosses) {
+            console.log(`🛑 STOP TRADING ${symbol}: ${consecutiveLosses} consecutive losses detected`);
+            // Skip remaining iterations for this symbol
+            break;
+          }
+          
           if (tradingState.indicators.ichimoku.signal !== 0) indicatorPerformance.ichimoku.losses++;
           if (Math.abs(tradingState.price - tradingState.indicators.ema200) / tradingState.indicators.ema200 > 0.02) indicatorPerformance.ema200.losses++;
           if (tradingState.indicators.macd.histogram !== 0) indicatorPerformance.macd.losses++;

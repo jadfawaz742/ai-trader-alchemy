@@ -363,12 +363,15 @@ export async function makeAITradingDecision(
   let action: 'BUY' | 'SELL' | 'HOLD' = 'HOLD';
   let confidence = 50;
   
+  // Require stronger indicator alignment (50 instead of 40)
+  const minScore = 50;
+  
   const totalScore = bullishScore + bearishScore;
   if (totalScore > 0) {
-    if (bullishScore > bearishScore && bullishScore > 40) {
+    if (bullishScore > bearishScore && bullishScore > minScore) {
       action = 'BUY';
       confidence = Math.min(95, 50 + (bullishScore - bearishScore));
-    } else if (bearishScore > bullishScore && bearishScore > 40 && enableShorts) {
+    } else if (bearishScore > bullishScore && bearishScore > minScore && enableShorts) {
       action = 'SELL';
       confidence = Math.min(95, 50 + (bearishScore - bullishScore));
     }
@@ -380,14 +383,15 @@ export async function makeAITradingDecision(
     const phaseConfidence = state.marketPhase.confidence;
     
     if (phase === 'accumulation' || phase === 'distribution') {
-      // Consolidation phases: reduce confidence, favor retracements
-      confidence = confidence * 0.85; // Reduce confidence by 15%
-      reasons.push(`${phase} phase: reduced confidence, favor Fib retracements`);
+      // Consolidation = DANGEROUS for directional trades
+      // Reduce confidence by 40% (not 15%) because price action is unpredictable
+      confidence = confidence * 0.60;
+      reasons.push(`${phase} phase: heavy confidence reduction (-40%), consolidation is risky`);
       
-      // Favor only high-confidence signals
-      if (confidence < 70) {
+      // Raise threshold from 70% to 80% - only take VERY high confidence signals
+      if (confidence < 80) {
         action = 'HOLD';
-        reasons.push(`${phase}: confidence too low, avoid weak signals`);
+        reasons.push(`${phase}: confidence ${confidence.toFixed(1)}% < 80%, avoiding consolidation trade`);
       }
     } else if (phase === 'uptrend' && action === 'BUY') {
       // Uptrend + BUY: boost confidence
@@ -408,6 +412,24 @@ export async function makeAITradingDecision(
       if (confidence < 75) {
         action = 'HOLD';
         reasons.push(`${phase}: counter-trend confidence too low, avoid trade`);
+      }
+    }
+  }
+  
+  // 🌪️ VOLATILITY FILTER: Don't trade stocks moving too erratically
+  const atr = state.indicators.atr;
+  const currentPrice = state.price;
+  if (atr && currentPrice > 0) {
+    const atrPercent = (atr / currentPrice) * 100;
+    
+    // If ATR > 8% of price, stock is too volatile for reliable signals
+    if (atrPercent > 8) {
+      confidence = confidence * 0.50;  // Cut confidence in HALF
+      reasons.push(`High volatility (ATR ${atrPercent.toFixed(1)}% of price): halved confidence`);
+      
+      if (confidence < 80) {
+        action = 'HOLD';
+        reasons.push(`Volatility too high for reliable trading`);
       }
     }
   }
