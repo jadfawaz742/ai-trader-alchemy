@@ -82,13 +82,17 @@ serve(async (req) => {
       ];
 
       // Create training jobs
-      const jobs = sortedSymbols.map((symbol: string, index: number) => ({
-        user_id: user.id,
-        batch_id: newBatchId,
-        symbol,
-        status: (existingSymbols.has(symbol) && !forceRetrain) ? 'skipped' : 'queued',
-        priority: prioritySymbols.includes(symbol) ? 1 : 100,
-      }));
+      const jobs = sortedSymbols.map((symbolData: any, index: number) => {
+        // Extract symbol string from object or use as-is if already a string
+        const symbolStr = typeof symbolData === 'string' ? symbolData : symbolData.symbol;
+        return {
+          user_id: user.id,
+          batch_id: newBatchId,
+          symbol: symbolStr,
+          status: (existingSymbols.has(symbolStr) && !forceRetrain) ? 'skipped' : 'queued',
+          priority: prioritySymbols.includes(symbolStr) ? 1 : 100,
+        };
+      });
 
       const { error: insertError } = await supabase
         .from('batch_training_jobs')
@@ -213,18 +217,29 @@ async function processBatch(
       .eq('id', nextJob.id);
 
     try {
-      // Call train-asset-model function with user authentication
-      const { data, error } = await supabase.functions.invoke('train-asset-model', {
-        body: { symbol: nextJob.symbol, forceRetrain },
-        headers: { 
-          Authorization: userAuthHeader 
+      // Call train-asset-model function with direct HTTP fetch using user auth
+      const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
+      console.log(`🎯 Training ${nextJob.symbol}...`);
+      
+      const response = await fetch(
+        `${supabaseUrl}/functions/v1/train-asset-model`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': userAuthHeader,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({ symbol: nextJob.symbol, forceRetrain })
         }
-      });
+      );
 
-      if (error) {
-        console.error(`❌ Function invocation error for ${nextJob.symbol}:`, error);
-        throw error;
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`❌ HTTP ${response.status} for ${nextJob.symbol}:`, errorText);
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
       }
+
+      const data = await response.json();
 
       // Update job as completed
       await supabase
