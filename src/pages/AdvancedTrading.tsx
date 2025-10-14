@@ -11,6 +11,7 @@ import { TradingSetupDashboard } from "@/components/dashboards/TradingSetupDashb
 import { BacktestingDashboard } from "@/components/dashboards/BacktestingDashboard";
 import { MarketResearchDashboard } from "@/components/dashboards/MarketResearchDashboard";
 import { LiveTradingMasterControl } from "@/components/LiveTradingMasterControl";
+import { BatchTrainingMonitor } from "@/components/BatchTrainingMonitor";
 
 const AdvancedTrading = () => {
   const { user, loading, signOut, isAuthenticated } = useAuth();
@@ -131,6 +132,7 @@ const AdvancedTrading = () => {
             </TabsContent>
 
             <TabsContent value="backtest" className="space-y-6">
+              <BatchTrainingMonitor />
               <BacktestingDashboard />
             </TabsContent>
 

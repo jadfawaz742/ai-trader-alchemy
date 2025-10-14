@@ -115,6 +115,57 @@ export type Database = {
         }
         Relationships: []
       }
+      batch_training_jobs: {
+        Row: {
+          attempt_count: number
+          batch_id: string
+          completed_at: string | null
+          created_at: string
+          error_message: string | null
+          id: string
+          performance_metrics: Json | null
+          priority: number
+          started_at: string | null
+          status: string
+          symbol: string
+          training_data_points: number | null
+          updated_at: string
+          user_id: string
+        }
+        Insert: {
+          attempt_count?: number
+          batch_id: string
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          performance_metrics?: Json | null
+          priority?: number
+          started_at?: string | null
+          status?: string
+          symbol: string
+          training_data_points?: number | null
+          updated_at?: string
+          user_id: string
+        }
+        Update: {
+          attempt_count?: number
+          batch_id?: string
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          performance_metrics?: Json | null
+          priority?: number
+          started_at?: string | null
+          status?: string
+          symbol?: string
+          training_data_points?: number | null
+          updated_at?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       bot_adaptive_parameters: {
         Row: {
           average_profit: number | null

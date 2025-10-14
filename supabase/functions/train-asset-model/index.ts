@@ -65,14 +65,14 @@ serve(async (req) => {
 
     console.log(`User ${user.id} requesting training for symbol`);
 
-    const { symbol } = await req.json();
+    const { symbol, forceRetrain = false } = await req.json();
     
     if (!symbol || typeof symbol !== 'string') {
       throw new Error('Valid symbol is required');
     }
 
     const normalizedSymbol = symbol.trim().toUpperCase();
-    console.log(`Training model for asset: ${normalizedSymbol}`);
+    console.log(`Training model for asset: ${normalizedSymbol} (forceRetrain: ${forceRetrain})`);
 
     // Check if model already exists for this asset
     const { data: existingModel, error: checkError } = await supabaseClient
@@ -82,21 +82,30 @@ serve(async (req) => {
       .eq('symbol', normalizedSymbol)
       .maybeSingle();
 
-    if (existingModel) {
-      console.log(`Model already exists for ${normalizedSymbol}`);
+    if (existingModel && !forceRetrain) {
+      console.log(`⏭️ Model already exists for ${normalizedSymbol}, skipping (use forceRetrain=true to override)`);
       return new Response(
         JSON.stringify({
-          success: false,
-          alreadyExists: true,
+          success: true,
+          skipped: true,
           symbol: normalizedSymbol,
-          message: `A trained model already exists for ${normalizedSymbol}`,
+          message: `Model already exists for ${normalizedSymbol}`,
           existingModel: {
+            id: existingModel.id,
             createdAt: existingModel.created_at,
             metrics: existingModel.performance_metrics
           }
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
+    }
+
+    if (existingModel && forceRetrain) {
+      console.log(`🔄 Force retraining ${normalizedSymbol} - deleting old model`);
+      await supabaseClient
+        .from('asset_models')
+        .delete()
+        .eq('id', existingModel.id);
     }
 
     // Fetch historical data
@@ -175,11 +184,13 @@ serve(async (req) => {
         success: true,
         symbol: normalizedSymbol,
         assetType,
-        metrics: {
-          train: metrics.train,
-          test: metrics.test
-        },
-        dataPoints: historicalData.length
+        result: {
+          metrics: {
+            train: metrics.train,
+            test: metrics.test
+          },
+          dataPoints: historicalData.length
+        }
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );
