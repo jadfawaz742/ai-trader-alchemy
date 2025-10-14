@@ -17,6 +17,8 @@ serve(async (req) => {
     
     // Use service role client to bypass RLS
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
+    
+    console.log('🔑 Using service role key for authentication');
 
     console.log('🔄 Checking for queued training jobs...');
 
@@ -60,30 +62,23 @@ serve(async (req) => {
     try {
       console.log(`🎯 Training ${nextJob.symbol}...`);
       
-      // Call train-asset-model function with service role auth
-      const response = await fetch(
-        `${supabaseUrl}/functions/v1/train-asset-model`,
+      // Use Supabase client to invoke train-asset-model with proper auth
+      const { data: trainingResult, error: trainingError } = await supabase.functions.invoke(
+        'train-asset-model',
         {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${supabaseServiceKey}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({ 
+          body: { 
             symbol: nextJob.symbol, 
             forceRetrain: false,
-            user_id: nextJob.user_id // Pass user_id for model ownership
-          })
+            user_id: nextJob.user_id
+          }
         }
       );
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`❌ HTTP ${response.status} for ${nextJob.symbol}:`, errorText);
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
+      if (trainingError) {
+        console.error(`❌ Training error for ${nextJob.symbol}:`, trainingError);
+        throw trainingError;
       }
 
-      const data = await response.json();
       console.log(`✅ Training completed for ${nextJob.symbol}`);
 
       // Update job as completed
@@ -93,8 +88,8 @@ serve(async (req) => {
           status: 'completed',
           completed_at: new Date().toISOString(),
           updated_at: new Date().toISOString(),
-          training_data_points: data.dataPoints || null,
-          performance_metrics: data.metrics || null
+          training_data_points: trainingResult?.dataPoints || null,
+          performance_metrics: trainingResult?.metrics || null
         })
         .eq('id', nextJob.id);
 
