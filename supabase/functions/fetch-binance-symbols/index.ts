@@ -18,6 +18,8 @@ serve(async (req) => {
       ? `${vpsProxyUrl}/api/v3/exchangeInfo`
       : `https://api.binance.com/api/v3/exchangeInfo`;
 
+    console.log(`📊 Fetching Binance symbols from: ${exchangeInfoUrl}`);
+
     const response = await fetch(exchangeInfoUrl, {
       headers: {
         'Accept-Encoding': 'identity',
@@ -27,7 +29,7 @@ serve(async (req) => {
 
     if (!response.ok) {
       const errorText = await response.text();
-      console.error('Binance API error:', errorText);
+      console.error('❌ Binance API error:', errorText);
       return new Response(JSON.stringify({ 
         error: 'Failed to fetch Binance symbols',
         symbols: []
@@ -37,7 +39,20 @@ serve(async (req) => {
       });
     }
 
-    const data = await response.json();
+    // Manual decompression if response is gzipped
+    let data;
+    const contentEncoding = response.headers.get('content-encoding');
+    console.log(`📦 Content-Encoding: ${contentEncoding}`);
+
+    if (contentEncoding === 'gzip') {
+      console.log('🔧 Manually decompressing gzip response...');
+      const stream = response.body?.pipeThrough(new DecompressionStream('gzip'));
+      const decompressed = await new Response(stream).text();
+      data = JSON.parse(decompressed);
+      console.log('✅ Manual decompression successful');
+    } else {
+      data = await response.json();
+    }
     
     // Filter for USDT trading pairs that are actively trading
     const usdtPairs = data.symbols
