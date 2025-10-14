@@ -417,25 +417,25 @@ export async function makeAITradingDecision(
   }
   
   // 🌪️ VOLATILITY FILTER: Graduated penalty based on severity
-  const atr = state.indicators.atr;
+  const volatilityATR = state.indicators.atr;
   const currentPrice = state.price;
-  if (atr && currentPrice > 0) {
-    const atrPercent = (atr / currentPrice) * 100;
+  if (volatilityATR && currentPrice > 0) {
+    const volatilityATRPercent = (volatilityATR / currentPrice) * 100;
     
     // Graduated volatility penalty
-    if (atrPercent > 12) {
+    if (volatilityATRPercent > 12) {
       // EXTREME volatility (meme stocks like QUBT)
       confidence = confidence * 0.40;  // -60% penalty
-      reasons.push(`EXTREME volatility (ATR ${atrPercent.toFixed(1)}%): -60% confidence`);
+      reasons.push(`EXTREME volatility (ATR ${volatilityATRPercent.toFixed(1)}%): -60% confidence`);
       
       if (confidence < 80) {
         action = 'HOLD';
         reasons.push(`Too volatile for safe trading`);
       }
-    } else if (atrPercent > 8) {
+    } else if (volatilityATRPercent > 8) {
       // HIGH volatility (growth stocks)
       confidence = confidence * 0.70;  // -30% penalty
-      reasons.push(`High volatility (ATR ${atrPercent.toFixed(1)}%): -30% confidence`);
+      reasons.push(`High volatility (ATR ${volatilityATRPercent.toFixed(1)}%): -30% confidence`);
       
       if (confidence < 70) {
         action = 'HOLD';
