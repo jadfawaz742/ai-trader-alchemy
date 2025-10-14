@@ -1,9 +1,5 @@
 import React from 'react';
-import AdvancedTradingBot from "@/components/AdvancedTradingBot";
-import { MarketActivityFeed } from "@/components/MarketActivityFeed";
-import { PortfolioDashboard } from "@/components/PortfolioDashboard";
 import { PortfolioProvider } from "@/components/PortfolioProvider";
-import { TradingLearningLogs } from "@/components/TradingLearningLogs";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
@@ -11,13 +7,9 @@ import { Loader2, LogOut, User, Settings, BarChart3, Brain } from "lucide-react"
 import { toast } from "@/hooks/use-toast";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import StockAnalyzer from "@/components/StockAnalyzer";
-import NewsWidget from "@/components/NewsWidget";
-import { OnlineLearningProgress } from "@/components/OnlineLearningProgress";
-import { ModelManagementDashboard } from "@/components/ModelManagementDashboard";
-import { SafetyMonitorDashboard } from "@/components/SafetyMonitorDashboard";
-import { BrokerConnectionManager } from "@/components/BrokerConnectionManager";
-import { LiveTradingControls } from "@/components/LiveTradingControls";
+import { TradingSetupDashboard } from "@/components/dashboards/TradingSetupDashboard";
+import { BacktestingDashboard } from "@/components/dashboards/BacktestingDashboard";
+import { MarketResearchDashboard } from "@/components/dashboards/MarketResearchDashboard";
 
 const AdvancedTrading = () => {
   const { user, loading, signOut, isAuthenticated } = useAuth();
@@ -118,87 +110,29 @@ const AdvancedTrading = () => {
             </div>
           </div>
           
-          <Tabs defaultValue="trading" className="space-y-6">
-            <TabsList className="grid w-full grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-11 gap-2 bg-slate-800/50 border border-slate-700 p-2 h-auto">
-              <TabsTrigger value="trading" className="text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white text-xs sm:text-sm">
-                Trading Bot
+          <Tabs defaultValue="setup" className="space-y-6">
+            <TabsList className="grid w-full grid-cols-3 gap-2 bg-slate-800/50 border border-slate-700 p-2 h-auto">
+              <TabsTrigger value="setup" className="text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white text-sm sm:text-base py-3">
+                🚀 Trading Setup
               </TabsTrigger>
-              <TabsTrigger value="live" className="text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white text-xs sm:text-sm">
-                Live Trading
+              <TabsTrigger value="backtest" className="text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white text-sm sm:text-base py-3">
+                📊 Backtesting & Training
               </TabsTrigger>
-              <TabsTrigger value="brokers" className="text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white text-xs sm:text-sm">
-                Brokers
-              </TabsTrigger>
-              <TabsTrigger value="portfolio" className="text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white text-xs sm:text-sm">
-                Portfolio
-              </TabsTrigger>
-              <TabsTrigger value="learning" className="text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white text-xs sm:text-sm">
-                AI Learning
-              </TabsTrigger>
-              <TabsTrigger value="online" className="text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white text-xs sm:text-sm">
-                Online Learning
-              </TabsTrigger>
-              <TabsTrigger value="models" className="text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white text-xs sm:text-sm">
-                Models
-              </TabsTrigger>
-              <TabsTrigger value="safety" className="text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white text-xs sm:text-sm">
-                Safety
-              </TabsTrigger>
-              <TabsTrigger value="market" className="text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white text-xs sm:text-sm">
-                Market
-              </TabsTrigger>
-              <TabsTrigger value="analyzer" className="text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white text-xs sm:text-sm">
-                Analyzer
-              </TabsTrigger>
-              <TabsTrigger value="news" className="text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white text-xs sm:text-sm">
-                News
+              <TabsTrigger value="research" className="text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white text-sm sm:text-base py-3">
+                📰 Market Research
               </TabsTrigger>
             </TabsList>
 
-            <TabsContent value="trading" className="space-y-6">
-              <div className="grid grid-cols-1 gap-6">
-                <AdvancedTradingBot />
-              </div>
+            <TabsContent value="setup" className="space-y-6">
+              <TradingSetupDashboard />
             </TabsContent>
 
-            <TabsContent value="live" className="space-y-6">
-              <LiveTradingControls />
+            <TabsContent value="backtest" className="space-y-6">
+              <BacktestingDashboard />
             </TabsContent>
 
-            <TabsContent value="brokers" className="space-y-6">
-              <BrokerConnectionManager />
-            </TabsContent>
-
-            <TabsContent value="portfolio" className="space-y-6">
-              <PortfolioDashboard />
-            </TabsContent>
-
-            <TabsContent value="learning" className="space-y-6">
-              <TradingLearningLogs />
-            </TabsContent>
-
-            <TabsContent value="online" className="space-y-6">
-              <OnlineLearningProgress />
-            </TabsContent>
-
-            <TabsContent value="models" className="space-y-6">
-              <ModelManagementDashboard />
-            </TabsContent>
-
-            <TabsContent value="safety" className="space-y-6">
-              <SafetyMonitorDashboard />
-            </TabsContent>
-
-            <TabsContent value="market" className="space-y-6">
-              <MarketActivityFeed isActive={true} />
-            </TabsContent>
-
-            <TabsContent value="analyzer" className="space-y-6">
-              <StockAnalyzer />
-            </TabsContent>
-
-            <TabsContent value="news" className="space-y-6">
-              <NewsWidget />
+            <TabsContent value="research" className="space-y-6">
+              <MarketResearchDashboard />
             </TabsContent>
           </Tabs>
         </div>
