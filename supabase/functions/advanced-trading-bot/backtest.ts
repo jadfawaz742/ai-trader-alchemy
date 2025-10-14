@@ -595,6 +595,12 @@ async function processBatch(
         continue;
       }
       
+      // Minimum data validation
+      if (historicalData.length < 50) {
+        console.log(`⚠️ Skipping ${symbol} - insufficient data: ${historicalData.length} candles (need 50+)`);
+        continue;
+      }
+      
       // 📰 Fetch news sentiment for this symbol
       const supabaseUrl = Deno.env.get('SUPABASE_URL') || '';
       const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') || '';
@@ -677,8 +683,16 @@ async function processBatch(
       
       // Iterate through historical data points with aggressive sampling for 53 symbols
       const minDataPoints = Math.min(50, Math.floor(historicalData.length * 0.2));
-      // Sample every 8 bars for faster backtesting while keeping all analysis
-      const sampleRate = 8;
+      // Dynamic sample rate based on available data
+      const sampleRate = historicalData.length > 500 ? 8 : 
+                         historicalData.length > 200 ? 4 : 
+                         historicalData.length > 100 ? 2 : 1;
+      console.log(`📊 Using sample rate ${sampleRate} for ${historicalData.length} candles`);
+      
+      // Track filtering reasons
+      let skippedLowConfluence = 0;
+      let skippedLowConfidence = 0;
+      
       for (let i = minDataPoints; i < historicalData.length - 1; i += sampleRate) {
         const currentBar = historicalData[i];
         const nextBar = historicalData[i + 1];
@@ -695,6 +709,7 @@ async function processBatch(
         
         // Skip if confluence too low
         if (tradingState.confluenceScore < adaptiveParams.confluenceThreshold) {
+          skippedLowConfluence++;
           continue;
         }
         
@@ -713,6 +728,7 @@ async function processBatch(
         
         // Check adaptive confidence threshold
         if (aiDecision.confidence < adaptiveParams.confidenceThreshold) {
+          skippedLowConfidence++;
           continue;
         }
         
@@ -983,6 +999,9 @@ async function processBatch(
         indicatorPerformance,
         multiTimeframeAnalysis // Save MTF data for this symbol
       });
+      
+      // Log filtering summary for this symbol
+      console.log(`📊 ${symbol} filtering summary: ${skippedLowConfluence} skipped (low confluence), ${skippedLowConfidence} skipped (low confidence), ${trades.filter(t => t.symbol === symbol).length} trades executed`);
       
     } catch (error) {
       console.error(`Error backtesting ${symbol}:`, error);

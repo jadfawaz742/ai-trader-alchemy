@@ -47,15 +47,17 @@ interface BacktestResults {
 
 const BacktestAnalyzer: React.FC = () => {
   const [selectedSymbol, setSelectedSymbol] = useState('AAPL');
-  const [selectedPeriod, setSelectedPeriod] = useState('6m');
+  const [selectedPeriod, setSelectedPeriod] = useState('3months');
   const [selectedRisk, setSelectedRisk] = useState<'low' | 'medium' | 'high'>('medium');
   const [isRunning, setIsRunning] = useState(false);
   const [results, setResults] = useState<BacktestResults | null>(null);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
 
-  const symbols = ['AAPL', 'GOOGL', 'MSFT', 'AMZN', 'META', 'NVDA', 'TSLA', 'BTC-USD', 'ETH-USD', 'SOL-USD'];
+  const symbols = ['AAPL', 'GOOGL', 'MSFT', 'AMZN', 'META', 'NVDA', 'TSLA', 'BTC-USD', 'ETH-USD', 'SOL-USD', 'AVAX-USD', 'LINK-USD'];
   const periods = [
+    { value: '1week', label: '1 Week' },
+    { value: '1month', label: '1 Month' },
     { value: '3months', label: '3 Months' },
     { value: '6months', label: '6 Months' },
     { value: '1year', label: '1 Year' },
@@ -100,6 +102,18 @@ const BacktestAnalyzer: React.FC = () => {
       }
 
       console.log('✅ Backtest results received:', data);
+
+      // Check for data quality warnings
+      if (data && data.tradeDecisionLogs) {
+        const dataPoints = data.tradeDecisionLogs.length;
+        if (dataPoints < 50) {
+          toast({
+            title: "Limited Data Warning",
+            description: `Only ${dataPoints} data points available. Consider using a longer period for better results.`,
+            variant: "destructive"
+          });
+        }
+      }
 
       // Transform the API response to our BacktestResults interface
       if (data && data.backtestResults) {
