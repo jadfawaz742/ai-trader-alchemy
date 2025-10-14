@@ -62,26 +62,31 @@ serve(async (req) => {
     try {
       console.log(`🎯 Training ${nextJob.symbol} for user ${nextJob.user_id}...`);
       
-      // Use Supabase client to invoke train-asset-model with service role auth
-      const { data: trainingResult, error: trainingError } = await supabase.functions.invoke(
-        'train-asset-model',
-        {
-          body: { 
-            symbol: nextJob.symbol, 
-            forceRetrain: false,
-            user_id: nextJob.user_id
-          }
-        }
-      );
+      // Call train-asset-model directly with service role authentication
+      const functionUrl = `${supabaseUrl}/functions/v1/train-asset-model`;
+      const response = await fetch(functionUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${supabaseServiceKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          symbol: nextJob.symbol,
+          forceRetrain: false,
+          user_id: nextJob.user_id,
+          service_role: true
+        })
+      });
       
-      console.log(`📊 Training response for ${nextJob.symbol}:`, { success: !trainingError, hasData: !!trainingResult });
+      console.log(`📊 Training response for ${nextJob.symbol}: status=${response.status}`);
 
-      if (trainingError) {
-        const errorMsg = trainingError.message || JSON.stringify(trainingError);
-        console.error(`❌ Training error for ${nextJob.symbol}:`, errorMsg);
-        throw new Error(errorMsg);
+      if (!response.ok) {
+        const errorText = await response.text();
+        console.error(`❌ Training HTTP error for ${nextJob.symbol}:`, errorText);
+        throw new Error(`HTTP ${response.status}: ${errorText}`);
       }
 
+      const trainingResult = await response.json();
       console.log(`✅ Training completed for ${nextJob.symbol}:`, trainingResult);
 
       // Update job as completed

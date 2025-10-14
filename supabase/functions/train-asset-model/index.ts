@@ -41,31 +41,70 @@ serve(async (req) => {
       );
     }
 
-    const supabaseClient = createClient(
-      Deno.env.get('SUPABASE_URL') ?? '',
-      Deno.env.get('SUPABASE_ANON_KEY') ?? '',
-      { 
-        global: { 
-          headers: { Authorization: authHeader }
-        }
-      }
-    );
-
-    // Verify the JWT token
     const token = authHeader.replace('Bearer ', '');
-    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
+    const serviceRoleKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
     
-    if (authError || !user) {
-      console.error('Authentication error:', authError);
-      return new Response(
-        JSON.stringify({ error: 'Authentication failed. Please log in again.' }),
-        { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    // Check if this is a service role call (from cron job)
+    const isServiceRole = token === serviceRoleKey;
+    
+    let userId: string;
+    let supabaseClient;
+    let requestBody;
+    
+    if (isServiceRole) {
+      // Service role call - create admin client and get user_id from body
+      console.log('🔑 Service role authentication detected');
+      supabaseClient = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        serviceRoleKey ?? '',
+        {
+          auth: {
+            autoRefreshToken: false,
+            persistSession: false
+          }
+        }
       );
+      
+      requestBody = await req.json();
+      userId = requestBody.user_id;
+      
+      if (!userId) {
+        return new Response(
+          JSON.stringify({ error: 'user_id required for service role calls' }),
+          { status: 400, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      console.log(`Service role training for user: ${userId}`);
+    } else {
+      // Regular JWT authentication
+      supabaseClient = createClient(
+        Deno.env.get('SUPABASE_URL') ?? '',
+        Deno.env.get('SUPABASE_ANON_KEY') ?? '',
+        { 
+          global: { 
+            headers: { Authorization: authHeader }
+          }
+        }
+      );
+      
+      // Verify the JWT token
+      const { data: { user }, error: authError } = await supabaseClient.auth.getUser(token);
+      
+      if (authError || !user) {
+        console.error('Authentication error:', authError);
+        return new Response(
+          JSON.stringify({ error: 'Authentication failed. Please log in again.' }),
+          { status: 401, headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+        );
+      }
+      
+      userId = user.id;
+      console.log(`User ${userId} requesting training for symbol`);
+      requestBody = await req.json();
     }
 
-    console.log(`User ${user.id} requesting training for symbol`);
-
-    const { symbol, forceRetrain = false } = await req.json();
+    const { symbol, forceRetrain = false } = requestBody;
     
     if (!symbol || typeof symbol !== 'string') {
       throw new Error('Valid symbol is required');
@@ -78,7 +117,7 @@ serve(async (req) => {
     const { data: existingModel, error: checkError } = await supabaseClient
       .from('asset_models')
       .select('id, created_at, performance_metrics')
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .eq('symbol', normalizedSymbol)
       .maybeSingle();
 
@@ -155,7 +194,7 @@ serve(async (req) => {
     const { error: insertError } = await supabaseClient
       .from('asset_models')
       .insert({
-        user_id: user.id,
+        user_id: userId,
         symbol: normalizedSymbol,
         model_type: `${assetType}_ppo`,
         model_weights: modelWeights,
