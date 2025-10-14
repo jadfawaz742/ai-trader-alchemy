@@ -383,15 +383,15 @@ export async function makeAITradingDecision(
     const phaseConfidence = state.marketPhase.confidence;
     
     if (phase === 'accumulation' || phase === 'distribution') {
-      // Consolidation = DANGEROUS for directional trades
-      // Reduce confidence by 40% (not 15%) because price action is unpredictable
-      confidence = confidence * 0.60;
-      reasons.push(`${phase} phase: heavy confidence reduction (-40%), consolidation is risky`);
+      // Consolidation = RISKY for directional trades
+      // Reduce confidence by 25% - balanced penalty
+      confidence = confidence * 0.75;
+      reasons.push(`${phase} phase: -25% confidence penalty for consolidation`);
       
-      // Raise threshold from 70% to 80% - only take VERY high confidence signals
-      if (confidence < 80) {
+      // 75% threshold - allows strong signals, blocks weak ones
+      if (confidence < 75) {
         action = 'HOLD';
-        reasons.push(`${phase}: confidence ${confidence.toFixed(1)}% < 80%, avoiding consolidation trade`);
+        reasons.push(`${phase}: confidence ${confidence.toFixed(1)}% < 75%, avoiding risky consolidation`);
       }
     } else if (phase === 'uptrend' && action === 'BUY') {
       // Uptrend + BUY: boost confidence
@@ -416,20 +416,30 @@ export async function makeAITradingDecision(
     }
   }
   
-  // 🌪️ VOLATILITY FILTER: Don't trade stocks moving too erratically
+  // 🌪️ VOLATILITY FILTER: Graduated penalty based on severity
   const atr = state.indicators.atr;
   const currentPrice = state.price;
   if (atr && currentPrice > 0) {
     const atrPercent = (atr / currentPrice) * 100;
     
-    // If ATR > 8% of price, stock is too volatile for reliable signals
-    if (atrPercent > 8) {
-      confidence = confidence * 0.50;  // Cut confidence in HALF
-      reasons.push(`High volatility (ATR ${atrPercent.toFixed(1)}% of price): halved confidence`);
+    // Graduated volatility penalty
+    if (atrPercent > 12) {
+      // EXTREME volatility (meme stocks like QUBT)
+      confidence = confidence * 0.40;  // -60% penalty
+      reasons.push(`EXTREME volatility (ATR ${atrPercent.toFixed(1)}%): -60% confidence`);
       
       if (confidence < 80) {
         action = 'HOLD';
-        reasons.push(`Volatility too high for reliable trading`);
+        reasons.push(`Too volatile for safe trading`);
+      }
+    } else if (atrPercent > 8) {
+      // HIGH volatility (growth stocks)
+      confidence = confidence * 0.70;  // -30% penalty
+      reasons.push(`High volatility (ATR ${atrPercent.toFixed(1)}%): -30% confidence`);
+      
+      if (confidence < 70) {
+        action = 'HOLD';
+        reasons.push(`Volatility makes signals unreliable`);
       }
     }
   }

@@ -725,8 +725,8 @@ async function processBatch(
         // ✅ CALCULATE CONFLUENCE SCORE using shared logic
         tradingState.confluenceScore = calculateConfluenceScore(tradingState, riskConfig);
         
-        // Require higher indicator agreement: 0.65 (65%) instead of 0.60 (60%)
-        const minConfluence = 0.65;
+        // Require moderate indicator agreement: 0.55 (55%) - balanced threshold
+        const minConfluence = 0.55;
         
         // Skip if confluence too low
         if (tradingState.confluenceScore < minConfluence) {
