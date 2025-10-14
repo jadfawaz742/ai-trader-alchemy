@@ -9,7 +9,8 @@ import { Label } from '@/components/ui/label';
 import { supabase } from '@/integrations/supabase/client';
 import { useToast } from '@/hooks/use-toast';
 import { usePortfolioContext } from '@/components/PortfolioProvider';
-import { TrendingUp, TrendingDown, DollarSign, PieChart, BarChart3, RefreshCw, ShoppingCart, Minus } from 'lucide-react';
+import { useAuth } from '@/hooks/useAuth';
+import { TrendingUp, TrendingDown, DollarSign, PieChart, BarChart3, RefreshCw, ShoppingCart, Minus, Wallet } from 'lucide-react';
 
 interface Portfolio {
   id: string;
@@ -43,13 +44,46 @@ interface Trade {
   executed_at: string;
 }
 
+interface BinanceBalance {
+  asset: string;
+  free: number;
+  locked: number;
+  total: number;
+}
+
 export const PortfolioDashboard: React.FC = () => {
+  const { user } = useAuth();
   const { portfolio, positions, recentTrades, loading, addTrade } = usePortfolioContext();
   const [selectedPosition, setSelectedPosition] = useState<Position | null>(null);
   const [tradeQuantity, setTradeQuantity] = useState('');
   const [tradePrice, setTradePrice] = useState('');
   const [isTrading, setIsTrading] = useState(false);
+  const [binanceBalances, setBinanceBalances] = useState<BinanceBalance[]>([]);
+  const [loadingBinance, setLoadingBinance] = useState(false);
   const { toast } = useToast();
+
+  useEffect(() => {
+    if (user) {
+      loadBinancePortfolio();
+    }
+  }, [user]);
+
+  const loadBinancePortfolio = async () => {
+    setLoadingBinance(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('fetch-binance-portfolio');
+      
+      if (error) throw error;
+      
+      if (data?.balances) {
+        setBinanceBalances(data.balances);
+      }
+    } catch (error) {
+      console.error('Error loading Binance portfolio:', error);
+    } finally {
+      setLoadingBinance(false);
+    }
+  };
 
 
 // Calculate portfolio values properly
@@ -139,6 +173,52 @@ const totalReturnPercent = portfolio && portfolio.initial_balance > 0 ? (totalPn
 
   return (
     <div className="space-y-6">
+      {/* Binance Portfolio */}
+      {binanceBalances.length > 0 && (
+        <Card>
+          <CardHeader>
+            <div className="flex items-center justify-between">
+              <div>
+                <CardTitle className="flex items-center gap-2">
+                  <Wallet className="h-5 w-5" />
+                  Binance Portfolio
+                </CardTitle>
+                <CardDescription>
+                  Your real Binance account balances
+                </CardDescription>
+              </div>
+              <Button 
+                size="sm" 
+                variant="outline" 
+                onClick={loadBinancePortfolio}
+                disabled={loadingBinance}
+              >
+                <RefreshCw className={`h-4 w-4 ${loadingBinance ? 'animate-spin' : ''}`} />
+              </Button>
+            </div>
+          </CardHeader>
+          <CardContent>
+            <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+              {binanceBalances.map((balance) => (
+                <div key={balance.asset} className="bg-muted/50 rounded-lg p-4">
+                  <div className="text-sm font-medium text-muted-foreground mb-1">
+                    {balance.asset}
+                  </div>
+                  <div className="text-xl font-bold">
+                    {balance.total.toFixed(8)}
+                  </div>
+                  {balance.locked > 0 && (
+                    <div className="text-xs text-muted-foreground mt-1">
+                      Locked: {balance.locked.toFixed(8)}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
       {/* Portfolio Overview */}
       <Card>
         <CardHeader>
