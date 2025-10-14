@@ -57,7 +57,7 @@ export function LiveTradingControls() {
         .from('broker_connections')
         .select('id, brokers(id, name)')
         .eq('user_id', user.id)
-        .eq('status', 'active');
+        .eq('status', 'connected');
 
       // Load active models
       const { data: models } = await supabase
