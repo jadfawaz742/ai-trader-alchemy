@@ -175,29 +175,32 @@ export function LiveTradingControls() {
 
     setSaving(true);
     try {
-      const { data, error } = await supabase
-        .from('user_asset_prefs')
-        .insert({
-          user_id: user!.id,
+      // Call the edge function instead of direct insert
+      const { data, error } = await supabase.functions.invoke('update-asset-prefs', {
+        body: {
           asset: newAsset,
+          broker_id: newBrokerId,
           max_exposure_usd: newMaxExposure,
           risk_mode: newRiskMode,
-          broker_id: newBrokerId,
           enabled: true
-        })
-        .select()
-        .single();
+        }
+      });
 
       if (error) throw error;
 
-      setAssetPrefs([...assetPrefs, data]);
+      // Reload data to get the fresh asset preferences
+      await loadData();
+      
       setNewAsset('');
       setNewMaxExposure(1000);
       setNewRiskMode('medium');
       toast.success('Asset added successfully');
     } catch (error: any) {
       console.error('Error adding asset:', error);
-      toast.error('Failed to add asset');
+      
+      // Show more specific error message if available
+      const errorMessage = error.message || 'Failed to add asset';
+      toast.error(errorMessage);
     } finally {
       setSaving(false);
     }
