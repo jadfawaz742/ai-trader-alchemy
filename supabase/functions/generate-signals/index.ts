@@ -120,20 +120,22 @@ serve(async (req) => {
           continue;
         }
 
-        // Load PPO model for this asset
+        // Load trained model for this user and asset from asset_models
         const { data: model } = await supabaseClient
-          .from('models')
+          .from('asset_models')
           .select('*')
-          .eq('asset', pref.asset)
-          .eq('status', 'active')
+          .eq('user_id', pref.user_id)
+          .eq('symbol', pref.asset)
           .order('created_at', { ascending: false })
           .limit(1)
           .single();
 
         if (!model) {
-          console.log(`No active model found for ${pref.asset}`);
+          console.log(`No trained model found for ${pref.asset} (user: ${pref.user_id})`);
           continue;
         }
+        
+        console.log(`✅ Found trained model for ${pref.asset}, created: ${model.created_at}`);
 
         // Get broker symbol mapping
         const { data: symbolMap } = await supabaseClient
@@ -157,7 +159,8 @@ serve(async (req) => {
         const tradingState = await buildTradingState(marketData, pref.asset);
 
         // Run AI trading decision with full market analysis (enableShorts = true)
-        const decision = await makeAITradingDecision(tradingState, pref.asset, true, model.metadata);
+        // asset_models stores model_weights, not metadata
+        const decision = await makeAITradingDecision(tradingState, pref.asset, true, model.model_weights);
         
         console.log(`Decision for ${pref.asset}: ${decision.type} (confidence: ${decision.confidence.toFixed(1)}%)`);
 
@@ -197,7 +200,7 @@ serve(async (req) => {
               asset: pref.asset,
               broker_id: pref.broker_id,
               model_id: model.id,
-              model_version: model.version,
+              model_version: model.created_at || 'v1', // asset_models uses timestamp
               side: signal.action,
               qty: normalizedQty,
               order_type: signal.order_type || 'MARKET',
