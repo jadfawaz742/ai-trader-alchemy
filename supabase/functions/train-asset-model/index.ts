@@ -193,9 +193,6 @@ serve(async (req) => {
   }
 });
 
-import { fetchMarketData as fetchUnifiedData, type MarketDataPoint } from '../_shared/market-data-fetcher.ts';
-import { isCryptoSymbol, convertToBybitFormat } from '../_shared/symbol-utils.ts';
-
 async function fetchHistoricalData(symbol: string): Promise<TrainingData[]> {
   console.log(`📡 Fetching training data for ${symbol}...`);
   
