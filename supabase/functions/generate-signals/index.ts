@@ -126,6 +126,7 @@ serve(async (req) => {
           .select('*')
           .eq('user_id', pref.user_id)
           .eq('symbol', pref.asset)
+          .eq('model_status', 'active')
           .order('created_at', { ascending: false })
           .limit(1)
           .single();
@@ -148,7 +149,7 @@ serve(async (req) => {
           continue;
         }
         
-        console.log(`✅ Found validated model for ${pref.asset}, created: ${model.created_at}`);
+        console.log(`✅ Found validated model v${model.model_version} for ${pref.asset}, created: ${model.created_at}`);
 
         // Get broker symbol mapping
         const { data: symbolMap } = await supabaseClient
@@ -171,9 +172,29 @@ serve(async (req) => {
         // Build trading state with technical indicators
         const tradingState = await buildTradingState(marketData, pref.asset);
 
+        // Load model weights from storage (supports both new storage and legacy JSONB)
+        let modelWeights = model.model_weights; // Legacy support
+        if (model.model_storage_path && !modelWeights) {
+          try {
+            const { data: storageData } = await supabaseClient.storage
+              .from('trained-models')
+              .download(model.model_storage_path);
+            const weightsJson = await storageData.text();
+            modelWeights = JSON.parse(weightsJson);
+            console.log(`✅ Loaded model v${model.model_version} from storage for ${pref.asset}`);
+          } catch (error) {
+            console.error(`❌ Failed to load model from storage: ${error.message}`);
+            continue;
+          }
+        }
+
+        if (!modelWeights) {
+          console.error(`❌ No model weights available for ${pref.asset}`);
+          continue;
+        }
+
         // Run AI trading decision with full market analysis (enableShorts = true)
-        // asset_models stores model_weights, not metadata
-        const decision = await makeAITradingDecision(tradingState, pref.asset, true, model.model_weights);
+        const decision = await makeAITradingDecision(tradingState, pref.asset, true, modelWeights);
         
         console.log(`Decision for ${pref.asset}: ${decision.type} (confidence: ${decision.confidence.toFixed(1)}%)`);
 

@@ -41,8 +41,12 @@ export type Database = {
           fine_tuning_metadata: Json | null
           hidden_size: number | null
           id: string
+          metadata_storage_path: string | null
           model_architecture: string | null
+          model_status: string | null
+          model_storage_path: string | null
           model_type: string
+          model_version: number | null
           model_weights: Json
           performance_metrics: Json | null
           sequence_length: number | null
@@ -60,8 +64,12 @@ export type Database = {
           fine_tuning_metadata?: Json | null
           hidden_size?: number | null
           id?: string
+          metadata_storage_path?: string | null
           model_architecture?: string | null
+          model_status?: string | null
+          model_storage_path?: string | null
           model_type: string
+          model_version?: number | null
           model_weights: Json
           performance_metrics?: Json | null
           sequence_length?: number | null
@@ -79,8 +87,12 @@ export type Database = {
           fine_tuning_metadata?: Json | null
           hidden_size?: number | null
           id?: string
+          metadata_storage_path?: string | null
           model_architecture?: string | null
+          model_status?: string | null
+          model_storage_path?: string | null
           model_type?: string
+          model_version?: number | null
           model_weights?: Json
           performance_metrics?: Json | null
           sequence_length?: number | null

@@ -246,7 +246,80 @@ serve(async (req) => {
       supabaseClient
     );
 
-    // Save the trained model
+    // Check for existing model and determine version
+    const { data: existingModel } = await supabaseClient
+      .from('asset_models')
+      .select('id, model_version, model_storage_path')
+      .eq('user_id', userId)
+      .eq('symbol', normalizedSymbol)
+      .eq('model_status', 'active')
+      .single();
+
+    const newVersion = existingModel ? existingModel.model_version + 1 : 1;
+
+    // Generate storage paths
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const assetFolder = `${userId}/${assetType}/${normalizedSymbol}`;
+    const modelFileName = `v${newVersion}_${timestamp}.json`;
+    const metadataFileName = `v${newVersion}_${timestamp}.meta`;
+    const modelPath = `${assetFolder}/${modelFileName}`;
+    const metadataPath = `${assetFolder}/${metadataFileName}`;
+
+    console.log(`📁 Uploading model to storage: ${modelPath}`);
+
+    // Upload model weights to storage
+    const modelBlob = new Blob(
+      [JSON.stringify(result.model_weights, null, 2)], 
+      { type: 'application/json' }
+    );
+    const { error: uploadError } = await supabaseClient
+      .storage
+      .from('trained-models')
+      .upload(modelPath, modelBlob, {
+        contentType: 'application/json',
+        upsert: false
+      });
+
+    if (uploadError) {
+      console.error('❌ Failed to upload model:', uploadError);
+      throw new Error(`Storage upload failed: ${uploadError.message}`);
+    }
+
+    // Upload training metadata
+    const metadataBlob = new Blob(
+      [JSON.stringify({
+        symbol: normalizedSymbol,
+        asset_type: assetType,
+        version: newVersion,
+        training_config: config,
+        training_logs: result.training_logs,
+        structural_metadata: result.structural_metadata,
+        performance_metrics: result.performance_metrics,
+        timestamp: new Date().toISOString()
+      }, null, 2)],
+      { type: 'application/json' }
+    );
+
+    await supabaseClient
+      .storage
+      .from('trained-models')
+      .upload(metadataPath, metadataBlob, {
+        contentType: 'application/json',
+        upsert: false
+      });
+
+    console.log(`✅ Model uploaded successfully: ${modelPath}`);
+
+    // Archive old model if exists
+    if (existingModel) {
+      console.log(`📦 Archiving old model v${existingModel.model_version}`);
+      await supabaseClient
+        .from('asset_models')
+        .update({ model_status: 'archived' })
+        .eq('id', existingModel.id);
+    }
+
+    // Save metadata to database (without model_weights)
     const { data: insertedModel, error: insertError } = await supabaseClient
       .from('asset_models')
       .insert({
@@ -254,7 +327,10 @@ serve(async (req) => {
         symbol: normalizedSymbol,
         model_type: 'recurrent_ppo',
         model_architecture: 'recurrent_ppo',
-        model_weights: result.model_weights,
+        model_storage_path: modelPath,
+        metadata_storage_path: metadataPath,
+        model_version: newVersion,
+        model_status: 'active',
         action_space: {
           direction: 3,
           tp_offset: [-0.5, 0.5],
@@ -284,7 +360,7 @@ serve(async (req) => {
       throw insertError;
     }
 
-    console.log(`✅ Model trained successfully for ${normalizedSymbol}`);
+    console.log(`✅ Model v${newVersion} saved successfully for ${normalizedSymbol}`);
 
     // Trigger walk-forward validation automatically with comprehensive logging
     console.log('═══════════════════════════════════════════════════');
