@@ -34,37 +34,52 @@ export type Database = {
       }
       asset_models: {
         Row: {
+          action_space: Json | null
           base_model_id: string | null
           created_at: string | null
           fine_tuning_metadata: Json | null
+          hidden_size: number | null
           id: string
+          model_architecture: string | null
           model_type: string
           model_weights: Json
           performance_metrics: Json | null
+          sequence_length: number | null
+          structural_features: Json | null
           symbol: string
           updated_at: string | null
           user_id: string
         }
         Insert: {
+          action_space?: Json | null
           base_model_id?: string | null
           created_at?: string | null
           fine_tuning_metadata?: Json | null
+          hidden_size?: number | null
           id?: string
+          model_architecture?: string | null
           model_type: string
           model_weights: Json
           performance_metrics?: Json | null
+          sequence_length?: number | null
+          structural_features?: Json | null
           symbol: string
           updated_at?: string | null
           user_id: string
         }
         Update: {
+          action_space?: Json | null
           base_model_id?: string | null
           created_at?: string | null
           fine_tuning_metadata?: Json | null
+          hidden_size?: number | null
           id?: string
+          model_architecture?: string | null
           model_type?: string
           model_weights?: Json
           performance_metrics?: Json | null
+          sequence_length?: number | null
+          structural_features?: Json | null
           symbol?: string
           updated_at?: string | null
           user_id?: string
@@ -602,6 +617,71 @@ export type Database = {
         }
         Relationships: []
       }
+      model_evaluation_metrics: {
+        Row: {
+          avg_confluence_score: number | null
+          created_at: string | null
+          details: Json | null
+          evaluation_type: string
+          fib_alignment_ratio: number | null
+          id: string
+          long_payoff_ratio: number | null
+          mar: number | null
+          max_drawdown: number | null
+          model_id: string | null
+          passed_acceptance: boolean | null
+          sharpe_ratio: number | null
+          short_payoff_ratio: number | null
+          sortino_ratio: number | null
+          total_trades: number | null
+          win_rate: number | null
+        }
+        Insert: {
+          avg_confluence_score?: number | null
+          created_at?: string | null
+          details?: Json | null
+          evaluation_type: string
+          fib_alignment_ratio?: number | null
+          id?: string
+          long_payoff_ratio?: number | null
+          mar?: number | null
+          max_drawdown?: number | null
+          model_id?: string | null
+          passed_acceptance?: boolean | null
+          sharpe_ratio?: number | null
+          short_payoff_ratio?: number | null
+          sortino_ratio?: number | null
+          total_trades?: number | null
+          win_rate?: number | null
+        }
+        Update: {
+          avg_confluence_score?: number | null
+          created_at?: string | null
+          details?: Json | null
+          evaluation_type?: string
+          fib_alignment_ratio?: number | null
+          id?: string
+          long_payoff_ratio?: number | null
+          mar?: number | null
+          max_drawdown?: number | null
+          model_id?: string | null
+          passed_acceptance?: boolean | null
+          sharpe_ratio?: number | null
+          short_payoff_ratio?: number | null
+          sortino_ratio?: number | null
+          total_trades?: number | null
+          win_rate?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "model_evaluation_metrics_model_id_fkey"
+            columns: ["model_id"]
+            isOneToOne: false
+            referencedRelation: "asset_models"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       model_metrics: {
         Row: {
           asset: string
@@ -910,10 +990,12 @@ export type Database = {
         Row: {
           asset: string
           broker_id: string
+          confluence_score: number | null
           created_at: string
           dedupe_key: string | null
           error_message: string | null
           executed_at: string | null
+          fib_alignment: number | null
           id: string
           limit_price: number | null
           model_id: string | null
@@ -923,17 +1005,22 @@ export type Database = {
           sent_at: string | null
           side: string
           sl: number | null
+          sl_tight: number | null
           status: string
+          structural_features: Json | null
           tp: number | null
+          tp_offset: number | null
           user_id: string
         }
         Insert: {
           asset: string
           broker_id: string
+          confluence_score?: number | null
           created_at?: string
           dedupe_key?: string | null
           error_message?: string | null
           executed_at?: string | null
+          fib_alignment?: number | null
           id?: string
           limit_price?: number | null
           model_id?: string | null
@@ -943,17 +1030,22 @@ export type Database = {
           sent_at?: string | null
           side: string
           sl?: number | null
+          sl_tight?: number | null
           status?: string
+          structural_features?: Json | null
           tp?: number | null
+          tp_offset?: number | null
           user_id: string
         }
         Update: {
           asset?: string
           broker_id?: string
+          confluence_score?: number | null
           created_at?: string
           dedupe_key?: string | null
           error_message?: string | null
           executed_at?: string | null
+          fib_alignment?: number | null
           id?: string
           limit_price?: number | null
           model_id?: string | null
@@ -963,8 +1055,11 @@ export type Database = {
           sent_at?: string | null
           side?: string
           sl?: number | null
+          sl_tight?: number | null
           status?: string
+          structural_features?: Json | null
           tp?: number | null
+          tp_offset?: number | null
           user_id?: string
         }
         Relationships: [
@@ -1026,6 +1121,78 @@ export type Database = {
           symbol?: string
           updated_at?: string
           user_id?: string | null
+        }
+        Relationships: []
+      }
+      structural_features_cache: {
+        Row: {
+          asset: string
+          atr: number
+          created_at: string | null
+          dist_to_resistance: number | null
+          dist_to_support: number | null
+          fib_127_dn: number | null
+          fib_127_up: number | null
+          fib_161_dn: number | null
+          fib_161_up: number | null
+          fib_38_retrace: number | null
+          fib_61_retrace: number | null
+          id: string
+          last_swing_high: number | null
+          last_swing_low: number | null
+          regime_acc: number | null
+          regime_adv: number | null
+          regime_decl: number | null
+          regime_dist: number | null
+          sr_strength: number | null
+          timestamp: string
+          vol_regime: number | null
+        }
+        Insert: {
+          asset: string
+          atr: number
+          created_at?: string | null
+          dist_to_resistance?: number | null
+          dist_to_support?: number | null
+          fib_127_dn?: number | null
+          fib_127_up?: number | null
+          fib_161_dn?: number | null
+          fib_161_up?: number | null
+          fib_38_retrace?: number | null
+          fib_61_retrace?: number | null
+          id?: string
+          last_swing_high?: number | null
+          last_swing_low?: number | null
+          regime_acc?: number | null
+          regime_adv?: number | null
+          regime_decl?: number | null
+          regime_dist?: number | null
+          sr_strength?: number | null
+          timestamp: string
+          vol_regime?: number | null
+        }
+        Update: {
+          asset?: string
+          atr?: number
+          created_at?: string | null
+          dist_to_resistance?: number | null
+          dist_to_support?: number | null
+          fib_127_dn?: number | null
+          fib_127_up?: number | null
+          fib_161_dn?: number | null
+          fib_161_up?: number | null
+          fib_38_retrace?: number | null
+          fib_61_retrace?: number | null
+          id?: string
+          last_swing_high?: number | null
+          last_swing_low?: number | null
+          regime_acc?: number | null
+          regime_adv?: number | null
+          regime_decl?: number | null
+          regime_dist?: number | null
+          sr_strength?: number | null
+          timestamp?: string
+          vol_regime?: number | null
         }
         Relationships: []
       }
@@ -1257,6 +1424,68 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      training_episodes: {
+        Row: {
+          confluence_avg: number | null
+          created_at: string | null
+          episode_num: number
+          fib_alignment_avg: number | null
+          id: string
+          long_trades: number | null
+          long_wins: number | null
+          max_drawdown: number | null
+          model_id: string | null
+          num_trades: number | null
+          pnl: number | null
+          sharpe_ratio: number | null
+          short_trades: number | null
+          short_wins: number | null
+          total_reward: number | null
+        }
+        Insert: {
+          confluence_avg?: number | null
+          created_at?: string | null
+          episode_num: number
+          fib_alignment_avg?: number | null
+          id?: string
+          long_trades?: number | null
+          long_wins?: number | null
+          max_drawdown?: number | null
+          model_id?: string | null
+          num_trades?: number | null
+          pnl?: number | null
+          sharpe_ratio?: number | null
+          short_trades?: number | null
+          short_wins?: number | null
+          total_reward?: number | null
+        }
+        Update: {
+          confluence_avg?: number | null
+          created_at?: string | null
+          episode_num?: number
+          fib_alignment_avg?: number | null
+          id?: string
+          long_trades?: number | null
+          long_wins?: number | null
+          max_drawdown?: number | null
+          model_id?: string | null
+          num_trades?: number | null
+          pnl?: number | null
+          sharpe_ratio?: number | null
+          short_trades?: number | null
+          short_wins?: number | null
+          total_reward?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "training_episodes_model_id_fkey"
+            columns: ["model_id"]
+            isOneToOne: false
+            referencedRelation: "asset_models"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       training_runs: {
         Row: {
