@@ -3,7 +3,8 @@ import { PortfolioProvider } from "@/components/PortfolioProvider";
 import { Button } from "@/components/ui/button";
 import { Link } from "react-router-dom";
 import { useAuth } from "@/hooks/useAuth";
-import { Loader2, LogOut, User, Settings, BarChart3, Brain } from "lucide-react";
+import { useAdminCheck } from "@/hooks/useAdminCheck";
+import { Loader2, LogOut, User, Settings, BarChart3, Brain, Shield, Activity } from "lucide-react";
 import { toast } from "@/hooks/use-toast";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -11,10 +12,12 @@ import { TradingSetupDashboard } from "@/components/dashboards/TradingSetupDashb
 import { BacktestingDashboard } from "@/components/dashboards/BacktestingDashboard";
 import { MarketResearchDashboard } from "@/components/dashboards/MarketResearchDashboard";
 import { LiveTradingMasterControl } from "@/components/LiveTradingMasterControl";
+import { LiveTradingDashboard } from "@/components/LiveTradingDashboard";
 import { BatchTrainingMonitor } from "@/components/BatchTrainingMonitor";
 
 const AdvancedTrading = () => {
   const { user, loading, signOut, isAuthenticated } = useAuth();
+  const { isAdmin } = useAdminCheck();
 
   const handleSignOut = async () => {
     const { error } = await signOut();
@@ -83,6 +86,15 @@ const AdvancedTrading = () => {
                   <span className="sm:hidden">Stocks</span>
                 </Link>
               </Button>
+              {isAdmin && (
+                <Button variant="outline" asChild className="text-xs sm:text-sm">
+                  <Link to="/admin">
+                    <Shield className="h-3 w-3 sm:h-4 sm:w-4 mr-1 sm:mr-2" />
+                    <span className="hidden sm:inline">Admin</span>
+                    <span className="sm:hidden">Admin</span>
+                  </Link>
+                </Button>
+              )}
               <DropdownMenu>
                 <DropdownMenuTrigger asChild>
                   <Button variant="outline" className="text-xs sm:text-sm">
@@ -114,9 +126,13 @@ const AdvancedTrading = () => {
           </div>
           
           <Tabs defaultValue="setup" className="space-y-6">
-            <TabsList className="grid w-full grid-cols-3 gap-2 bg-slate-800/50 border border-slate-700 p-2 h-auto">
+            <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4 gap-2 bg-slate-800/50 border border-slate-700 p-2 h-auto">
               <TabsTrigger value="setup" className="text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white text-sm sm:text-base py-3">
                 🚀 Trading Setup
+              </TabsTrigger>
+              <TabsTrigger value="live" className="text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white text-sm sm:text-base py-3">
+                <Activity className="h-4 w-4 mr-1 sm:mr-2 inline" />
+                Live Trading
               </TabsTrigger>
               <TabsTrigger value="backtest" className="text-white data-[state=active]:bg-purple-600 data-[state=active]:text-white text-sm sm:text-base py-3">
                 📊 Backtesting & Training
@@ -129,6 +145,10 @@ const AdvancedTrading = () => {
             <TabsContent value="setup" className="space-y-6">
               <LiveTradingMasterControl />
               <TradingSetupDashboard />
+            </TabsContent>
+
+            <TabsContent value="live" className="space-y-6">
+              <LiveTradingDashboard />
             </TabsContent>
 
             <TabsContent value="backtest" className="space-y-6">
