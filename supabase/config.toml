@@ -81,6 +81,9 @@ verify_jwt = false
 [functions.train-ppo-model]
 verify_jwt = true
 
+[functions.train-recurrent-ppo]
+verify_jwt = true
+
 [functions.update-asset-prefs]
 verify_jwt = true
 
