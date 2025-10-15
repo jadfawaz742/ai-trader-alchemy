@@ -3,6 +3,13 @@
 import { HybridAction } from './recurrent-ppo-model.ts';
 import { OHLCV, extractStructuralFeatures, StructuralFeatures } from './structural-features.ts';
 import { calculateTechnicalIndicators } from './technical-indicators.ts';
+import { applyActionMask, overrideMaskedAction, ActionMask } from './action-masking.ts';
+import { 
+  RiskLimitManager, 
+  validatePositionSize, 
+  handleRiskBreach, 
+  shouldResetDailyPnL 
+} from './risk-limits.ts';
 
 export interface EnvironmentConfig {
   maxRiskPerTrade: number;    // Default: 0.02 (2%)
@@ -85,6 +92,17 @@ export class TradingEnvironment {
   private episodeSpread: number = 0;
   
   private sequenceLength = 50;
+  
+  // Risk management
+  private riskLimitManager: RiskLimitManager;
+  
+  // Anomaly tracking
+  public anomalies: Array<{
+    bar: number;
+    type: string;
+    details: string;
+    autoCorrected: boolean;
+  }> = [];
 
   constructor(data: OHLCV[], config: Partial<EnvironmentConfig> = {}) {
     this.data = data;
@@ -212,22 +230,55 @@ export class TradingEnvironment {
       };
     }
 
-    // Check daily loss cap
-    if (this.state.dailyPnL < -this.config.dailyLossCap * this.config.initialEquity) {
-      // Flatten position and end episode
-      if (this.state.position) {
-        this.closePosition('daily_loss_cap');
+    // 1. RISK LIMIT CHECKS - Before any action
+    const violation = this.riskLimitManager.checkLimits(this.state, this.config);
+    if (violation) {
+      console.log(`⚠️ Risk violation detected: ${violation.type} (${violation.severity})`);
+      
+      const breachResponse = handleRiskBreach(violation, this.state);
+      
+      if (breachResponse.shouldFlatten && this.state.position) {
+        // Force close position due to critical risk breach
+        const tradeResult = this.closePosition('risk_breach' as any);
+        this.riskLimitManager.setCooldown(breachResponse.cooldownBars);
+        
+        this.anomalies.push({
+          bar: this.state.currentBar,
+          type: 'risk_breach',
+          details: `${violation.type}: ${violation.details}. Flattened position, cooldown: ${breachResponse.cooldownBars} bars`,
+          autoCorrected: true
+        });
+        
+        return {
+          nextState: this.getSequence(),
+          reward: breachResponse.penalty,
+          done: false,
+          info: {
+            trade: tradeResult,
+            equity: this.state.equity,
+            drawdown: this.state.drawdown,
+            position: null
+          }
+        };
       }
-      return {
-        nextState: this.getSequence(),
-        reward: -0.5, // Penalty for hitting limit
-        done: true,
-        info: {
-          equity: this.state.equity,
-          drawdown: this.state.drawdown,
-          position: this.state.position
-        }
-      };
+    }
+
+    // 2. COOLDOWN CHECK
+    if (this.riskLimitManager.isInCooldown()) {
+      this.riskLimitManager.decrementCooldown();
+      
+      // Force action to HOLD during cooldown
+      if (action.direction !== 0) {
+        console.log(`🚫 Action masked due to cooldown (${this.riskLimitManager.getCooldownRemaining()} bars remaining)`);
+        action = { ...action, direction: 0 };
+        
+        this.anomalies.push({
+          bar: this.state.currentBar,
+          type: 'cooldown_mask',
+          details: `Action overridden to HOLD during cooldown period`,
+          autoCorrected: true
+        });
+      }
     }
 
     let reward = 0;
@@ -242,20 +293,40 @@ export class TradingEnvironment {
       }
     }
 
-    // If no position and action is not flat, open new position
+    // 3. ACTION MASKING - Apply before opening new position
     if (!this.state.position && action.direction !== 0) {
-      tradeResult = this.openPosition(action);
-      // No immediate reward for opening (reward comes on close)
+      const structural = this.getStructuralFeatures(this.state.currentBar);
+      const mask = applyActionMask(this.getSequence(), structural, 0.5);
+      
+      const { action: maskedAction, wasOverridden } = overrideMaskedAction(action.direction, mask);
+      
+      if (wasOverridden) {
+        console.log(`🚫 Action masked: ${mask.reason} (confluence: ${mask.confluenceScore.toFixed(2)})`);
+        
+        this.anomalies.push({
+          bar: this.state.currentBar,
+          type: 'action_masked',
+          details: `Direction ${action.direction} masked: ${mask.reason}. Confluence: ${mask.confluenceScore.toFixed(2)}`,
+          autoCorrected: true
+        });
+        
+        action = { ...action, direction: maskedAction };
+      }
+      
+      // Open position if action is still non-flat after masking
+      if (action.direction !== 0) {
+        tradeResult = this.openPosition(action);
+        // No immediate reward for opening (reward comes on close)
+      }
     }
 
     // Advance to next bar
     this.state.currentBar++;
 
-    // Check if we should reset daily PnL
-    const currentDate = new Date(this.data[this.state.currentBar].timestamp);
-    const lastDate = new Date(this.data[this.state.currentBar - 1].timestamp);
-    if (currentDate.getDate() !== lastDate.getDate()) {
+    // Check if we should reset daily PnL (using 24 bars per day for daily data)
+    if (shouldResetDailyPnL(this.state.currentBar, this.state.lastResetBar, 24)) {
       this.state.dailyPnL = 0;
+      this.state.lastResetBar = this.state.currentBar;
     }
 
     // Update drawdown
@@ -279,7 +350,7 @@ export class TradingEnvironment {
   }
 
   /**
-   * Open a new position with exact TP/SL formulas
+   * Open a new position with exact TP/SL formulas + validation
    */
   private openPosition(action: HybridAction): TradeResult | undefined {
     const bar = this.data[this.state.currentBar];
@@ -345,11 +416,40 @@ export class TradingEnvironment {
       tp = Math.max(tp, P_entry - 6.0 * ATR);
     }
 
-    // Position sizing
+    // VALIDATE AND AUTO-CORRECT TP/SL
+    const validation = this.validateTPSL(direction, P_entry, tp, sl, ATR);
+    if (!validation.valid) {
+      console.log(`⚠️ TP/SL validation failed, auto-correcting...`);
+      tp = validation.correctedTP;
+      sl = validation.correctedSL;
+      
+      this.anomalies.push({
+        bar: this.state.currentBar,
+        type: 'tpsl_invalid',
+        details: `TP/SL corrected: ${validation.anomalies.join(', ')}`,
+        autoCorrected: true
+      });
+    }
+
+    // Position sizing with risk validation
     const risk_dollars = action.size * this.config.maxRiskPerTrade * this.state.equity;
     const stop_distance = Math.abs(P_entry - sl);
     let qty = risk_dollars / (stop_distance * this.config.pointValue);
-    qty = Math.min(qty, this.config.maxQtyPerAsset);
+    
+    // VALIDATE POSITION SIZE
+    const sizeValidation = validatePositionSize(qty, P_entry, sl, this.state.equity, this.config);
+    if (!sizeValidation.valid) {
+      console.log(`⚠️ Position size adjusted: ${sizeValidation.reason}`);
+      qty = sizeValidation.adjustedQty;
+      
+      this.anomalies.push({
+        bar: this.state.currentBar,
+        type: 'position_size_adjusted',
+        details: sizeValidation.reason || 'Position size exceeded risk limits',
+        autoCorrected: true
+      });
+    }
+    
     qty = Math.max(qty, 0.001); // Minimum quantity
 
     // Apply entry fees and slippage
@@ -428,9 +528,74 @@ export class TradingEnvironment {
   }
 
   /**
+   * Validate TP/SL placement and auto-correct if needed
+   */
+  private validateTPSL(
+    direction: 'long' | 'short',
+    entry: number,
+    tp: number,
+    sl: number,
+    atr: number
+  ): { valid: boolean; correctedTP: number; correctedSL: number; anomalies: string[] } {
+    const anomalies: string[] = [];
+    let correctedTP = tp;
+    let correctedSL = sl;
+    
+    // Check TP/SL on correct side of entry
+    if (direction === 'long') {
+      if (tp <= entry) {
+        anomalies.push(`TP below entry: ${tp.toFixed(4)} <= ${entry.toFixed(4)}`);
+        correctedTP = entry + 2.0 * atr;
+      }
+      if (sl >= entry) {
+        anomalies.push(`SL above entry: ${sl.toFixed(4)} >= ${entry.toFixed(4)}`);
+        correctedSL = entry - 1.0 * atr;
+      }
+    } else {
+      if (tp >= entry) {
+        anomalies.push(`TP above entry: ${tp.toFixed(4)} >= ${entry.toFixed(4)}`);
+        correctedTP = entry - 2.0 * atr;
+      }
+      if (sl <= entry) {
+        anomalies.push(`SL below entry: ${sl.toFixed(4)} <= ${entry.toFixed(4)}`);
+        correctedSL = entry + 1.0 * atr;
+      }
+    }
+    
+    // Check TP/SL bounds [0.3, 6.0] × ATR
+    const tpDist = Math.abs(correctedTP - entry);
+    const slDist = Math.abs(correctedSL - entry);
+    
+    if (tpDist < 0.3 * atr) {
+      correctedTP = direction === 'long' ? entry + 0.3 * atr : entry - 0.3 * atr;
+      anomalies.push(`TP too close: ${(tpDist / atr).toFixed(2)} ATR`);
+    }
+    if (tpDist > 6.0 * atr) {
+      correctedTP = direction === 'long' ? entry + 6.0 * atr : entry - 6.0 * atr;
+      anomalies.push(`TP too far: ${(tpDist / atr).toFixed(2)} ATR`);
+    }
+    
+    if (slDist < 0.3 * atr) {
+      correctedSL = direction === 'long' ? entry - 0.3 * atr : entry + 0.3 * atr;
+      anomalies.push(`SL too close: ${(slDist / atr).toFixed(2)} ATR`);
+    }
+    if (slDist > 6.0 * atr) {
+      correctedSL = direction === 'long' ? entry - 6.0 * atr : entry + 6.0 * atr;
+      anomalies.push(`SL too far: ${(slDist / atr).toFixed(2)} ATR`);
+    }
+    
+    return {
+      valid: anomalies.length === 0,
+      correctedTP,
+      correctedSL,
+      anomalies
+    };
+  }
+
+  /**
    * Close position and calculate trade result
    */
-  private closePosition(reason: 'tp' | 'sl' | 'timeout' | 'daily_loss_cap'): TradeResult {
+  private closePosition(reason: 'tp' | 'sl' | 'timeout' | 'daily_loss_cap' | 'risk_breach'): TradeResult {
     if (!this.state.position) {
       throw new Error('No position to close');
     }
