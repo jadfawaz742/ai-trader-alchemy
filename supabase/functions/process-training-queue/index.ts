@@ -111,7 +111,13 @@ serve(async (req) => {
           }
 
           const trainingResult = await response.json();
-          console.log(`✅ Training completed for ${job.symbol}`);
+          
+          // Log validation status
+          const validationStatus = trainingResult.validation_triggered 
+            ? (trainingResult.validation_approved ? '✓ VALIDATED' : '✗ NOT APPROVED')
+            : '⚠ NO VALIDATION';
+          
+          console.log(`✅ Training completed for ${job.symbol} [${validationStatus}]`);
 
           // Update job as completed
           await supabase

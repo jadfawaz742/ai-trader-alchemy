@@ -274,6 +274,46 @@ serve(async (req) => {
 
     console.log(`✅ Model trained successfully for ${normalizedSymbol}`);
 
+    // Trigger walk-forward validation automatically
+    console.log('🔍 Starting walk-forward validation...');
+    let validationTriggered = false;
+    let validationApproved = false;
+    
+    try {
+      const validationStartDate = new Date();
+      validationStartDate.setMonth(validationStartDate.getMonth() - 6);
+      
+      const validationResponse = await fetch(
+        `${Deno.env.get('SUPABASE_URL')}/functions/v1/validate-model`,
+        {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify({
+            modelId: insertedModel.id,
+            asset: normalizedSymbol,
+            startDate: validationStartDate.toISOString(),
+            endDate: new Date().toISOString()
+          })
+        }
+      );
+      
+      if (validationResponse.ok) {
+        const validationResult = await validationResponse.json();
+        validationTriggered = true;
+        validationApproved = validationResult.approved || false;
+        console.log(`✅ Validation completed: ${validationApproved ? 'APPROVED ✓' : 'NOT APPROVED ✗'}`);
+      } else {
+        const errorText = await validationResponse.text();
+        console.warn(`⚠️ Validation failed: ${validationResponse.status} - ${errorText}`);
+      }
+    } catch (validationError) {
+      console.error('❌ Validation error:', validationError);
+      // Don't fail the training if validation fails - just log it
+    }
+
     return new Response(
       JSON.stringify({
         success: true,
@@ -282,7 +322,9 @@ serve(async (req) => {
         curriculum_stage: config.curriculum_stage,
         dataPoints: trainingData.length,
         metrics: result.performance_metrics,
-        model_id: insertedModel.id
+        model_id: insertedModel.id,
+        validation_triggered: validationTriggered,
+        validation_approved: validationApproved
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
     );

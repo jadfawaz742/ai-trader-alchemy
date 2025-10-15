@@ -386,6 +386,11 @@ export function BatchTrainingMonitor() {
                       {job.status === 'training' && (
                         <Loader2 className="h-3 w-3 animate-spin" />
                       )}
+                      {job.status === 'completed' && (
+                        <Badge variant="outline" className="text-xs bg-green-500/10 text-green-600 border-green-500/20">
+                          ✓ validated
+                        </Badge>
+                      )}
                       {job.curriculum_stage && job.status !== 'skipped' && (
                         <Badge variant="outline" className="text-xs">
                           {job.curriculum_stage}
