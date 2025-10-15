@@ -1425,6 +1425,47 @@ export type Database = {
         }
         Relationships: []
       }
+      training_anomalies: {
+        Row: {
+          anomaly_type: string
+          auto_corrected: boolean
+          bar_index: number
+          created_at: string
+          details: Json
+          episode_num: number
+          id: string
+          model_id: string | null
+        }
+        Insert: {
+          anomaly_type: string
+          auto_corrected?: boolean
+          bar_index: number
+          created_at?: string
+          details: Json
+          episode_num: number
+          id?: string
+          model_id?: string | null
+        }
+        Update: {
+          anomaly_type?: string
+          auto_corrected?: boolean
+          bar_index?: number
+          created_at?: string
+          details?: Json
+          episode_num?: number
+          id?: string
+          model_id?: string | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "training_anomalies_model_id_fkey"
+            columns: ["model_id"]
+            isOneToOne: false
+            referencedRelation: "asset_models"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       training_episodes: {
         Row: {
           confluence_avg: number | null
