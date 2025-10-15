@@ -368,17 +368,17 @@ async function trainComprehensivePPO(
   // Training loop
   for (let episode = 0; episode < config.episodes; episode++) {
     const buffer = trainer.createBuffer();
-    const state = env.reset();
+    let sequenceFeatures = env.reset();
     let done = false;
     let episodeReward = 0;
     let episodeTrades = 0;
     
     while (!done) {
-      const { action, value, logProb } = forwardPass(model, [state.features], false);
+      const { action, value, logProb } = forwardPass(model, sequenceFeatures, false);
       const { nextState, reward, done: isDone, info } = env.step(action);
       
       buffer.store({
-        state: state.features,
+        state: sequenceFeatures,
         action,
         reward,
         value,
@@ -403,7 +403,7 @@ async function trainComprehensivePPO(
         else metrics.shortWins++;
       }
       
-      state.features = nextState.features;
+      sequenceFeatures = nextState;
       episodeReward += reward;
       done = isDone;
     }
