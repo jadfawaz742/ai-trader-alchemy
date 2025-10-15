@@ -1403,9 +1403,23 @@ export type Database = {
       }
     }
     Views: {
-      [_ in never]: never
+      audit_metrics: {
+        Row: {
+          action: string | null
+          call_date: string | null
+          function_name: string | null
+          last_called: string | null
+          total_calls: number | null
+          unique_users: number | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
+      cleanup_old_audit_logs: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
       cleanup_old_rate_limits: {
         Args: Record<PropertyKey, never>
         Returns: undefined
@@ -1416,6 +1430,14 @@ export type Database = {
           _user_id: string
         }
         Returns: boolean
+      }
+      migrate_legacy_credentials: {
+        Args: Record<PropertyKey, never>
+        Returns: {
+          connection_id: string
+          message: string
+          status: string
+        }[]
       }
       trigger_online_ppo_updates: {
         Args: Record<PropertyKey, never>
