@@ -138,7 +138,7 @@ export const TrainAssetModel = ({ onTrainingComplete }: TrainAssetModelProps) =>
           </div>
         )}
 
-        {result && (
+        {result && result.metrics?.test && (
           <div className="space-y-3 p-4 bg-green-500/5 rounded-lg border border-green-500/20">
             <div className="flex items-center gap-2 text-green-600 dark:text-green-400">
               <CheckCircle2 className="w-5 h-5" />
