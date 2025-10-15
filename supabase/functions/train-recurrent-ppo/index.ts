@@ -196,16 +196,60 @@ serve(async (req) => {
 
     console.log(`📊 Test metrics: MAR=${testMetrics.mar.toFixed(2)}, Sharpe=${testMetrics.sharpe_ratio.toFixed(2)}, Passed=${passedAcceptance}`);
 
+    // 9. Trigger walk-forward validation
+    console.log('🔍 Starting walk-forward validation...');
+    
+    const validationStartDate = new Date();
+    validationStartDate.setMonth(validationStartDate.getMonth() - 6); // 6 months of data
+    
+    const { data: validationResult, error: validationError } = await supabase.functions.invoke('validate-model', {
+      body: {
+        modelId: savedModel.id,
+        asset: asset,
+        startDate: validationStartDate.toISOString(),
+        endDate: new Date().toISOString()
+      }
+    });
+
+    if (validationError) {
+      console.error('❌ Validation invocation failed:', validationError);
+      return new Response(JSON.stringify({
+        success: false,
+        error: 'Model trained but validation failed to start',
+        details: validationError
+      }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
+    if (!validationResult?.approved) {
+      console.log('⚠️ Model did not pass walk-forward validation');
+      console.log('Recommendation:', validationResult?.report?.recommendation);
+      
+      return new Response(JSON.stringify({
+        success: false,
+        model_id: savedModel.id,
+        message: 'Model trained but failed walk-forward validation',
+        validation_report: validationResult?.report,
+        test_metrics: testMetrics
+      }), {
+        status: 200,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' }
+      });
+    }
+
+    console.log('✅ Model passed walk-forward validation!');
+
     return new Response(JSON.stringify({
       success: true,
       model_id: savedModel.id,
       curriculum_stage,
       epochs_trained: epochs,
       test_metrics: testMetrics,
+      validation_report: validationResult?.report,
       passed_acceptance: passedAcceptance,
-      message: passedAcceptance
-        ? '✅ Model trained successfully and passed acceptance criteria!'
-        : '⚠️ Model trained but did not pass all acceptance criteria'
+      message: '✅ Model trained successfully and passed walk-forward validation!'
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });

@@ -721,6 +721,77 @@ export type Database = {
         }
         Relationships: []
       }
+      model_validations: {
+        Row: {
+          approved: boolean
+          asset: string
+          avg_test_drawdown: number | null
+          avg_test_sharpe: number | null
+          avg_test_win_rate: number | null
+          created_at: string
+          failed_windows: number
+          full_report: Json
+          id: string
+          model_id: string | null
+          passed_windows: number
+          recommendation: string | null
+          sharpe_std_dev: number | null
+          test_months: number
+          total_test_pnl: number | null
+          total_windows: number
+          train_months: number
+          win_rate_std_dev: number | null
+        }
+        Insert: {
+          approved?: boolean
+          asset: string
+          avg_test_drawdown?: number | null
+          avg_test_sharpe?: number | null
+          avg_test_win_rate?: number | null
+          created_at?: string
+          failed_windows: number
+          full_report: Json
+          id?: string
+          model_id?: string | null
+          passed_windows: number
+          recommendation?: string | null
+          sharpe_std_dev?: number | null
+          test_months: number
+          total_test_pnl?: number | null
+          total_windows: number
+          train_months: number
+          win_rate_std_dev?: number | null
+        }
+        Update: {
+          approved?: boolean
+          asset?: string
+          avg_test_drawdown?: number | null
+          avg_test_sharpe?: number | null
+          avg_test_win_rate?: number | null
+          created_at?: string
+          failed_windows?: number
+          full_report?: Json
+          id?: string
+          model_id?: string | null
+          passed_windows?: number
+          recommendation?: string | null
+          sharpe_std_dev?: number | null
+          test_months?: number
+          total_test_pnl?: number | null
+          total_windows?: number
+          train_months?: number
+          win_rate_std_dev?: number | null
+        }
+        Relationships: [
+          {
+            foreignKeyName: "model_validations_model_id_fkey"
+            columns: ["model_id"]
+            isOneToOne: false
+            referencedRelation: "asset_models"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       models: {
         Row: {
           asset: string
@@ -1670,6 +1741,80 @@ export type Database = {
           user_id?: string
         }
         Relationships: []
+      }
+      validation_window_details: {
+        Row: {
+          failure_reasons: string[] | null
+          id: string
+          passed: boolean
+          test_end_bar: number
+          test_max_drawdown: number | null
+          test_pnl: number | null
+          test_sharpe: number | null
+          test_start_bar: number
+          test_trades: number | null
+          test_win_rate: number | null
+          train_end_bar: number
+          train_max_drawdown: number | null
+          train_sharpe: number | null
+          train_start_bar: number
+          train_trades: number | null
+          train_win_rate: number | null
+          validation_id: string | null
+          window_label: string
+          window_number: number
+        }
+        Insert: {
+          failure_reasons?: string[] | null
+          id?: string
+          passed: boolean
+          test_end_bar: number
+          test_max_drawdown?: number | null
+          test_pnl?: number | null
+          test_sharpe?: number | null
+          test_start_bar: number
+          test_trades?: number | null
+          test_win_rate?: number | null
+          train_end_bar: number
+          train_max_drawdown?: number | null
+          train_sharpe?: number | null
+          train_start_bar: number
+          train_trades?: number | null
+          train_win_rate?: number | null
+          validation_id?: string | null
+          window_label: string
+          window_number: number
+        }
+        Update: {
+          failure_reasons?: string[] | null
+          id?: string
+          passed?: boolean
+          test_end_bar?: number
+          test_max_drawdown?: number | null
+          test_pnl?: number | null
+          test_sharpe?: number | null
+          test_start_bar?: number
+          test_trades?: number | null
+          test_win_rate?: number | null
+          train_end_bar?: number
+          train_max_drawdown?: number | null
+          train_sharpe?: number | null
+          train_start_bar?: number
+          train_trades?: number | null
+          train_win_rate?: number | null
+          validation_id?: string | null
+          window_label?: string
+          window_number?: number
+        }
+        Relationships: [
+          {
+            foreignKeyName: "validation_window_details_validation_id_fkey"
+            columns: ["validation_id"]
+            isOneToOne: false
+            referencedRelation: "model_validations"
+            referencedColumns: ["id"]
+          },
+        ]
       }
     }
     Views: {
