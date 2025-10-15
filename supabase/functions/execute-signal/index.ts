@@ -276,6 +276,7 @@ serve(async (req) => {
           sl: normalizedSl,
           model_id: signal.model_id || 'ppo_default',
           model_version: signal.model_version || 'v1.0',
+          account_type: signal.broker_connections.encrypted_credentials?.account_type || 'live',
           ts: ts,
           dedupe_key: dedupeKey,
           sig: signatureHex  // Signature in body, not header

@@ -43,7 +43,7 @@ export function BrokerConnectionManager() {
   const [selectedBroker, setSelectedBroker] = useState<string>('');
   const [apiKey, setApiKey] = useState('');
   const [apiSecret, setApiSecret] = useState('');
-  const [accountType, setAccountType] = useState<'demo' | 'live'>('demo');
+  const [accountType, setAccountType] = useState<'testnet' | 'live'>('testnet');
 
   useEffect(() => {
     loadData();
@@ -267,12 +267,12 @@ export function BrokerConnectionManager() {
 
             <div>
               <Label>Account Type</Label>
-              <Select value={accountType} onValueChange={(v) => setAccountType(v as 'demo' | 'live')}>
+              <Select value={accountType} onValueChange={(v) => setAccountType(v as 'testnet' | 'live')}>
                 <SelectTrigger>
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
-                  <SelectItem value="demo">Demo (Paper Trading)</SelectItem>
+                  <SelectItem value="testnet">Testnet (Binance Testnet API)</SelectItem>
                   <SelectItem value="live">Live (Real Money)</SelectItem>
                 </SelectContent>
               </Select>
