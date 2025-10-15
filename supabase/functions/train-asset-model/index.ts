@@ -483,7 +483,7 @@ async function trainComprehensivePPO(
     
     while (!done) {
       // Bounds check before stepping
-      if (env['state'].currentBar >= data.length - 1) {
+      if (env['state'].currentBar >= trainData.length - 1) {
         console.log(`Episode ${episode}: Reached end of data at bar ${env['state'].currentBar}`);
         done = true;
         break;
