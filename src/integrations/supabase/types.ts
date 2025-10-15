@@ -43,7 +43,7 @@ export type Database = {
           performance_metrics: Json | null
           symbol: string
           updated_at: string | null
-          user_id: string | null
+          user_id: string
         }
         Insert: {
           base_model_id?: string | null
@@ -55,7 +55,7 @@ export type Database = {
           performance_metrics?: Json | null
           symbol: string
           updated_at?: string | null
-          user_id?: string | null
+          user_id: string
         }
         Update: {
           base_model_id?: string | null
@@ -67,7 +67,7 @@ export type Database = {
           performance_metrics?: Json | null
           symbol?: string
           updated_at?: string | null
-          user_id?: string | null
+          user_id?: string
         }
         Relationships: [
           {
@@ -89,7 +89,7 @@ export type Database = {
           performance_metrics: Json | null
           training_metadata: Json | null
           updated_at: string | null
-          user_id: string | null
+          user_id: string
         }
         Insert: {
           assets_trained_on: string[]
@@ -100,7 +100,7 @@ export type Database = {
           performance_metrics?: Json | null
           training_metadata?: Json | null
           updated_at?: string | null
-          user_id?: string | null
+          user_id: string
         }
         Update: {
           assets_trained_on?: string[]
@@ -111,7 +111,7 @@ export type Database = {
           performance_metrics?: Json | null
           training_metadata?: Json | null
           updated_at?: string | null
-          user_id?: string | null
+          user_id?: string
         }
         Relationships: []
       }
@@ -269,9 +269,12 @@ export type Database = {
           auth_type: string
           broker_id: string
           created_at: string
+          encrypted_api_key: string | null
+          encrypted_api_secret: string | null
           encrypted_credentials: Json
           error_message: string | null
           id: string
+          key_id: string | null
           last_checked_at: string | null
           status: string
           updated_at: string
@@ -281,9 +284,12 @@ export type Database = {
           auth_type: string
           broker_id: string
           created_at?: string
+          encrypted_api_key?: string | null
+          encrypted_api_secret?: string | null
           encrypted_credentials: Json
           error_message?: string | null
           id?: string
+          key_id?: string | null
           last_checked_at?: string | null
           status?: string
           updated_at?: string
@@ -293,9 +299,12 @@ export type Database = {
           auth_type?: string
           broker_id?: string
           created_at?: string
+          encrypted_api_key?: string | null
+          encrypted_api_secret?: string | null
           encrypted_credentials?: Json
           error_message?: string | null
           id?: string
+          key_id?: string | null
           last_checked_at?: string | null
           status?: string
           updated_at?: string
@@ -839,6 +848,33 @@ export type Database = {
             referencedColumns: ["id"]
           },
         ]
+      }
+      service_role_audit: {
+        Row: {
+          action: string
+          created_at: string | null
+          function_name: string
+          id: string
+          metadata: Json | null
+          user_id: string | null
+        }
+        Insert: {
+          action: string
+          created_at?: string | null
+          function_name: string
+          id?: string
+          metadata?: Json | null
+          user_id?: string | null
+        }
+        Update: {
+          action?: string
+          created_at?: string | null
+          function_name?: string
+          id?: string
+          metadata?: Json | null
+          user_id?: string | null
+        }
+        Relationships: []
       }
       signals: {
         Row: {

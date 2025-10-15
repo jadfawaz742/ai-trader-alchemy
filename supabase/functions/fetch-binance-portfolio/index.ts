@@ -36,10 +36,18 @@ serve(async (req) => {
       });
     }
 
-    // Get Binance connection for user
+    // Audit log
+    await supabase.from('service_role_audit').insert({
+      function_name: 'fetch-binance-portfolio',
+      action: 'portfolio_fetch_started',
+      user_id: user.id,
+      metadata: {}
+    });
+
+    // Get Binance connection for user with encrypted credentials
     const { data: connections, error: connError } = await supabase
       .from('broker_connections')
-      .select('encrypted_credentials, brokers(name)')
+      .select('encrypted_api_key, encrypted_api_secret, encrypted_credentials, brokers(name)')
       .eq('user_id', user.id)
       .eq('status', 'connected');
 
@@ -65,7 +73,40 @@ serve(async (req) => {
       });
     }
 
-    const credentials = binanceConn.encrypted_credentials;
+    // Decrypt credentials using pgsodium
+    // For backward compatibility, check if new encrypted columns exist, otherwise use legacy
+    let apiKey: string;
+    let apiSecret: string;
+    
+    if (binanceConn.encrypted_api_key && binanceConn.encrypted_api_secret) {
+      // Use new encrypted columns and decrypt
+      const { data: decryptedKey } = await supabase.rpc('pgsodium.crypto_aead_det_decrypt', {
+        message: binanceConn.encrypted_api_key,
+        key_id: null
+      });
+      
+      const { data: decryptedSecret } = await supabase.rpc('pgsodium.crypto_aead_det_decrypt', {
+        message: binanceConn.encrypted_api_secret,
+        key_id: null
+      });
+      
+      apiKey = decryptedKey;
+      apiSecret = decryptedSecret;
+      
+      // Audit log for credential decryption
+      await supabase.from('service_role_audit').insert({
+        function_name: 'fetch-binance-portfolio',
+        action: 'credentials_decrypted',
+        user_id: user.id,
+        metadata: { using_encrypted_columns: true }
+      });
+    } else {
+      // Legacy: use unencrypted credentials from encrypted_credentials JSONB
+      apiKey = binanceConn.encrypted_credentials.api_key;
+      apiSecret = binanceConn.encrypted_credentials.api_secret;
+      
+      console.warn('Using legacy unencrypted credentials - migration needed');
+    }
     
     // Fetch account balance from Binance
     const vpsProxyUrl = Deno.env.get('VPS_PROXY_URL');
@@ -74,9 +115,9 @@ serve(async (req) => {
     const timestamp = Date.now();
     const queryString = `timestamp=${timestamp}`;
     
-    // Create HMAC signature
+    // Create HMAC signature using decrypted credentials
     const encoder = new TextEncoder();
-    const keyData = encoder.encode(credentials.api_secret);
+    const keyData = encoder.encode(apiSecret);
     const messageData = encoder.encode(queryString);
     
     const cryptoKey = await crypto.subtle.importKey(
@@ -99,7 +140,7 @@ serve(async (req) => {
 
     const response = await fetch(targetUrl, {
       headers: {
-        'X-MBX-APIKEY': credentials.api_key,
+        'X-MBX-APIKEY': apiKey,
         'Accept-Encoding': 'identity',
         ...(usingProxy ? { 'X-Target-Host': 'api.binance.com' } : {}),
       },

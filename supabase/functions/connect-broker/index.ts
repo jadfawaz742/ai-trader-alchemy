@@ -1,4 +1,4 @@
-// Version 3.1 - Fix reconnection for revoked broker connections
+// Version 4.0 - Secure JWT validation and credential encryption
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
 
@@ -6,27 +6,6 @@ const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
-
-function getUserIdFromJWT(authHeader: string | null): string | null {
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return null;
-  }
-  
-  try {
-    const token = authHeader.substring(7); // Remove 'Bearer '
-    const parts = token.split('.');
-    if (parts.length !== 3) {
-      return null;
-    }
-    
-    // Decode the payload (middle part)
-    const payload = JSON.parse(atob(parts[1]));
-    return payload.sub || null; // 'sub' contains the user ID
-  } catch (error) {
-    console.error('Error decoding JWT:', error);
-    return null;
-  }
-}
 
 serve(async (req) => {
   console.log('connect-broker function invoked - v3 with VPS proxy');
@@ -42,17 +21,36 @@ serve(async (req) => {
     );
 
     const authHeader = req.headers.get('Authorization');
-    const userId = getUserIdFromJWT(authHeader);
-
-    if (!userId) {
-      console.error('Auth error: Invalid or missing JWT token');
+    if (!authHeader) {
+      console.error('Auth error: Missing Authorization header');
       return new Response(JSON.stringify({ error: 'Unauthorized' }), {
         status: 401,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
 
-    console.log('Authenticated user:', userId);
+    // Proper JWT validation using Supabase
+    const { data: { user }, error: authError } = await supabaseClient.auth.getUser(
+      authHeader.replace('Bearer ', '')
+    );
+
+    if (authError || !user) {
+      console.error('Auth error:', authError?.message || 'Invalid token');
+      return new Response(JSON.stringify({ error: 'Unauthorized' }), {
+        status: 401,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    console.log('Authenticated user:', user.id);
+    
+    // Audit log for service role operations
+    await supabaseClient.from('service_role_audit').insert({
+      function_name: 'connect-broker',
+      action: 'authentication',
+      user_id: user.id,
+      metadata: { broker_action: 'pending' }
+    });
 
     const { broker_id, auth_type, credentials, action } = await req.json();
 
@@ -91,14 +89,31 @@ serve(async (req) => {
         });
       }
 
+      // Encrypt credentials using pgsodium before storing
+      // Note: Encryption happens at database level via trigger or we do it here
+      // For now, storing in encrypted_credentials (legacy) and new encrypted columns
+      
+      // First, encrypt the API key and secret using pgsodium
+      const { data: encryptedKey } = await supabaseClient.rpc('pgsodium.crypto_aead_det_encrypt', {
+        message: credentials.api_key,
+        key_id: null // Uses default encryption key from Vault
+      });
+      
+      const { data: encryptedSecret } = await supabaseClient.rpc('pgsodium.crypto_aead_det_encrypt', {
+        message: credentials.api_secret,
+        key_id: null
+      });
+
       // Store encrypted credentials with proper conflict resolution
       const { data: connection, error: insertError } = await supabaseClient
         .from('broker_connections')
         .upsert({
-          user_id: userId,
+          user_id: user.id,
           broker_id,
           auth_type,
-          encrypted_credentials: credentials,
+          encrypted_credentials: credentials, // Keep for backward compatibility during migration
+          encrypted_api_key: encryptedKey,
+          encrypted_api_secret: encryptedSecret,
           status: 'connected',
           last_checked_at: new Date().toISOString(),
           error_message: null,
@@ -107,6 +122,14 @@ serve(async (req) => {
         })
         .select()
         .single();
+      
+      // Audit log
+      await supabaseClient.from('service_role_audit').insert({
+        function_name: 'connect-broker',
+        action: 'credentials_stored',
+        user_id: user.id,
+        metadata: { broker_id, auth_type }
+      });
 
       if (insertError) {
         console.error('Error storing broker connection:', insertError);
@@ -129,7 +152,15 @@ serve(async (req) => {
         .from('broker_connections')
         .update({ status: 'revoked' })
         .eq('broker_id', broker_id)
-        .eq('user_id', userId);
+        .eq('user_id', user.id);
+      
+      // Audit log
+      await supabaseClient.from('service_role_audit').insert({
+        function_name: 'connect-broker',
+        action: 'credentials_revoked',
+        user_id: user.id,
+        metadata: { broker_id }
+      });
 
       if (deleteError) {
         console.error('Error disconnecting broker:', deleteError);

@@ -34,6 +34,8 @@ serve(async (req) => {
         broker_connections!inner(
           id,
           broker_id,
+          encrypted_api_key,
+          encrypted_api_secret,
           encrypted_credentials,
           brokers!inner(
             name,
@@ -45,6 +47,14 @@ serve(async (req) => {
       .eq('id', signal_id)
       .eq('status', 'queued')
       .single();
+    
+    // Audit log for signal processing
+    await supabaseClient.from('service_role_audit').insert({
+      function_name: 'execute-signal',
+      action: 'signal_processing_started',
+      user_id: signal?.user_id,
+      metadata: { signal_id, asset: signal?.asset }
+    });
 
     if (signalError || !signal) {
       console.error('Signal not found or not queued:', signalError);
