@@ -76,7 +76,7 @@ verify_jwt = false
 verify_jwt = false
 
 [functions.train-asset-model]
-verify_jwt = true
+verify_jwt = false
 
 [functions.train-ppo-model]
 verify_jwt = true
