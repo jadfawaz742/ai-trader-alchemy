@@ -80,11 +80,11 @@ export function LiveTradingControls() {
         .eq('user_id', user.id)
         .eq('status', 'connected');
 
-      // Load active models
+      // Load user's trained models from asset_models table
       const { data: models } = await supabase
-        .from('models')
-        .select('asset')
-        .eq('status', 'active');
+        .from('asset_models')
+        .select('symbol')
+        .eq('user_id', user.id);
 
       // Load user asset preferences
       const { data: prefs } = await supabase
@@ -93,7 +93,7 @@ export function LiveTradingControls() {
         .eq('user_id', user.id);
 
       setBrokerConnections(connections || []);
-      setActiveAssets(models?.map(m => m.asset) || []);
+      setActiveAssets(models?.map(m => m.symbol) || []);
       setAssetPrefs(prefs || []);
 
       if (connections && connections.length > 0) {

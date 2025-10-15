@@ -28,7 +28,38 @@ export function BatchTrainingMonitor() {
   const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
   const [permanentlyFailed, setPermanentlyFailed] = useState(0);
   const [deploymentVersion, setDeploymentVersion] = useState<string>('checking...');
+  const [completedModels, setCompletedModels] = useState<number>(0);
   const { toast } = useToast();
+
+  // Real-time subscription to asset_models for completion tracking
+  useEffect(() => {
+    if (!batchId) return;
+    
+    const channel = supabase
+      .channel('batch-training-updates')
+      .on(
+        'postgres_changes',
+        {
+          event: 'INSERT',
+          schema: 'public',
+          table: 'asset_models'
+        },
+        (payload) => {
+          console.log('New model trained:', payload.new);
+          setCompletedModels(prev => prev + 1);
+          
+          toast({
+            title: "Model Training Complete",
+            description: `Successfully trained model for ${(payload.new as any).symbol}`,
+          });
+        }
+      )
+      .subscribe();
+    
+    return () => {
+      supabase.removeChannel(channel);
+    };
+  }, [batchId, toast]);
 
   // Poll for status updates
   useEffect(() => {
@@ -67,6 +98,7 @@ export function BatchTrainingMonitor() {
 
   const startBatchTraining = async () => {
     setIsStarting(true);
+    setCompletedModels(0); // Reset counter
     try {
       const { data, error } = await supabase.functions.invoke('batch-train-cryptos', {
         body: { 
@@ -82,7 +114,7 @@ export function BatchTrainingMonitor() {
         setBatchId(data.batchId);
         toast({
           title: "Batch Training Started",
-          description: `Training ${data.queued} assets (${data.skipped} skipped)`,
+          description: `Training ${data.queued} assets (${data.skipped} skipped). Watch real-time progress below.`,
         });
       }
     } catch (error: any) {
@@ -218,7 +250,7 @@ export function BatchTrainingMonitor() {
           <>
             <div className="space-y-2">
               <div className="flex items-center justify-between text-sm">
-                <span className="font-medium">Progress</span>
+                <span className="font-medium">Progress ({completedModels} models trained)</span>
                 <span className="text-muted-foreground">
                   {completedJobs} / {totalJobs}
                 </span>

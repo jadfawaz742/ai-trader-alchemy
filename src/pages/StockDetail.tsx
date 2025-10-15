@@ -54,6 +54,7 @@ const StockDetailPage: React.FC = () => {
   const [stockData, setStockData] = useState<any>(null);
   const [analysis, setAnalysis] = useState<any>(null);
   const [loading, setLoading] = useState(false);
+  const [trainedModel, setTrainedModel] = useState<any>(null);
 
   useEffect(() => {
     const loadStockData = async () => {
@@ -61,6 +62,22 @@ const StockDetailPage: React.FC = () => {
         setLoading(true);
         const data = await fetchStockDetails(symbol.toUpperCase());
         setStockData(data);
+        
+        // Check for trained model
+        const { data: { user } } = await supabase.auth.getUser();
+        if (user) {
+          const { data: model } = await supabase
+            .from('asset_models')
+            .select('*, training_episodes(*)')
+            .eq('user_id', user.id)
+            .eq('symbol', symbol.toUpperCase())
+            .single();
+          
+          if (model) {
+            setTrainedModel(model);
+          }
+        }
+        
         setLoading(false);
       }
     };
@@ -312,6 +329,61 @@ const StockDetailPage: React.FC = () => {
 
           {/* Sidebar */}
           <div className="space-y-6">
+            {/* Trained Model Stats */}
+            {trainedModel && (
+              <Card className="border-primary">
+                <CardHeader>
+                  <CardTitle className="flex items-center gap-2">
+                    <Zap className="h-5 w-5 text-primary" />
+                    Your Trained Model
+                  </CardTitle>
+                </CardHeader>
+                <CardContent className="space-y-3">
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">Model Type</span>
+                    <Badge variant="secondary">{trainedModel.model_type || 'PPO'}</Badge>
+                  </div>
+                  <div className="flex justify-between items-center">
+                    <span className="text-sm text-muted-foreground">Trained</span>
+                    <span className="font-medium text-xs">
+                      {new Date(trainedModel.created_at).toLocaleDateString()}
+                    </span>
+                  </div>
+                  {trainedModel.performance_metrics && (
+                    <>
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-muted-foreground">Win Rate</span>
+                        <span className="font-medium text-green-600">
+                          {(trainedModel.performance_metrics.test?.winRate * 100 || 0).toFixed(1)}%
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-muted-foreground">Total Return</span>
+                        <span className={`font-medium ${trainedModel.performance_metrics.test?.totalReturn >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                          {(trainedModel.performance_metrics.test?.totalReturn * 100 || 0).toFixed(2)}%
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-muted-foreground">Sharpe Ratio</span>
+                        <span className="font-medium">
+                          {trainedModel.performance_metrics.test?.sharpeRatio?.toFixed(2) || 'N/A'}
+                        </span>
+                      </div>
+                      <div className="flex justify-between items-center">
+                        <span className="text-sm text-muted-foreground">Max Drawdown</span>
+                        <span className="font-medium text-red-600">
+                          {(trainedModel.performance_metrics.test?.maxDrawdown * 100 || 0).toFixed(2)}%
+                        </span>
+                      </div>
+                    </>
+                  )}
+                  <Button variant="outline" size="sm" className="w-full mt-2" onClick={() => navigate('/advanced-trading')}>
+                    Use in Trading
+                  </Button>
+                </CardContent>
+              </Card>
+            )}
+
             {/* Quick Stats */}
             <Card>
               <CardHeader>
