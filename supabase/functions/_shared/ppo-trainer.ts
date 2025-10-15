@@ -374,9 +374,9 @@ export class PPOTrainer {
       { name: 'critic_weights', sampleRate: 0.5 },
       { name: 'critic_bias', sampleRate: 1.0 }, // Always update biases (cheap, high impact)
       
-      // LSTM - expensive, update less frequently
-      { name: 'lstm_weights', sampleRate: Math.random() < 0.3 ? 0.05 : 0 },
-      { name: 'lstm_biases', sampleRate: Math.random() < 0.3 ? 1.0 : 0 }
+      // LSTM - expensive, skip during initial training (edge function timeout risk)
+      { name: 'lstm_weights', sampleRate: 0 },  // ✅ Disabled to avoid timeout
+      { name: 'lstm_biases', sampleRate: 0 }     // ✅ Disabled to avoid timeout
     ];
     
     // Clone model for gradient computation to avoid side effects

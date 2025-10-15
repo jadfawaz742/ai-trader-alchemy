@@ -30,7 +30,7 @@ function getTrainingConfig(dataSize: number) {
       curriculum_stage: 'basic',
       features: 15, // technicals only
       sequence_length: 30,
-      episodes: 50,
+      episodes: 20, // ✅ Reduced for edge function CPU limits
       enable_action_masking: false,
       enable_structural: false
     };
@@ -39,7 +39,7 @@ function getTrainingConfig(dataSize: number) {
       curriculum_stage: 'with_sr',
       features: 22, // technicals + S/R + regime
       sequence_length: 40,
-      episodes: 100,
+      episodes: 30, // ✅ Reduced for edge function CPU limits
       enable_action_masking: false,
       enable_structural: true
     };
@@ -48,12 +48,15 @@ function getTrainingConfig(dataSize: number) {
       curriculum_stage: 'full',
       features: 31, // all features
       sequence_length: 50,
-      episodes: 200,
+      episodes: 40, // ✅ Significantly reduced for edge function CPU limits
       enable_action_masking: true,
       enable_structural: true
     };
   }
 }
+
+// CPU timeout protection (edge functions have 60s limit)
+const MAX_TRAINING_TIME_MS = 50000; // 50 seconds (leave 10s buffer)
 
 // Data augmentation for small datasets
 function augmentData(data: OHLCV[], targetSize: number): OHLCV[] {
@@ -473,13 +476,24 @@ async function trainComprehensivePPO(
     slDistances: []
   };
   
-  // Training loop
+  // Training loop with comprehensive logging and timeout protection
+  console.log(`🎯 Starting training: ${config.episodes} episodes`);
+  const startTime = Date.now();
+  
   for (let episode = 0; episode < config.episodes; episode++) {
+    // ✅ TIMEOUT CHECK - prevent edge function CPU timeout
+    const elapsed = Date.now() - startTime;
+    if (elapsed > MAX_TRAINING_TIME_MS) {
+      console.log(`⏰ Training timeout after ${episode} episodes (${(elapsed/1000).toFixed(1)}s). Stopping early.`);
+      break;
+    }
+    
     const buffer = trainer.createBuffer();
     let sequenceFeatures = env.reset();
     let done = false;
     let episodeReward = 0;
     let episodeTrades = 0;
+    let steps = 0;
     
     while (!done) {
       // Bounds check before stepping
@@ -489,61 +503,94 @@ async function trainComprehensivePPO(
         break;
       }
       
-      const { action, value, logProb } = forwardPass(model, sequenceFeatures, false);
+      // ✅ FIX: Change logProb to logProbs (interface mismatch)
+      const { action, value, logProbs } = forwardPass(model, sequenceFeatures, false);
       const { nextState, reward, done: isDone, info } = env.step(action);
+      
+      // ✅ FIX: Compute nextValue for GAE
+      const nextValueResult = isDone ? 0 : forwardPass(model, nextState, true).value;
       
       buffer.store({
         state: sequenceFeatures,
         action,
         reward,
         value,
-        logProb,
-        done: isDone
+        logProbs, // ✅ FIX: Use logProbs (plural)
+        done: isDone,
+        nextState, // ✅ FIX: Add nextState
+        nextValue: nextValueResult // ✅ FIX: Add nextValue
       });
       
-      // Track metrics
-      if (info.trade_executed) {
+      // ✅ FIX: Correct info property access (info.trade instead of info.trade_executed)
+      if (info.trade) {
         episodeTrades++;
-        if (action.direction === 1) metrics.longTrades++;
-        else if (action.direction === 2) metrics.shortTrades++;
+        const trade = info.trade;
         
-        if (info.confluence_score) metrics.confluenceScores.push(info.confluence_score);
-        if (info.fib_alignment) metrics.fibAlignments.push(info.fib_alignment);
-        if (info.tp_distance_atr) metrics.tpDistances.push(info.tp_distance_atr);
-        if (info.sl_distance_atr) metrics.slDistances.push(info.sl_distance_atr);
-      }
-      
-      if (info.trade_closed && info.pnl > 0) {
-        if (info.side === 'long') metrics.longWins++;
-        else metrics.shortWins++;
+        if (trade.direction === 'long') metrics.longTrades++;
+        else if (trade.direction === 'short') metrics.shortTrades++;
+        
+        if (trade.confluenceScore) metrics.confluenceScores.push(trade.confluenceScore);
+        if (trade.fibAlignment) metrics.fibAlignments.push(trade.fibAlignment);
+        if (trade.tpDistance) metrics.tpDistances.push(trade.tpDistance);
+        if (trade.slDistance) metrics.slDistances.push(trade.slDistance);
+        
+        // Track wins (trade is only returned when closed)
+        if (trade.pnl > 0) {
+          if (trade.direction === 'long') metrics.longWins++;
+          else metrics.shortWins++;
+        }
       }
       
       sequenceFeatures = nextState;
       episodeReward += reward;
       done = isDone;
+      steps++;
+      
+      // ✅ ADD: Step-level logging every 50 steps
+      if (steps % 50 === 0) {
+        const elapsedSeconds = ((Date.now() - startTime) / 1000).toFixed(1);
+        console.log(`  Episode ${episode}/${config.episodes}, Step ${steps}: reward=${episodeReward.toFixed(2)}, equity=${info.equity?.toFixed(0) || 'N/A'} (${elapsedSeconds}s)`);
+      }
     }
     
     // Calculate advantages
     const advantages = trainer.computeGAE(buffer);
     buffer.setAdvantages(advantages);
     
-    // Update policy every 4 episodes
-    if ((episode + 1) % 4 === 0) {
+    // ✅ FIX: Update policy every 8 episodes (reduce CPU load)
+    if ((episode + 1) % 8 === 0) {
+      const updateStart = Date.now();
       const trainingMetrics = trainer.updateModel(buffer, advantages);
-      console.log(`Episode ${episode + 1}/${config.episodes}: reward=${episodeReward.toFixed(2)}, trades=${episodeTrades}`);
+      const updateTime = ((Date.now() - updateStart) / 1000).toFixed(2);
+      const totalElapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+      const avgTimePerEpisode = ((Date.now() - startTime) / (episode + 1) / 1000).toFixed(2);
+      const estimatedRemaining = (parseFloat(avgTimePerEpisode) * (config.episodes - episode - 1) / 60).toFixed(1);
+      
+      console.log(`✅ Episode ${episode + 1}/${config.episodes}: reward=${episodeReward.toFixed(2)}, trades=${episodeTrades}, update_time=${updateTime}s, elapsed=${totalElapsed}s, ETA=${estimatedRemaining}m`);
     }
     
     metrics.episodes.push({
       episode,
       reward: episodeReward,
-      pnl: env.getMetrics().totalPnL,
+      pnl: env.getMetrics().total_reward, // ✅ FIX: Use correct property name
       trades: episodeTrades
     });
   }
   
+  const totalTime = ((Date.now() - startTime) / 1000 / 60).toFixed(2);
+  console.log(`🎉 Training completed in ${totalTime} minutes`);
+  
   // Calculate final metrics
   const envMetrics = env.getMetrics();
   const totalTrades = metrics.longTrades + metrics.shortTrades;
+  
+  // ✅ FIX: Calculate payoff ratios from env metrics
+  const longPayoffRatio = envMetrics.long_trades > 0 
+    ? Math.abs(envMetrics.avg_win / (envMetrics.avg_loss || -1))
+    : 0;
+  const shortPayoffRatio = envMetrics.short_trades > 0
+    ? Math.abs(envMetrics.avg_win / (envMetrics.avg_loss || -1))
+    : 0;
   
   return {
     model_weights: serializeModel(model),
@@ -552,11 +599,11 @@ async function trainComprehensivePPO(
       winRate: totalTrades > 0 ? (metrics.longWins + metrics.shortWins) / totalTrades : 0,
       longWinRate: metrics.longTrades > 0 ? metrics.longWins / metrics.longTrades : 0,
       shortWinRate: metrics.shortTrades > 0 ? metrics.shortWins / metrics.shortTrades : 0,
-      longPayoffRatio: envMetrics.longPayoffRatio || 0,
-      shortPayoffRatio: envMetrics.shortPayoffRatio || 0,
-      sharpeRatio: envMetrics.sharpeRatio || 0,
-      maxDrawdown: envMetrics.maxDrawdown || 0,
-      totalReturn: envMetrics.totalReturn || 0,
+      longPayoffRatio,
+      shortPayoffRatio,
+      sharpeRatio: envMetrics.sharpe_ratio || 0, // ✅ FIX: Use correct property name
+      maxDrawdown: envMetrics.max_drawdown || 0, // ✅ FIX: Use correct property name
+      totalReturn: (envMetrics.final_equity - 100000) / 100000, // ✅ FIX: Calculate from equity
       avgConfluence: metrics.confluenceScores.length > 0 
         ? metrics.confluenceScores.reduce((a, b) => a + b, 0) / metrics.confluenceScores.length 
         : 0,
@@ -571,9 +618,9 @@ async function trainComprehensivePPO(
         : 0
     },
     structural_metadata: {
-      regimes_encountered: envMetrics.regimeStats || {},
-      sr_usage: envMetrics.srUsageStats || {},
-      fib_targets_hit: envMetrics.fibStats || {}
+      confluence_avg: envMetrics.confluence_avg || 0, // ✅ FIX: Use correct property names
+      fib_alignment_avg: envMetrics.fib_alignment_avg || 0,
+      total_trades: envMetrics.total_trades
     }
   };
 }
