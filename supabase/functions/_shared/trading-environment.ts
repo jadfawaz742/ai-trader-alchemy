@@ -160,7 +160,7 @@ export class TradingEnvironment {
     this.episodeSpread = this.config.spreadTicksMin + Math.random() * (this.config.spreadTicksMax - this.config.spreadTicksMin);
     
     // Random start point (leave room for sequence and test period)
-    const minStart = this.sequenceLength;
+    const minStart = Math.max(this.sequenceLength, 100); // Ensure 100-bar lookback for features
     const maxStart = this.data.length - 200; // Reserve 200 bars for episode
     this.state = this.initializeState();
     this.state.currentBar = Math.floor(Math.random() * (maxStart - minStart)) + minStart;
@@ -198,10 +198,16 @@ export class TradingEnvironment {
    * - 31 features: all features (full stage)
    */
   private extractFeatures(index: number): number[] {
-    const windowData = this.data.slice(Math.max(0, index - 100), index + 1);
+    const startIdx = Math.max(0, index - 100);
+    const windowData = this.data.slice(startIdx, index + 1);
+    
+    // If we don't have enough data, return zeros (will be padded in getSequence)
+    if (windowData.length < 20) {
+      return new Array(this.featureConfig.features).fill(0);
+    }
     
     // Always calculate technicals (15 features)
-    const technicals = calculateTechnicalIndicators(windowData, index - Math.max(0, index - 100));
+    const technicals = calculateTechnicalIndicators(windowData, windowData.length - 1);
     
     // Basic stage: technicals only
     if (this.featureConfig.features === 15) {
@@ -773,7 +779,23 @@ export class TradingEnvironment {
    * Get structural features for a bar
    */
   private getStructuralFeatures(index: number): StructuralFeatures {
-    const windowData = this.data.slice(Math.max(0, index - 100), index + 1);
+    // Ensure we have at least 100 bars of history
+    const startIdx = Math.max(0, index - 100);
+    const windowData = this.data.slice(startIdx, index + 1);
+    
+    // If we don't have enough data, return default structural features
+    if (windowData.length < 50) {
+      console.warn(`⚠️ Insufficient data at index ${index} (only ${windowData.length} bars)`);
+      return {
+        reg_acc: 0, reg_adv: 0, reg_dist: 0, reg_decl: 0,
+        vol_regime: 0, dist_to_support: 1.0, dist_to_resistance: 1.0,
+        sr_strength: 0, dist_127_up: 1.0, dist_161_up: 1.5,
+        dist_127_dn: 1.0, dist_161_dn: 1.5, dist_38_retrace: 0.5,
+        dist_61_retrace: 0.8, atr: windowData[windowData.length - 1]?.close * 0.02 || 1.0,
+        last_swing_high: undefined, last_swing_low: undefined
+      };
+    }
+    
     return extractStructuralFeatures(windowData, windowData.length - 1);
   }
 
