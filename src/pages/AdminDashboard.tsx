@@ -13,6 +13,9 @@ import { FeatureFlagManager } from "@/components/admin/FeatureFlagManager";
 import { SystemHealthMonitor } from "@/components/admin/SystemHealthMonitor";
 import { UserManagement } from "@/components/admin/UserManagement";
 import { PerformanceCharts } from "@/components/admin/PerformanceCharts";
+import { CostMonitoring } from '@/components/admin/CostMonitoring';
+import { PortfolioAnalytics } from '@/components/analytics/PortfolioAnalytics';
+import { CustomReportBuilder } from '@/components/analytics/CustomReportBuilder';
 
 interface AdminData {
   models: {
@@ -200,7 +203,9 @@ const AdminDashboard = () => {
           <TabsTrigger value="alerts">Alerts</TabsTrigger>
           <TabsTrigger value="users">Users & Brokers</TabsTrigger>
           <TabsTrigger value="flags">Feature Flags</TabsTrigger>
-          <TabsTrigger value="charts">Performance Charts</TabsTrigger>
+          <TabsTrigger value="charts">Performance</TabsTrigger>
+          <TabsTrigger value="costs">Costs</TabsTrigger>
+          <TabsTrigger value="analytics">Analytics</TabsTrigger>
         </TabsList>
 
         <TabsContent value="system">
@@ -225,6 +230,17 @@ const AdminDashboard = () => {
 
         <TabsContent value="charts">
           <PerformanceCharts />
+        </TabsContent>
+
+        <TabsContent value="costs" className="space-y-6">
+          <CostMonitoring />
+        </TabsContent>
+
+        <TabsContent value="analytics" className="space-y-6">
+          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+            <PortfolioAnalytics />
+            <CustomReportBuilder />
+          </div>
         </TabsContent>
       </Tabs>
     </div>

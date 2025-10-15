@@ -2149,15 +2149,6 @@ export type Database = {
         Args: Record<PropertyKey, never>
         Returns: undefined
       }
-      get_expensive_queries: {
-        Args: { limit_count?: number }
-        Returns: {
-          avg_time_ms: number
-          cost_impact: number
-          executions: number
-          query_text: string
-        }[]
-      }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
