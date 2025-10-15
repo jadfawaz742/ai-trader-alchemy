@@ -100,6 +100,184 @@ export type Database = {
           },
         ]
       }
+      backtest_jobs: {
+        Row: {
+          attempt_count: number
+          backtest_run_id: string
+          batch_id: string
+          completed_at: string | null
+          created_at: string
+          error_message: string | null
+          id: string
+          period: string
+          priority: number
+          results: Json | null
+          risk_level: string
+          started_at: string | null
+          status: string
+          symbol: string
+          user_id: string
+        }
+        Insert: {
+          attempt_count?: number
+          backtest_run_id: string
+          batch_id: string
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          period: string
+          priority?: number
+          results?: Json | null
+          risk_level: string
+          started_at?: string | null
+          status?: string
+          symbol: string
+          user_id: string
+        }
+        Update: {
+          attempt_count?: number
+          backtest_run_id?: string
+          batch_id?: string
+          completed_at?: string | null
+          created_at?: string
+          error_message?: string | null
+          id?: string
+          period?: string
+          priority?: number
+          results?: Json | null
+          risk_level?: string
+          started_at?: string | null
+          status?: string
+          symbol?: string
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "backtest_jobs_backtest_run_id_fkey"
+            columns: ["backtest_run_id"]
+            isOneToOne: false
+            referencedRelation: "backtest_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
+      backtest_runs: {
+        Row: {
+          aggregate_results: Json | null
+          batch_id: string
+          completed_at: string | null
+          completed_symbols: number
+          created_at: string
+          error_message: string | null
+          failed_symbols: number
+          id: string
+          period: string
+          risk_level: string
+          started_at: string | null
+          status: string
+          symbols: string[]
+          total_symbols: number
+          user_id: string
+        }
+        Insert: {
+          aggregate_results?: Json | null
+          batch_id: string
+          completed_at?: string | null
+          completed_symbols?: number
+          created_at?: string
+          error_message?: string | null
+          failed_symbols?: number
+          id?: string
+          period: string
+          risk_level: string
+          started_at?: string | null
+          status?: string
+          symbols: string[]
+          total_symbols: number
+          user_id: string
+        }
+        Update: {
+          aggregate_results?: Json | null
+          batch_id?: string
+          completed_at?: string | null
+          completed_symbols?: number
+          created_at?: string
+          error_message?: string | null
+          failed_symbols?: number
+          id?: string
+          period?: string
+          risk_level?: string
+          started_at?: string | null
+          status?: string
+          symbols?: string[]
+          total_symbols?: number
+          user_id?: string
+        }
+        Relationships: []
+      }
+      backtest_trades: {
+        Row: {
+          action: string
+          backtest_run_id: string
+          confidence: number
+          created_at: string
+          duration_minutes: number | null
+          exit_price: number | null
+          exit_timestamp: string | null
+          id: string
+          indicators: Json | null
+          outcome: string | null
+          pnl: number | null
+          price: number
+          quantity: number
+          symbol: string
+          timestamp: string
+        }
+        Insert: {
+          action: string
+          backtest_run_id: string
+          confidence: number
+          created_at?: string
+          duration_minutes?: number | null
+          exit_price?: number | null
+          exit_timestamp?: string | null
+          id?: string
+          indicators?: Json | null
+          outcome?: string | null
+          pnl?: number | null
+          price: number
+          quantity: number
+          symbol: string
+          timestamp: string
+        }
+        Update: {
+          action?: string
+          backtest_run_id?: string
+          confidence?: number
+          created_at?: string
+          duration_minutes?: number | null
+          exit_price?: number | null
+          exit_timestamp?: string | null
+          id?: string
+          indicators?: Json | null
+          outcome?: string | null
+          pnl?: number | null
+          price?: number
+          quantity?: number
+          symbol?: string
+          timestamp?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "backtest_trades_backtest_run_id_fkey"
+            columns: ["backtest_run_id"]
+            isOneToOne: false
+            referencedRelation: "backtest_runs"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       base_models: {
         Row: {
           assets_trained_on: string[]

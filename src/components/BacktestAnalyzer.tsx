@@ -46,10 +46,12 @@ interface BacktestResults {
 }
 
 const BacktestAnalyzer: React.FC = () => {
-  const [selectedSymbol, setSelectedSymbol] = useState('AAPL');
+  const [selectedSymbols, setSelectedSymbols] = useState<string[]>(['AAPL']);
   const [selectedPeriod, setSelectedPeriod] = useState('3months');
   const [selectedRisk, setSelectedRisk] = useState<'low' | 'medium' | 'high'>('medium');
   const [isRunning, setIsRunning] = useState(false);
+  const [batchId, setBatchId] = useState<string | null>(null);
+  const [progress, setProgress] = useState({ completed: 0, total: 0, percentage: 0 });
   const [results, setResults] = useState<BacktestResults | null>(null);
   const [error, setError] = useState<string | null>(null);
   const { toast } = useToast();
@@ -72,122 +74,170 @@ const BacktestAnalyzer: React.FC = () => {
   const runBacktest = async () => {
     setIsRunning(true);
     setError(null);
+    setResults(null);
     
     try {
-      console.log('🔬 Starting real backtest...', { selectedSymbol, selectedPeriod, selectedRisk });
+      console.log('🔬 Starting batch backtest...', { symbols: selectedSymbols, selectedPeriod, selectedRisk });
       
       const { data: { user } } = await supabase.auth.getUser();
       if (!user) {
         throw new Error('You must be logged in to run backtests');
       }
 
-      // Call the real edge function
-      const { data, error: functionError } = await supabase.functions.invoke('advanced-trading-bot', {
+      // Start batch backtest
+      const { data, error: functionError } = await supabase.functions.invoke('batch-backtest', {
         body: {
-          mode: 'scan',
-          symbols: [selectedSymbol],
-          risk: selectedRisk,
-          portfolioBalance: 100000,
-          tradingFrequency: 'aggressive',
-          maxDailyTrades: 20,
-          enableShorts: false,
-          backtestMode: true,
-          backtestPeriod: selectedPeriod
+          action: 'start',
+          symbols: selectedSymbols,
+          period: selectedPeriod,
+          riskLevel: selectedRisk
         }
       });
 
       if (functionError) {
         console.error('Edge function error:', functionError);
-        throw new Error(functionError.message || 'Failed to run backtest');
+        throw new Error(functionError.message || 'Failed to start backtest');
       }
 
-      console.log('✅ Backtest results received:', data);
+      console.log('✅ Batch backtest started:', data);
 
-      // Check for data quality warnings
-      if (data && data.tradeDecisionLogs) {
-        const dataPoints = data.tradeDecisionLogs.length;
-        if (dataPoints < 50) {
-          toast({
-            title: "Limited Data Warning",
-            description: `Only ${dataPoints} data points available. Consider using a longer period for better results.`,
-            variant: "destructive"
-          });
-        }
-      }
-
-      // Transform the API response to our BacktestResults interface
-      if (data && data.backtestResults) {
-        const apiResults = data.backtestResults;
-        
-        // Map trades to our interface
-        const trades: BacktestTrade[] = apiResults.trades?.map((trade: any, index: number) => ({
-          id: `trade-${index}`,
-          date: trade.timestamp || new Date().toISOString().split('T')[0],
-          action: trade.action as 'BUY' | 'SELL',
-          price: trade.entryPrice || trade.price,
-          quantity: trade.quantity || 1,
-          confidence: trade.confidence || 0,
-          rsi: trade.indicators?.rsi || 0,
-          macd: trade.indicators?.macd?.histogram || 0,
-          volumeSpike: trade.indicators?.volumeSpike || false,
-          fibLevel: trade.indicators?.fibonacci || 0,
-          pnl: trade.pnl || 0,
-          closePrice: trade.exitPrice,
-          closeDate: trade.exitDate,
-          duration: trade.duration,
-          outcome: trade.outcome as 'win' | 'loss' | 'open'
-        })) || [];
-
-        // Map equity curve
-        const equityCurve = apiResults.equityCurve?.map((point: any) => ({
-          date: point.date || point.timestamp,
-          value: point.value || point.balance,
-          drawdown: point.drawdown || 0
-        })) || [];
-
-        const transformedResults: BacktestResults = {
-          symbol: selectedSymbol,
-          period: selectedPeriod,
-          totalTrades: apiResults.totalTrades || trades.length,
-          winningTrades: apiResults.winningTrades || trades.filter(t => t.outcome === 'win').length,
-          losingTrades: apiResults.losingTrades || trades.filter(t => t.outcome === 'loss').length,
-          successRate: apiResults.winRate || 0,
-          totalReturn: apiResults.roi || 0,
-          maxDrawdown: apiResults.maxDrawdown || 0,
-          sharpeRatio: apiResults.sharpeRatio || 0,
-          avgWin: apiResults.avgWin || 0,
-          avgLoss: apiResults.avgLoss || 0,
-          profitFactor: apiResults.profitFactor || 0,
-          trades,
-          equityCurve
-        };
-
-        setResults(transformedResults);
+      if (data && data.batchId) {
+        setBatchId(data.batchId);
+        setProgress({ completed: 0, total: data.totalJobs, percentage: 0 });
         
         toast({
-          title: "Backtest Complete",
-          description: `Analyzed ${transformedResults.totalTrades} trades with ${transformedResults.successRate.toFixed(1)}% win rate`,
+          title: "Backtest Started",
+          description: `Processing ${data.totalJobs} symbols. This may take a few minutes.`,
         });
+
+        // Start polling for progress
+        pollBacktestProgress(data.batchId);
       } else {
         throw new Error('Invalid backtest response format');
       }
     } catch (err: any) {
       console.error('Backtest error:', err);
       setError(err.message || 'Failed to run backtest');
+      setIsRunning(false);
       toast({
         title: "Backtest Failed",
         description: err.message || 'Failed to run backtest. Please try again.',
         variant: "destructive"
       });
-    } finally {
-      setIsRunning(false);
     }
   };
 
-  useEffect(() => {
-    // Auto-run on mount only
-    runBacktest();
-  }, []);
+  const pollBacktestProgress = async (batchId: string) => {
+    const pollInterval = setInterval(async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke('batch-backtest', {
+          body: {
+            action: 'status',
+            batchId
+          }
+        });
+
+        if (error) {
+          console.error('Status check error:', error);
+          return;
+        }
+
+        if (data && data.progress) {
+          setProgress({
+            completed: data.progress.completed,
+            total: data.progress.total,
+            percentage: data.progress.percentage
+          });
+
+          console.log(`📊 Progress: ${data.progress.completed}/${data.progress.total} (${data.progress.percentage}%)`);
+
+          // Check if complete
+          if (data.backtestRun.status === 'completed' || 
+              data.progress.completed + data.progress.failed >= data.progress.total) {
+            clearInterval(pollInterval);
+            setIsRunning(false);
+            
+            // Aggregate results from all jobs
+            const allTrades: BacktestTrade[] = [];
+            const symbolResults: any = {};
+            
+            data.jobs.forEach((job: any) => {
+              if (job.results && job.results.trades) {
+                job.results.trades.forEach((trade: any, index: number) => {
+                  allTrades.push({
+                    id: `${job.symbol}-${index}`,
+                    date: trade.timestamp || new Date().toISOString().split('T')[0],
+                    action: trade.action as 'BUY' | 'SELL',
+                    price: trade.entryPrice || trade.price,
+                    quantity: trade.quantity || 1,
+                    confidence: trade.confidence || 0,
+                    rsi: trade.indicators?.rsi || 0,
+                    macd: trade.indicators?.macd?.histogram || 0,
+                    volumeSpike: trade.indicators?.volumeSpike || false,
+                    fibLevel: trade.indicators?.fibonacci || 0,
+                    pnl: trade.pnl || 0,
+                    closePrice: trade.exitPrice,
+                    closeDate: trade.exitDate,
+                    duration: trade.duration,
+                    outcome: trade.outcome as 'win' | 'loss' | 'open'
+                  });
+                });
+                symbolResults[job.symbol] = job.results;
+              }
+            });
+
+            // Calculate aggregate metrics
+            const winningTrades = allTrades.filter(t => t.outcome === 'win').length;
+            const losingTrades = allTrades.filter(t => t.outcome === 'loss').length;
+            const totalReturn = allTrades.reduce((sum, t) => sum + (t.pnl || 0), 0);
+            
+            // Build equity curve from all trades
+            let balance = 100000;
+            const equityCurve = allTrades
+              .sort((a, b) => new Date(a.date).getTime() - new Date(b.date).getTime())
+              .map(trade => {
+                balance += trade.pnl || 0;
+                return {
+                  date: trade.date,
+                  value: balance,
+                  drawdown: Math.max(0, (100000 - balance) / 100000 * 100)
+                };
+              });
+
+            const aggregatedResults: BacktestResults = {
+              symbol: selectedSymbols.join(', '),
+              period: selectedPeriod,
+              totalTrades: allTrades.length,
+              winningTrades,
+              losingTrades,
+              successRate: allTrades.length > 0 ? (winningTrades / allTrades.length) * 100 : 0,
+              totalReturn: (totalReturn / 100000) * 100,
+              maxDrawdown: Math.max(...equityCurve.map(e => e.drawdown)),
+              sharpeRatio: 0, // Calculate from returns
+              avgWin: winningTrades > 0 ? allTrades.filter(t => t.outcome === 'win').reduce((sum, t) => sum + (t.pnl || 0), 0) / winningTrades : 0,
+              avgLoss: losingTrades > 0 ? allTrades.filter(t => t.outcome === 'loss').reduce((sum, t) => sum + (t.pnl || 0), 0) / losingTrades : 0,
+              profitFactor: losingTrades > 0 ? 
+                Math.abs(allTrades.filter(t => t.outcome === 'win').reduce((sum, t) => sum + (t.pnl || 0), 0) / 
+                allTrades.filter(t => t.outcome === 'loss').reduce((sum, t) => sum + (t.pnl || 0), 0)) : 0,
+              trades: allTrades,
+              equityCurve
+            };
+
+            setResults(aggregatedResults);
+            
+            toast({
+              title: "Backtest Complete",
+              description: `Analyzed ${allTrades.length} trades across ${selectedSymbols.length} symbols with ${aggregatedResults.successRate.toFixed(1)}% win rate`,
+            });
+          }
+        }
+      } catch (err) {
+        console.error('Error polling status:', err);
+      }
+    }, 3000); // Poll every 3 seconds
+  };
+
+  // Remove auto-run on mount - user should manually start backtests
 
   return (
     <div className="space-y-6">
@@ -200,18 +250,36 @@ const BacktestAnalyzer: React.FC = () => {
         </CardHeader>
         <CardContent className="space-y-4">
           <div className="flex flex-wrap gap-4">
-            <div className="space-y-2">
-              <label className="text-sm text-gray-300">Symbol</label>
-              <Select value={selectedSymbol} onValueChange={setSelectedSymbol}>
-                <SelectTrigger className="w-40 bg-black/20 border-white/20 text-white">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {symbols.map(symbol => (
-                    <SelectItem key={symbol} value={symbol}>{symbol}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+            <div className="space-y-2 flex-1">
+              <label className="text-sm text-gray-300">Symbols (select up to 5)</label>
+              <div className="flex flex-wrap gap-2">
+                {symbols.slice(0, 20).map(symbol => (
+                  <Button
+                    key={symbol}
+                    variant={selectedSymbols.includes(symbol) ? "default" : "outline"}
+                    size="sm"
+                    onClick={() => {
+                      if (selectedSymbols.includes(symbol)) {
+                        setSelectedSymbols(selectedSymbols.filter(s => s !== symbol));
+                      } else if (selectedSymbols.length < 5) {
+                        setSelectedSymbols([...selectedSymbols, symbol]);
+                      } else {
+                        toast({
+                          title: "Limit Reached",
+                          description: "You can select up to 5 symbols at once",
+                          variant: "destructive"
+                        });
+                      }
+                    }}
+                    disabled={isRunning}
+                  >
+                    {symbol}
+                  </Button>
+                ))}
+              </div>
+              <div className="text-xs text-gray-400">
+                Selected: {selectedSymbols.join(', ') || 'None'}
+              </div>
             </div>
             
             <div className="space-y-2">
@@ -246,23 +314,39 @@ const BacktestAnalyzer: React.FC = () => {
               </Select>
             </div>
             
-            <Button 
-              onClick={runBacktest} 
-              disabled={isRunning}
-              className="self-end"
-            >
-              {isRunning ? (
-                <>
-                  <Activity className="h-4 w-4 mr-2 animate-spin" />
-                  Running Backtest...
-                </>
-              ) : (
-                <>
-                  <Target className="h-4 w-4 mr-2" />
-                  Run Backtest
-                </>
+            <div className="flex flex-col gap-2 self-end">
+              <Button 
+                onClick={runBacktest} 
+                disabled={isRunning || selectedSymbols.length === 0}
+                className="w-full"
+              >
+                {isRunning ? (
+                  <>
+                    <Activity className="h-4 w-4 mr-2 animate-spin" />
+                    Processing {progress.completed}/{progress.total}
+                  </>
+                ) : (
+                  <>
+                    <Target className="h-4 w-4 mr-2" />
+                    Run Backtest ({selectedSymbols.length} symbols)
+                  </>
+                )}
+              </Button>
+              {isRunning && progress.total > 0 && (
+                <div className="w-full">
+                  <div className="flex justify-between text-xs text-gray-400 mb-1">
+                    <span>{progress.percentage}% complete</span>
+                    <span>{progress.completed}/{progress.total}</span>
+                  </div>
+                  <div className="h-2 bg-black/40 rounded-full overflow-hidden">
+                    <div 
+                      className="h-full bg-blue-500 transition-all duration-300"
+                      style={{ width: `${progress.percentage}%` }}
+                    />
+                  </div>
+                </div>
               )}
-            </Button>
+            </div>
           </div>
 
           {error && (

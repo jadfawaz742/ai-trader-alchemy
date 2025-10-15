@@ -116,3 +116,9 @@ verify_jwt = false
 
 [functions.monitor-live-trading]
 verify_jwt = false
+
+[functions.batch-backtest]
+verify_jwt = true
+
+[functions.process-backtest-queue]
+verify_jwt = false
