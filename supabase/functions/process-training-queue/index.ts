@@ -91,7 +91,9 @@ serve(async (req) => {
             symbol: job.symbol,
             forceRetrain: false,
             user_id: job.user_id,
-            service_role: true
+            service_role: true,
+            curriculum_stage: job.curriculum_stage || 'full',
+            use_augmentation: job.use_augmentation || false
           };
           
           const response = await fetch(functionUrl, {
@@ -129,13 +131,35 @@ serve(async (req) => {
           console.error(`❌ Training failed for ${job.symbol}:`, trainError.message);
           
           const errorMessage = trainError.message || 'Training failed';
+          const dataPoints = parseInt(errorMessage.match(/got (\d+)/)?.[1] || '0');
+          
+          // Check if this is a retryable insufficient data error
+          if (errorMessage.includes('Insufficient data') && dataPoints >= 30 && dataPoints < 50) {
+            console.log(`🔄 Retrying ${job.symbol} with data augmentation (${dataPoints} bars)`);
+            
+            // Update job to retry with basic curriculum and augmentation
+            await supabase
+              .from('batch_training_jobs')
+              .update({
+                status: 'queued',
+                priority: 200, // Lower priority for retries
+                error_message: null,
+                curriculum_stage: 'basic',
+                use_augmentation: true,
+                updated_at: new Date().toISOString()
+              })
+              .eq('id', job.id);
+            
+            return { success: false, symbol: job.symbol, error: 'retrying_with_augmentation' };
+          }
           
           // Check if this is a permanent failure
           const isPermanentFailure = 
             errorMessage.includes('Not supported symbols') ||
             errorMessage.includes('symbol not supported') ||
             errorMessage.includes('Invalid symbol') ||
-            errorMessage.includes('not found on Bybit');
+            errorMessage.includes('not found on Bybit') ||
+            (errorMessage.includes('Insufficient data') && dataPoints < 30);
           
           if (isPermanentFailure) {
             await supabase

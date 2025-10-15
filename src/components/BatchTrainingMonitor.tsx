@@ -18,6 +18,8 @@ interface BatchJob {
   performance_metrics: any;
   training_data_points: number | null;
   attempt_count: number;
+  curriculum_stage: string | null;
+  use_augmentation: boolean | null;
 }
 
 export function BatchTrainingMonitor() {
@@ -66,7 +68,7 @@ export function BatchTrainingMonitor() {
     if (!batchId) return;
 
     const fetchStatus = async () => {
-      const { data, error } = await supabase.functions.invoke('batch-train-cryptos', {
+      const { data, error } = await supabase.functions.invoke('batch-train-assets', {
         body: { action: 'status', batchId }
       });
 
@@ -98,12 +100,13 @@ export function BatchTrainingMonitor() {
 
   const startBatchTraining = async () => {
     setIsStarting(true);
-    setCompletedModels(0); // Reset counter
+    setCompletedModels(0);
     try {
-      const { data, error } = await supabase.functions.invoke('batch-train-cryptos', {
+      const { data, error } = await supabase.functions.invoke('batch-train-assets', {
         body: { 
           action: 'start',
-          maxAssets: 431,
+          assetType: 'crypto', // Support 'crypto', 'stock', or 'both'
+          cryptoMaxAssets: 431,
           forceRetrain: false
         }
       });
@@ -132,7 +135,7 @@ export function BatchTrainingMonitor() {
     if (!batchId) return;
 
     try {
-      const { error } = await supabase.functions.invoke('batch-train-cryptos', {
+      const { error } = await supabase.functions.invoke('batch-train-assets', {
         body: { action: 'cancel', batchId }
       });
 
@@ -172,7 +175,7 @@ export function BatchTrainingMonitor() {
 
       // Refresh status
       if (batchId) {
-        const { data: statusData } = await supabase.functions.invoke('batch-train-cryptos', {
+        const { data: statusData } = await supabase.functions.invoke('batch-train-assets', {
           body: { action: 'status', batchId }
         });
         
@@ -355,10 +358,31 @@ export function BatchTrainingMonitor() {
                     key={job.id}
                     className="flex items-center justify-between p-2 rounded hover:bg-muted"
                   >
-                    <div className="flex items-center gap-2">
-                      <span className="font-mono text-sm">{job.symbol}</span>
+                    <div className="flex items-center gap-2 flex-1">
+                      <span className="font-mono text-sm font-medium">{job.symbol}</span>
                       {job.status === 'training' && (
                         <Loader2 className="h-3 w-3 animate-spin" />
+                      )}
+                      {job.curriculum_stage && job.status !== 'skipped' && (
+                        <Badge variant="outline" className="text-xs">
+                          {job.curriculum_stage}
+                        </Badge>
+                      )}
+                      {job.training_data_points && job.status === 'completed' && (
+                        <span className="text-xs text-muted-foreground">
+                          {job.training_data_points} bars
+                        </span>
+                      )}
+                      {job.use_augmentation && (
+                        <Badge variant="secondary" className="text-xs">
+                          augmented
+                        </Badge>
+                      )}
+                      {job.performance_metrics?.longWinRate && job.performance_metrics?.shortWinRate && (
+                        <span className="text-xs text-muted-foreground">
+                          L:{(job.performance_metrics.longWinRate * 100).toFixed(0)}% 
+                          S:{(job.performance_metrics.shortWinRate * 100).toFixed(0)}%
+                        </span>
                       )}
                     </div>
                     <Badge variant={
@@ -377,11 +401,12 @@ export function BatchTrainingMonitor() {
         )}
 
         <div className="text-xs text-muted-foreground space-y-1">
-          <p>• Training uses 2 years of historical data per asset</p>
-          <p>• Only valid Binance symbols will be trained</p>
-          <p>• Invalid symbols are automatically skipped</p>
+          <p>• Adaptive training: full (500+ bars), with_sr (200-499), basic (50-199)</p>
+          <p>• Data augmentation auto-enabled for assets with 30-50 bars</p>
+          <p>• Comprehensive PPO with 31 features, action masking, structural alignment</p>
+          <p>• Long/short symmetry tracking, Fibonacci alignment, confluence scores</p>
           <p>• Models are saved to your account automatically</p>
-          <p className="pt-2 font-mono">Deployment: {deploymentVersion}</p>
+          <p className="pt-2 font-mono">Version: v3.0.0 Comprehensive PPO</p>
         </div>
       </CardContent>
     </Card>

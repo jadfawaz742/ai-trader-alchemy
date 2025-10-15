@@ -37,6 +37,7 @@ export type Database = {
           action_space: Json | null
           base_model_id: string | null
           created_at: string | null
+          curriculum_stage: string | null
           fine_tuning_metadata: Json | null
           hidden_size: number | null
           id: string
@@ -47,6 +48,7 @@ export type Database = {
           sequence_length: number | null
           structural_features: Json | null
           symbol: string
+          training_data_points: number | null
           updated_at: string | null
           user_id: string
         }
@@ -54,6 +56,7 @@ export type Database = {
           action_space?: Json | null
           base_model_id?: string | null
           created_at?: string | null
+          curriculum_stage?: string | null
           fine_tuning_metadata?: Json | null
           hidden_size?: number | null
           id?: string
@@ -64,6 +67,7 @@ export type Database = {
           sequence_length?: number | null
           structural_features?: Json | null
           symbol: string
+          training_data_points?: number | null
           updated_at?: string | null
           user_id: string
         }
@@ -71,6 +75,7 @@ export type Database = {
           action_space?: Json | null
           base_model_id?: string | null
           created_at?: string | null
+          curriculum_stage?: string | null
           fine_tuning_metadata?: Json | null
           hidden_size?: number | null
           id?: string
@@ -81,6 +86,7 @@ export type Database = {
           sequence_length?: number | null
           structural_features?: Json | null
           symbol?: string
+          training_data_points?: number | null
           updated_at?: string | null
           user_id?: string
         }
@@ -136,6 +142,7 @@ export type Database = {
           batch_id: string
           completed_at: string | null
           created_at: string
+          curriculum_stage: string | null
           error_message: string | null
           id: string
           performance_metrics: Json | null
@@ -145,6 +152,7 @@ export type Database = {
           symbol: string
           training_data_points: number | null
           updated_at: string
+          use_augmentation: boolean | null
           user_id: string
         }
         Insert: {
@@ -152,6 +160,7 @@ export type Database = {
           batch_id: string
           completed_at?: string | null
           created_at?: string
+          curriculum_stage?: string | null
           error_message?: string | null
           id?: string
           performance_metrics?: Json | null
@@ -161,6 +170,7 @@ export type Database = {
           symbol: string
           training_data_points?: number | null
           updated_at?: string
+          use_augmentation?: boolean | null
           user_id: string
         }
         Update: {
@@ -168,6 +178,7 @@ export type Database = {
           batch_id?: string
           completed_at?: string | null
           created_at?: string
+          curriculum_stage?: string | null
           error_message?: string | null
           id?: string
           performance_metrics?: Json | null
@@ -177,6 +188,7 @@ export type Database = {
           symbol?: string
           training_data_points?: number | null
           updated_at?: string
+          use_augmentation?: boolean | null
           user_id?: string
         }
         Relationships: []
@@ -689,54 +701,66 @@ export type Database = {
       model_evaluation_metrics: {
         Row: {
           avg_confluence_score: number | null
+          avg_sl_distance_atr: number | null
+          avg_tp_distance_atr: number | null
           created_at: string | null
           details: Json | null
           evaluation_type: string
           fib_alignment_ratio: number | null
           id: string
           long_payoff_ratio: number | null
+          long_win_rate: number | null
           mar: number | null
           max_drawdown: number | null
           model_id: string | null
           passed_acceptance: boolean | null
           sharpe_ratio: number | null
           short_payoff_ratio: number | null
+          short_win_rate: number | null
           sortino_ratio: number | null
           total_trades: number | null
           win_rate: number | null
         }
         Insert: {
           avg_confluence_score?: number | null
+          avg_sl_distance_atr?: number | null
+          avg_tp_distance_atr?: number | null
           created_at?: string | null
           details?: Json | null
           evaluation_type: string
           fib_alignment_ratio?: number | null
           id?: string
           long_payoff_ratio?: number | null
+          long_win_rate?: number | null
           mar?: number | null
           max_drawdown?: number | null
           model_id?: string | null
           passed_acceptance?: boolean | null
           sharpe_ratio?: number | null
           short_payoff_ratio?: number | null
+          short_win_rate?: number | null
           sortino_ratio?: number | null
           total_trades?: number | null
           win_rate?: number | null
         }
         Update: {
           avg_confluence_score?: number | null
+          avg_sl_distance_atr?: number | null
+          avg_tp_distance_atr?: number | null
           created_at?: string | null
           details?: Json | null
           evaluation_type?: string
           fib_alignment_ratio?: number | null
           id?: string
           long_payoff_ratio?: number | null
+          long_win_rate?: number | null
           mar?: number | null
           max_drawdown?: number | null
           model_id?: string | null
           passed_acceptance?: boolean | null
           sharpe_ratio?: number | null
           short_payoff_ratio?: number | null
+          short_win_rate?: number | null
           sortino_ratio?: number | null
           total_trades?: number | null
           win_rate?: number | null
