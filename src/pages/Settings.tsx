@@ -5,9 +5,10 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { useAuth } from "@/hooks/useAuth";
+import { useAdminCheck } from "@/hooks/useAdminCheck";
 import { supabase } from "@/integrations/supabase/client";
 import { toast } from "@/hooks/use-toast";
-import { Loader2, Settings2, Shield, Bell, ArrowLeft, Trash2 } from "lucide-react";
+import { Loader2, Shield, Bell, ArrowLeft, Trash2, ShieldCheck } from "lucide-react";
 import { Link } from "react-router-dom";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 
@@ -25,6 +26,7 @@ interface RiskParameters {
 
 const Settings = () => {
   const { user, loading: authLoading, signOut } = useAuth();
+  const { isAdmin } = useAdminCheck();
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [riskParams, setRiskParams] = useState<RiskParameters | null>(null);
@@ -329,6 +331,32 @@ const Settings = () => {
               </Button>
             </CardContent>
           </Card>
+
+          {/* Admin Section - Security Audit */}
+          {isAdmin && (
+            <Card className="border-purple-700 bg-purple-900/20 backdrop-blur-sm">
+              <CardHeader>
+                <CardTitle className="flex items-center gap-2 text-purple-200">
+                  <ShieldCheck className="h-5 w-5" />
+                  Admin Tools
+                </CardTitle>
+                <CardDescription className="text-purple-300">
+                  Advanced security monitoring and audit tools
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <Link to="/security-audit">
+                  <Button className="w-full bg-purple-600 hover:bg-purple-700">
+                    <Shield className="h-4 w-4 mr-2" />
+                    Security Audit Dashboard
+                  </Button>
+                </Link>
+                <p className="text-sm text-purple-300 mt-2">
+                  Monitor service role operations, review audit logs, and detect security anomalies
+                </p>
+              </CardContent>
+            </Card>
+          )}
 
           {/* Notifications */}
           <Card className="border-slate-800 bg-slate-900/50 backdrop-blur-sm">
