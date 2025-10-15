@@ -16,6 +16,31 @@ export const TrainAssetModel = ({ onTrainingComplete }: TrainAssetModelProps) =>
   const [result, setResult] = useState<any>(null);
   const { toast } = useToast();
 
+  // Normalize crypto symbols to Binance USDT format
+  const normalizeCryptoSymbol = (input: string): string => {
+    const upper = input.trim().toUpperCase();
+    
+    // Known crypto bases
+    const cryptoBases = ['BTC', 'ETH', 'SOL', 'ADA', 'DOT', 'MATIC', 'LINK', 'UNI', 'AVAX', 'ATOM'];
+    
+    // If it's a known crypto without suffix, add USDT
+    if (cryptoBases.includes(upper)) {
+      return `${upper}USDT`;
+    }
+    
+    // Convert Yahoo Finance format (BTC-USD) to Binance (BTCUSDT)
+    if (upper.includes('-USD')) {
+      return upper.replace('-USD', 'USDT');
+    }
+    
+    // Convert old format (BTCUSD) to Binance (BTCUSDT)
+    if (upper.endsWith('USD') && !upper.endsWith('USDT')) {
+      return upper.replace(/USD$/, 'USDT');
+    }
+    
+    return upper;
+  };
+
   const handleTrainAsset = async () => {
     if (!symbol.trim()) {
       toast({
@@ -43,8 +68,11 @@ export const TrainAssetModel = ({ onTrainingComplete }: TrainAssetModelProps) =>
         return;
       }
 
+      // Normalize the symbol before sending to backend
+      const normalizedSymbol = normalizeCryptoSymbol(symbol);
+      
       const { data, error } = await supabase.functions.invoke('train-asset-model', {
-        body: { symbol: symbol.trim().toUpperCase() },
+        body: { symbol: normalizedSymbol },
         headers: {
           Authorization: `Bearer ${session.access_token}`
         }
@@ -100,7 +128,7 @@ export const TrainAssetModel = ({ onTrainingComplete }: TrainAssetModelProps) =>
       <CardContent className="space-y-4">
         <div className="flex gap-2">
           <Input
-            placeholder="Enter symbol (e.g., AAPL, BTC-USD, ETH-USD)"
+            placeholder="Enter symbol (e.g., AAPL, BTC, ETH, BTCUSDT)"
             value={symbol}
             onChange={(e) => setSymbol(e.target.value)}
             disabled={isTraining}

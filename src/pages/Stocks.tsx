@@ -37,9 +37,9 @@ const STOCK_SYMBOLS = [
   { symbol: 'IWM', name: 'iShares Russell 2000 ETF', sector: 'ETF', cap: 'Medium' },
   { symbol: 'VTI', name: 'Vanguard Total Stock Market ETF', sector: 'ETF', cap: 'Large' },
   
-  // Cryptocurrencies - PPO Training Assets
-  { symbol: 'BTCUSD', name: 'Bitcoin', sector: 'Crypto', cap: 'Large' },
-  { symbol: 'ETHUSD', name: 'Ethereum', sector: 'Crypto', cap: 'Large' },
+  // Cryptocurrencies - PPO Training Assets (Binance format)
+  { symbol: 'BTCUSDT', name: 'Bitcoin', sector: 'Crypto', cap: 'Large' },
+  { symbol: 'ETHUSDT', name: 'Ethereum', sector: 'Crypto', cap: 'Large' },
   { symbol: 'SOLUSDT', name: 'Solana', sector: 'Crypto', cap: 'Medium' },
   { symbol: 'ADAUSDT', name: 'Cardano', sector: 'Crypto', cap: 'Medium' },
   { symbol: 'DOTUSDT', name: 'Polkadot', sector: 'Crypto', cap: 'Medium' },
@@ -79,6 +79,31 @@ const StocksPage: React.FC = () => {
   const { toast } = useToast();
   const { user } = useAuth();
 
+  // Helper to normalize crypto symbols to Binance USDT format
+  const normalizeCryptoSymbol = (symbol: string): string => {
+    const upper = symbol.trim().toUpperCase();
+    
+    // Known crypto bases
+    const cryptoBases = ['BTC', 'ETH', 'SOL', 'ADA', 'DOT', 'MATIC', 'LINK', 'UNI', 'AVAX', 'ATOM'];
+    
+    // If it's a known crypto without suffix, add USDT
+    if (cryptoBases.includes(upper)) {
+      return `${upper}USDT`;
+    }
+    
+    // Convert Yahoo Finance format (BTC-USD) to Binance (BTCUSDT)
+    if (upper.includes('-USD')) {
+      return upper.replace('-USD', 'USDT');
+    }
+    
+    // Convert old format (BTCUSD) to Binance (BTCUSDT)
+    if (upper.endsWith('USD') && !upper.endsWith('USDT')) {
+      return upper.replace(/USD$/, 'USDT');
+    }
+    
+    return upper;
+  };
+
   useEffect(() => {
     const fetchTrainedAssets = async () => {
       if (!user) return;
@@ -91,11 +116,16 @@ const StocksPage: React.FC = () => {
         
         if (error) throw error;
         
-        const trainedSymbols = [...new Set(data?.map(d => d.symbol) || [])];
-        setTrainedAssets(trainedSymbols);
+        // Normalize and deduplicate symbols
+        const normalizedSymbols = [...new Set(
+          (data?.map(d => normalizeCryptoSymbol(d.symbol)) || [])
+            .filter(s => !s.includes('-USD') && !s.match(/^(BTC|ETH|SOL|ADA|DOT|MATIC|LINK|UNI|AVAX|ATOM)$/))
+        )];
+        
+        setTrainedAssets(normalizedSymbols);
         
         // Merge trained assets with static list
-        const trainedNotInList = trainedSymbols.filter(
+        const trainedNotInList = normalizedSymbols.filter(
           symbol => !STOCK_SYMBOLS.find(s => s.symbol === symbol)
         );
         
@@ -131,9 +161,8 @@ const StocksPage: React.FC = () => {
         const { data: cryptoData } = await supabase.functions.invoke('fetch-crypto-prices');
         if (cryptoData?.prices) {
           cryptoData.prices.forEach((crypto: any) => {
-            const cryptoSymbol = crypto.symbol === 'BTC' ? 'BTCUSD' : 
-                                crypto.symbol === 'ETH' ? 'ETHUSD' : 
-                                `${crypto.symbol}USDT`;
+            // Use the symbol as-is (already in correct USDT format from API)
+            const cryptoSymbol = crypto.symbol.includes('USDT') ? crypto.symbol : `${crypto.symbol}USDT`;
             priceData[cryptoSymbol] = {
               price: crypto.price,
               change: crypto.price * (crypto.change24h / 100),
