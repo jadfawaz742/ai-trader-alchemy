@@ -6,32 +6,6 @@ const corsHeaders = {
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
 };
 
-// Symbol validation - fetch supported Bybit symbols
-async function fetchBybitSupportedSymbols(): Promise<Set<string>> {
-  try {
-    const response = await fetch('https://api.bybit.com/v5/market/instruments-info?category=spot&limit=1000');
-    const data = await response.json();
-    
-    if (data.retCode !== 0) {
-      throw new Error(`Bybit API error: ${data.retMsg}`);
-    }
-    
-    const symbols = new Set<string>();
-    if (data.result?.list) {
-      for (const instrument of data.result.list) {
-        if (instrument.status === 'Trading') {
-          symbols.add(instrument.symbol);
-        }
-      }
-    }
-    
-    console.log(`✅ Loaded ${symbols.size} tradeable symbols from Bybit`);
-    return symbols;
-  } catch (error) {
-    console.error('❌ Failed to fetch Bybit symbols:', error);
-    return new Set();
-  }
-}
 
 serve(async (req) => {
   if (req.method === 'OPTIONS') {
@@ -85,25 +59,10 @@ serve(async (req) => {
       const { symbols: binanceSymbols } = await symbolsResponse.json();
       console.log(`📊 Fetched ${binanceSymbols.length} USDT trading pairs from Binance`);
 
-      // ✅ VALIDATE SYMBOLS AGAINST BYBIT
-      console.log('🔍 Validating symbols against Bybit...');
-      const bybitSymbols = await fetchBybitSupportedSymbols();
-      
-      const validSymbols = binanceSymbols.filter((symbol: string) => bybitSymbols.has(symbol));
-      const invalidSymbols = binanceSymbols.filter((symbol: string) => !bybitSymbols.has(symbol));
-      
-      console.log(`✅ Valid symbols: ${validSymbols.length}`);
-      console.log(`❌ Invalid symbols (not on Bybit): ${invalidSymbols.length}`);
-      
-      if (invalidSymbols.length > 0 && invalidSymbols.length <= 20) {
-        console.log(`Skipping: ${invalidSymbols.join(', ')}`);
-      } else if (invalidSymbols.length > 20) {
-        console.log(`Skipping: ${invalidSymbols.slice(0, 10).join(', ')}... and ${invalidSymbols.length - 10} more`);
-      }
-
-      // Limit to maxAssets after validation
-      const filteredSymbols = validSymbols.slice(0, maxAssets);
-      console.log(`🎯 Will train ${filteredSymbols.length} validated assets`);
+      // All Binance symbols are valid for Binance trading (no cross-validation needed)
+      // Limit to maxAssets
+      const filteredSymbols = binanceSymbols.slice(0, maxAssets);
+      console.log(`🎯 Will train ${filteredSymbols.length} assets`);
 
       // Check which assets already have trained models
       const { data: existingModels } = await supabase

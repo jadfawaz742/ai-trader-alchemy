@@ -1,9 +1,9 @@
 // ============================================
 // Unified Market Data Fetcher
-// Routes to Bybit (crypto) or Yahoo Finance (stocks)
+// Routes to Binance (crypto) or Yahoo Finance (stocks)
 // ============================================
 
-import { isCryptoSymbol, convertToBybitFormat } from './symbol-utils.ts';
+import { isCryptoSymbol, convertToBinanceFormat } from './symbol-utils.ts';
 
 export interface MarketDataPoint {
   timestamp: number;
@@ -21,15 +21,15 @@ export interface MarketDataOptions {
 }
 
 /**
- * Fetch market data from appropriate source (Bybit for crypto, Yahoo for stocks)
+ * Fetch market data from appropriate source (Binance for crypto, Yahoo for stocks)
  */
 export async function fetchMarketData(options: MarketDataOptions): Promise<MarketDataPoint[]> {
-  const dataSource = isCryptoSymbol(options.symbol) ? 'Bybit' : 'Yahoo Finance';
+  const dataSource = isCryptoSymbol(options.symbol) ? 'Binance' : 'Yahoo Finance';
   console.log(`📊 Fetching ${options.symbol} from ${dataSource} (${options.range}, ${options.interval})`);
   
   try {
     if (isCryptoSymbol(options.symbol)) {
-      return await fetchBybitData(options);
+      return await fetchBinanceData(options);
     } else {
       return await fetchYahooFinanceData(options);
     }
@@ -40,21 +40,21 @@ export async function fetchMarketData(options: MarketDataOptions): Promise<Marke
 }
 
 /**
- * Fetch cryptocurrency data from Bybit API
+ * Fetch cryptocurrency data from Binance API
  */
-async function fetchBybitData(options: MarketDataOptions): Promise<MarketDataPoint[]> {
-  const bybitSymbol = convertToBybitFormat(options.symbol);
+async function fetchBinanceData(options: MarketDataOptions): Promise<MarketDataPoint[]> {
+  const binanceSymbol = convertToBinanceFormat(options.symbol);
   
-  // Map interval to Bybit format
+  // Map interval to Binance format
   const intervalMap: Record<string, string> = {
-    '1d': 'D',
-    '4h': '240',
-    '1h': '60',
-    '30m': '30',
-    '15m': '15',
-    '5m': '5'
+    '1d': '1d',
+    '4h': '4h',
+    '1h': '1h',
+    '30m': '30m',
+    '15m': '15m',
+    '5m': '5m'
   };
-  const interval = intervalMap[options.interval] || 'D';
+  const interval = intervalMap[options.interval] || '1d';
   
   // Calculate time range in milliseconds
   const rangeMs: Record<string, number> = {
@@ -72,15 +72,12 @@ async function fetchBybitData(options: MarketDataOptions): Promise<MarketDataPoi
   const endTime = Date.now();
   const startTime = endTime - timeRangeMs;
   
-  // Determine appropriate limit based on interval and range
-  let limit = 1000; // Max allowed by Bybit
-  if (options.interval === '5m' || options.interval === '15m') {
-    limit = 1000; // Use max for short intervals
-  }
+  // Binance allows up to 1000 klines per request
+  const limit = 1000;
   
-  const url = `https://api.bybit.com/v5/market/kline?category=spot&symbol=${bybitSymbol}&interval=${interval}&start=${startTime}&end=${endTime}&limit=${limit}`;
+  const url = `https://api.binance.com/api/v3/klines?symbol=${binanceSymbol}&interval=${interval}&startTime=${startTime}&endTime=${endTime}&limit=${limit}`;
   
-  console.log(`   Bybit URL: ${url}`);
+  console.log(`   Binance URL: ${url}`);
   
   const response = await fetch(url, {
     headers: {
@@ -89,22 +86,20 @@ async function fetchBybitData(options: MarketDataOptions): Promise<MarketDataPoi
   });
   
   if (!response.ok) {
-    throw new Error(`Bybit API error: ${response.status} ${response.statusText}`);
+    const errorText = await response.text();
+    throw new Error(`Binance API error: ${response.status} ${errorText}`);
   }
   
   const data = await response.json();
   
-  if (data.retCode !== 0) {
-    throw new Error(`Bybit API error: ${data.retMsg}`);
-  }
-  
-  if (!data.result?.list || data.result.list.length === 0) {
-    console.log(`⚠️ No data returned from Bybit for ${bybitSymbol}`);
+  if (!Array.isArray(data) || data.length === 0) {
+    console.log(`⚠️ No data returned from Binance for ${binanceSymbol}`);
     return [];
   }
   
-  // Convert Bybit format to standard format (reverse for chronological order)
-  const historicalData = data.result.list.reverse().map((candle: any[]) => ({
+  // Convert Binance format to standard format
+  // Binance returns: [openTime, open, high, low, close, volume, closeTime, quoteVolume, trades, ...]
+  const historicalData = data.map((candle: any[]) => ({
     timestamp: parseInt(candle[0]),
     open: parseFloat(candle[1]),
     high: parseFloat(candle[2]),
@@ -113,7 +108,7 @@ async function fetchBybitData(options: MarketDataOptions): Promise<MarketDataPoi
     volume: parseFloat(candle[5])
   }));
   
-  console.log(`✅ Fetched ${historicalData.length} candles from Bybit`);
+  console.log(`✅ Fetched ${historicalData.length} candles from Binance`);
   return historicalData;
 }
 

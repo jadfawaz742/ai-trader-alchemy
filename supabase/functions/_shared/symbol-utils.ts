@@ -28,17 +28,17 @@ export function isCryptoSymbol(symbol: string): boolean {
 }
 
 /**
- * Convert symbol to Bybit API format
+ * Convert symbol to Binance API format
  * @param symbol - Trading symbol (e.g., BTC-USD, ETH-USD)
- * @returns Bybit format symbol (e.g., BTCUSDT, ETHUSDT)
+ * @returns Binance format symbol (e.g., BTCUSDT, ETHUSDT)
  */
-export function convertToBybitFormat(symbol: string): string {
+export function convertToBinanceFormat(symbol: string): string {
   // BTC-USD → BTCUSDT
   if (symbol.endsWith('-USD')) {
     return symbol.replace('-USD', 'USDT');
   }
   
-  // Already in Bybit format (BTCUSDT)
+  // Already in Binance format (BTCUSDT)
   if (symbol.includes('USDT')) {
     return symbol;
   }

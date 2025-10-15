@@ -1,6 +1,6 @@
 /**
  * Symbol Validation Utility
- * Validates if symbols are supported on Bybit for trading
+ * Validates if symbols are supported on Binance for trading
  */
 
 export interface SymbolValidationResult {
@@ -10,50 +10,49 @@ export interface SymbolValidationResult {
   broker?: string;
 }
 
-const BYBIT_API_BASE = 'https://api.bybit.com';
+const BINANCE_API_BASE = 'https://api.binance.com';
 
 /**
- * Fetch all supported spot trading symbols from Bybit
+ * Fetch all supported spot trading symbols from Binance
  */
-export async function fetchBybitSupportedSymbols(): Promise<Set<string>> {
+export async function fetchBinanceSupportedSymbols(): Promise<Set<string>> {
   try {
-    const response = await fetch(`${BYBIT_API_BASE}/v5/market/instruments-info?category=spot&limit=1000`);
+    const response = await fetch(`${BINANCE_API_BASE}/api/v3/exchangeInfo`);
     const data = await response.json();
     
-    if (data.retCode !== 0) {
-      throw new Error(`Bybit API error: ${data.retMsg}`);
+    if (!data.symbols) {
+      throw new Error('Binance API error: No symbols returned');
     }
     
     const symbols = new Set<string>();
-    if (data.result?.list) {
-      for (const instrument of data.result.list) {
-        if (instrument.status === 'Trading') {
-          symbols.add(instrument.symbol);
-        }
+    for (const symbol of data.symbols) {
+      // Only include USDT pairs that are actively trading
+      if (symbol.quoteAsset === 'USDT' && symbol.status === 'TRADING') {
+        symbols.add(symbol.symbol);
       }
     }
     
-    console.log(`✅ Loaded ${symbols.size} tradeable symbols from Bybit`);
+    console.log(`✅ Loaded ${symbols.size} tradeable symbols from Binance`);
     return symbols;
   } catch (error) {
-    console.error('❌ Failed to fetch Bybit symbols:', error);
+    console.error('❌ Failed to fetch Binance symbols:', error);
     return new Set();
   }
 }
 
 /**
- * Validate a batch of symbols against Bybit's supported list
+ * Validate a batch of symbols against Binance's supported list
  */
 export async function validateSymbols(symbols: string[]): Promise<SymbolValidationResult[]> {
-  const supportedSymbols = await fetchBybitSupportedSymbols();
+  const supportedSymbols = await fetchBinanceSupportedSymbols();
   
   const results: SymbolValidationResult[] = symbols.map(symbol => {
     const isValid = supportedSymbols.has(symbol);
     return {
       symbol,
       isValid,
-      reason: isValid ? undefined : 'Symbol not supported on Bybit',
-      broker: 'bybit'
+      reason: isValid ? undefined : 'Symbol not supported on Binance',
+      broker: 'binance'
     };
   });
   
@@ -66,7 +65,7 @@ export async function validateSymbols(symbols: string[]): Promise<SymbolValidati
 }
 
 /**
- * Filter symbols to only include those supported on Bybit
+ * Filter symbols to only include those supported on Binance
  */
 export async function filterValidSymbols(symbols: string[]): Promise<string[]> {
   const validationResults = await validateSymbols(symbols);
@@ -79,6 +78,6 @@ export async function filterValidSymbols(symbols: string[]): Promise<string[]> {
  * Check if a single symbol is supported
  */
 export async function isSymbolSupported(symbol: string): Promise<boolean> {
-  const supportedSymbols = await fetchBybitSupportedSymbols();
+  const supportedSymbols = await fetchBinanceSupportedSymbols();
   return supportedSymbols.has(symbol);
 }

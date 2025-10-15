@@ -31,7 +31,7 @@ serve(async (req) => {
     if (!rateLimitResult.allowed) {
       return createRateLimitResponse(rateLimitResult, corsHeaders);
     }
-    console.log('🔍 Fetching real-time crypto prices from Bybit...');
+    console.log('🔍 Fetching real-time crypto prices from Binance...');
 
     // Fetch prices for major cryptocurrencies
     const symbols = [
@@ -48,7 +48,7 @@ serve(async (req) => {
     const pricePromises = symbols.map(async (symbol) => {
       try {
         const response = await fetch(
-          `https://api.bybit.com/v5/market/tickers?category=spot&symbol=${symbol}`,
+          `https://api.binance.com/api/v3/ticker/24hr?symbol=${symbol}`,
           {
             method: 'GET',
             headers: {
@@ -59,15 +59,14 @@ serve(async (req) => {
 
         const data = await response.json();
         
-        if (data.retCode === 0 && data.result?.list?.[0]) {
-          const ticker = data.result.list[0];
+        if (data.symbol) {
           return {
             symbol: symbol.replace('USDT', ''),
-            price: parseFloat(ticker.lastPrice),
-            change24h: parseFloat(ticker.price24hPcnt) * 100,
-            volume24h: parseFloat(ticker.volume24h),
-            high24h: parseFloat(ticker.highPrice24h),
-            low24h: parseFloat(ticker.lowPrice24h),
+            price: parseFloat(data.lastPrice),
+            change24h: parseFloat(data.priceChangePercent),
+            volume24h: parseFloat(data.volume),
+            high24h: parseFloat(data.highPrice),
+            low24h: parseFloat(data.lowPrice),
             timestamp: Date.now()
           };
         }
