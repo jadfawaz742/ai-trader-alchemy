@@ -131,6 +131,9 @@ export class TradingEnvironment {
     // Default to all 31 features if not specified (backward compatible)
     this.featureConfig = featureConfig || { features: 31, enableStructural: true };
     
+    // Initialize risk limit manager
+    this.riskLimitManager = new RiskLimitManager();
+    
     this.state = this.initializeState();
   }
 
@@ -211,15 +214,14 @@ export class TradingEnvironment {
     // with_sr stage: technicals + regime + S/R (22 features)
     if (this.featureConfig.features === 22) {
       return [
-        ...technicals,              // 0-14: technicals
+        ...technicals,              // 0-14: 15 features
         structural.reg_acc,         // 15
         structural.reg_adv,         // 16
         structural.reg_dist,        // 17
         structural.reg_decl,        // 18
         structural.vol_regime,      // 19
         structural.dist_to_support, // 20
-        structural.dist_to_resistance, // 21
-        structural.sr_strength      // 22
+        structural.dist_to_resistance // 21
       ];
     }
     
