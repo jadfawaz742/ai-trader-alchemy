@@ -300,7 +300,7 @@ export function BatchTrainingMonitor() {
             
             {permanentlyFailed > 0 && (
               <div className="text-xs text-orange-500 bg-orange-500/10 p-3 rounded border border-orange-500/20">
-                ⚠️ {permanentlyFailed} jobs failed permanently due to invalid symbols not supported on Bybit
+                ⚠️ {permanentlyFailed} jobs failed permanently (invalid symbols or max retries)
               </div>
             )}
 
@@ -346,7 +346,7 @@ export function BatchTrainingMonitor() {
 
         <div className="text-xs text-muted-foreground space-y-1">
           <p>• Training uses 2 years of historical data per asset</p>
-          <p>• Only symbols supported on Bybit will be trained</p>
+          <p>• Only valid Binance symbols will be trained</p>
           <p>• Invalid symbols are automatically skipped</p>
           <p>• Models are saved to your account automatically</p>
           <p className="pt-2 font-mono">Deployment: {deploymentVersion}</p>

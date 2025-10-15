@@ -101,3 +101,6 @@ verify_jwt = true
 
 [functions.process-training-queue]
 verify_jwt = false
+
+[functions.batch-training-admin]
+verify_jwt = true
