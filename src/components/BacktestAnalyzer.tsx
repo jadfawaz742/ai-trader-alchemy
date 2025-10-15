@@ -46,7 +46,7 @@ interface BacktestResults {
 }
 
 const BacktestAnalyzer: React.FC = () => {
-  const [selectedSymbols, setSelectedSymbols] = useState<string[]>(['AAPL']);
+  const [selectedSymbols, setSelectedSymbols] = useState<string[]>([]);
   const [selectedPeriod, setSelectedPeriod] = useState('3months');
   const [selectedRisk, setSelectedRisk] = useState<'low' | 'medium' | 'high'>('medium');
   const [isRunning, setIsRunning] = useState(false);
@@ -54,9 +54,12 @@ const BacktestAnalyzer: React.FC = () => {
   const [progress, setProgress] = useState({ completed: 0, total: 0, percentage: 0 });
   const [results, setResults] = useState<BacktestResults | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [trainedAssets, setTrainedAssets] = useState<string[]>([]);
+  const [isLoadingAssets, setIsLoadingAssets] = useState(true);
   const { toast } = useToast();
 
-  const symbols = ['AAPL', 'GOOGL', 'MSFT', 'AMZN', 'META', 'NVDA', 'TSLA', 'BTC-USD', 'ETH-USD', 'SOL-USD', 'AVAX-USD', 'LINK-USD'];
+  const fallbackSymbols = ['AAPL', 'GOOGL', 'MSFT', 'AMZN', 'META', 'NVDA', 'TSLA', 'BTC-USD', 'ETH-USD', 'SOL-USD', 'AVAX-USD', 'LINK-USD'];
+  const symbols = trainedAssets.length > 0 ? trainedAssets : fallbackSymbols;
   const periods = [
     { value: '1week', label: '1 Week' },
     { value: '1month', label: '1 Month' },
@@ -70,6 +73,51 @@ const BacktestAnalyzer: React.FC = () => {
     { value: 'medium', label: 'Moderate (45%+ confluence)' },
     { value: 'high', label: 'Aggressive (30%+ confluence)' }
   ];
+
+  useEffect(() => {
+    const fetchTrainedAssets = async () => {
+      try {
+        const { data: { user } } = await supabase.auth.getUser();
+        if (!user) {
+          setIsLoadingAssets(false);
+          return;
+        }
+        
+        const { data, error } = await supabase
+          .from('asset_models')
+          .select('symbol')
+          .eq('user_id', user.id);
+        
+        if (!error && data) {
+          const uniqueSymbols = [...new Set(data.map(row => row.symbol))].sort();
+          setTrainedAssets(uniqueSymbols);
+        }
+      } catch (err) {
+        console.error('Failed to fetch trained assets:', err);
+      } finally {
+        setIsLoadingAssets(false);
+      }
+    };
+    
+    fetchTrainedAssets();
+  }, []);
+
+  const selectAllTrained = () => {
+    const assetsToSelect = trainedAssets.slice(0, 5);
+    setSelectedSymbols(assetsToSelect);
+    toast({
+      title: "Selected Trained Assets",
+      description: `Selected ${assetsToSelect.length} of ${trainedAssets.length} trained assets`,
+    });
+  };
+
+  const clearSelection = () => {
+    setSelectedSymbols([]);
+    toast({
+      title: "Selection Cleared",
+      description: "All symbols have been deselected",
+    });
+  };
 
   const runBacktest = async () => {
     setIsRunning(true);
@@ -251,7 +299,41 @@ const BacktestAnalyzer: React.FC = () => {
         <CardContent className="space-y-4">
           <div className="flex flex-wrap gap-4">
             <div className="space-y-2 flex-1">
-              <label className="text-sm text-gray-300">Symbols (select up to 5)</label>
+              <div className="flex items-center justify-between mb-2">
+                <label className="text-sm text-gray-300">
+                  {trainedAssets.length > 0 ? `Trained Assets (${trainedAssets.length})` : 'Available Symbols'} - Select up to 5
+                </label>
+                {trainedAssets.length > 0 && (
+                  <div className="flex gap-2">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={selectAllTrained}
+                      disabled={isRunning || trainedAssets.length === 0}
+                    >
+                      Select All
+                    </Button>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={clearSelection}
+                      disabled={isRunning || selectedSymbols.length === 0}
+                    >
+                      Clear
+                    </Button>
+                  </div>
+                )}
+              </div>
+              {isLoadingAssets ? (
+                <div className="text-sm text-gray-400 py-4">Loading your trained assets...</div>
+              ) : trainedAssets.length === 0 ? (
+                <Alert className="border-yellow-500/50 bg-yellow-500/10">
+                  <AlertCircle className="h-4 w-4 text-yellow-500" />
+                  <AlertDescription className="text-yellow-200">
+                    No trained assets found. Train some models first to see them here, or use the fallback symbols below.
+                  </AlertDescription>
+                </Alert>
+              ) : null}
               <div className="flex flex-wrap gap-2">
                 {symbols.slice(0, 20).map(symbol => (
                   <Button
