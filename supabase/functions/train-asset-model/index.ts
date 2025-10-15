@@ -3,6 +3,7 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2.39.3';
 import { fetchMarketData as fetchUnifiedData, type MarketDataPoint } from '../_shared/market-data-fetcher.ts';
 import { isCryptoSymbol } from '../_shared/symbol-utils.ts';
+import { TrainingRequestSchema, validateInput, createValidationErrorResponse } from '../_shared/validation-schemas.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -104,13 +105,15 @@ serve(async (req) => {
       requestBody = await req.json();
     }
 
-    const { symbol, forceRetrain = false } = requestBody;
-    
-    if (!symbol || typeof symbol !== 'string') {
-      throw new Error('Valid symbol is required');
+    // Phase 2: Input validation with Zod
+    let validatedData;
+    try {
+      validatedData = validateInput(TrainingRequestSchema, requestBody);
+    } catch (error) {
+      return createValidationErrorResponse(error as Error, corsHeaders);
     }
 
-    const normalizedSymbol = symbol.trim().toUpperCase();
+    const { symbol: normalizedSymbol, forceRetrain } = validatedData;
     console.log(`Training model for asset: ${normalizedSymbol} (forceRetrain: ${forceRetrain})`);
 
     // Check if model already exists for this asset

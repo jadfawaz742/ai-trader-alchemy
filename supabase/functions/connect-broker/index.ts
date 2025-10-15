@@ -1,6 +1,7 @@
-// Version 4.0 - Secure JWT validation and credential encryption
+// Version 5.0 - Added input validation with Zod (Phase 2)
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
+import { BrokerCredentialsSchema, validateInput, createValidationErrorResponse } from '../_shared/validation-schemas.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -8,7 +9,7 @@ const corsHeaders = {
 };
 
 serve(async (req) => {
-  console.log('connect-broker function invoked - v3 with VPS proxy');
+  console.log('connect-broker function invoked - v5 with input validation');
   
   if (req.method === 'OPTIONS') {
     return new Response(null, { headers: corsHeaders });
@@ -52,7 +53,16 @@ serve(async (req) => {
       metadata: { broker_action: 'pending' }
     });
 
-    const { broker_id, auth_type, credentials, action } = await req.json();
+    // Parse and validate request body with Zod (Phase 2)
+    const body = await req.json();
+    let validatedData;
+    try {
+      validatedData = validateInput(BrokerCredentialsSchema, body);
+    } catch (error) {
+      return createValidationErrorResponse(error as Error, corsHeaders);
+    }
+    
+    const { broker_id, auth_type, credentials, action } = validatedData;
 
     if (action === 'validate') {
       // Validate broker credentials

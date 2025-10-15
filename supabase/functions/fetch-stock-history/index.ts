@@ -1,4 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { StockHistoryRequestSchema, validateInput, createValidationErrorResponse } from '../_shared/validation-schemas.ts';
+import { checkRateLimit, getClientIp, createRateLimitResponse, addRateLimitHeaders } from '../_shared/rate-limiter.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -11,14 +14,34 @@ serve(async (req) => {
   }
 
   try {
-    const { symbol, range = '1d', interval = '5m' } = await req.json();
+    // Phase 3: Rate limiting (50 requests/minute per IP for history - more intensive)
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
     
-    if (!symbol) {
-      return new Response(JSON.stringify({ error: 'Symbol is required' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    const clientIp = getClientIp(req);
+    const rateLimitResult = await checkRateLimit(
+      supabase,
+      { endpoint: 'fetch-stock-history', limit: 50, windowMinutes: 1 },
+      null,
+      clientIp
+    );
+    
+    if (!rateLimitResult.allowed) {
+      return createRateLimitResponse(rateLimitResult, corsHeaders);
     }
+    
+    // Phase 2: Input validation
+    const body = await req.json();
+    let validatedData;
+    try {
+      validatedData = validateInput(StockHistoryRequestSchema, body);
+    } catch (error) {
+      return createValidationErrorResponse(error as Error, corsHeaders);
+    }
+    
+    const { symbol, range, interval } = validatedData;
 
     console.log(`Fetching historical data for ${symbol} (range: ${range}, interval: ${interval})`);
     
@@ -58,13 +81,15 @@ serve(async (req) => {
         volume: quote.volume[idx]
       })).filter((item: any) => item.price !== null);
       
-      return new Response(JSON.stringify({
+      const response = new Response(JSON.stringify({
         symbol: symbol.toUpperCase(),
         history,
         meta: result.meta
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
+      
+      return addRateLimitHeaders(response, rateLimitResult);
     } else {
       return new Response(JSON.stringify({
         error: 'Invalid response from Yahoo Finance'

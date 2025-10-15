@@ -1,5 +1,6 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.38.4";
+import { SignalExecutionSchema, validateInput, createValidationErrorResponse } from '../_shared/validation-schemas.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -17,14 +18,16 @@ serve(async (req) => {
       Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? '',
     );
 
-    const { signal_id } = await req.json();
-
-    if (!signal_id) {
-      return new Response(JSON.stringify({ error: 'signal_id required' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    // Parse and validate request (Phase 2: Input validation)
+    const body = await req.json();
+    let validatedData;
+    try {
+      validatedData = validateInput(SignalExecutionSchema, body);
+    } catch (error) {
+      return createValidationErrorResponse(error as Error, corsHeaders);
     }
+    
+    const { signal_id } = validatedData;
 
     // Fetch signal with related data including broker capabilities
     const { data: signal, error: signalError } = await supabaseClient

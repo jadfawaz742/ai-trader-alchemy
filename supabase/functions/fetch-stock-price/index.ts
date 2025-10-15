@@ -1,4 +1,7 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
+import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
+import { StockPriceRequestSchema, validateInput, createValidationErrorResponse } from '../_shared/validation-schemas.ts';
+import { checkRateLimit, getClientIp, createRateLimitResponse, addRateLimitHeaders } from '../_shared/rate-limiter.ts';
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -11,14 +14,34 @@ serve(async (req) => {
   }
 
   try {
-    const { symbol } = await req.json();
+    // Phase 3: Rate limiting (100 requests/minute per IP)
+    const supabase = createClient(
+      Deno.env.get('SUPABASE_URL') ?? '',
+      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+    );
     
-    if (!symbol) {
-      return new Response(JSON.stringify({ error: 'Symbol is required' }), {
-        status: 400,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
+    const clientIp = getClientIp(req);
+    const rateLimitResult = await checkRateLimit(
+      supabase,
+      { endpoint: 'fetch-stock-price', limit: 100, windowMinutes: 1 },
+      null,
+      clientIp
+    );
+    
+    if (!rateLimitResult.allowed) {
+      return createRateLimitResponse(rateLimitResult, corsHeaders);
     }
+    
+    // Phase 2: Input validation
+    const body = await req.json();
+    let validatedData;
+    try {
+      validatedData = validateInput(StockPriceRequestSchema, body);
+    } catch (error) {
+      return createValidationErrorResponse(error as Error, corsHeaders);
+    }
+    
+    const { symbol } = validatedData;
 
     console.log(`Fetching price for ${symbol} from Yahoo Finance`);
     
@@ -53,7 +76,7 @@ serve(async (req) => {
       const change = currentPrice - previousClose;
       const changePercent = (change / previousClose) * 100;
       
-      return new Response(JSON.stringify({
+      const response = new Response(JSON.stringify({
         symbol: symbol.toUpperCase(),
         price: currentPrice,
         change: change,
@@ -65,6 +88,8 @@ serve(async (req) => {
       }), {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
+      
+      return addRateLimitHeaders(response, rateLimitResult);
     } else {
       console.error('Invalid Yahoo Finance response structure');
       return new Response(JSON.stringify({
