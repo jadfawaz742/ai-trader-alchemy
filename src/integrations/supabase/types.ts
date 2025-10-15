@@ -413,6 +413,42 @@ export type Database = {
         }
         Relationships: []
       }
+      circuit_breaker_state: {
+        Row: {
+          created_at: string
+          failure_count: number
+          id: string
+          last_failure_at: string | null
+          last_success_at: string | null
+          opened_at: string | null
+          service_name: string
+          status: string
+          updated_at: string
+        }
+        Insert: {
+          created_at?: string
+          failure_count?: number
+          id?: string
+          last_failure_at?: string | null
+          last_success_at?: string | null
+          opened_at?: string | null
+          service_name: string
+          status: string
+          updated_at?: string
+        }
+        Update: {
+          created_at?: string
+          failure_count?: number
+          id?: string
+          last_failure_at?: string | null
+          last_success_at?: string | null
+          opened_at?: string | null
+          service_name?: string
+          status?: string
+          updated_at?: string
+        }
+        Relationships: []
+      }
       cron_job_history: {
         Row: {
           completed_at: string | null
@@ -572,6 +608,39 @@ export type Database = {
           id?: string
           key?: string
           updated_at?: string
+        }
+        Relationships: []
+      }
+      infrastructure_costs: {
+        Row: {
+          cost_breakdown: Json | null
+          created_at: string
+          database_egress_gb: number
+          database_storage_gb: number
+          edge_function_invocations: number
+          estimated_cost: number
+          id: string
+          metric_date: string
+        }
+        Insert: {
+          cost_breakdown?: Json | null
+          created_at?: string
+          database_egress_gb?: number
+          database_storage_gb?: number
+          edge_function_invocations?: number
+          estimated_cost?: number
+          id?: string
+          metric_date: string
+        }
+        Update: {
+          cost_breakdown?: Json | null
+          created_at?: string
+          database_egress_gb?: number
+          database_storage_gb?: number
+          edge_function_invocations?: number
+          estimated_cost?: number
+          id?: string
+          metric_date?: string
         }
         Relationships: []
       }
@@ -1057,6 +1126,39 @@ export type Database = {
           request_count?: number | null
           user_id?: string | null
           window_start?: string
+        }
+        Relationships: []
+      }
+      report_history: {
+        Row: {
+          created_at: string
+          delivered: boolean
+          file_path: string | null
+          generated_at: string
+          id: string
+          report_config: Json | null
+          report_type: string
+          user_id: string
+        }
+        Insert: {
+          created_at?: string
+          delivered?: boolean
+          file_path?: string | null
+          generated_at?: string
+          id?: string
+          report_config?: Json | null
+          report_type: string
+          user_id: string
+        }
+        Update: {
+          created_at?: string
+          delivered?: boolean
+          file_path?: string | null
+          generated_at?: string
+          id?: string
+          report_config?: Json | null
+          report_type?: string
+          user_id?: string
         }
         Relationships: []
       }
@@ -1816,6 +1918,42 @@ export type Database = {
           },
         ]
       }
+      user_report_preferences: {
+        Row: {
+          created_at: string
+          daily_report_enabled: boolean
+          id: string
+          include_charts: boolean
+          include_recommendations: boolean
+          report_delivery_time: string
+          updated_at: string
+          user_id: string
+          weekly_report_enabled: boolean
+        }
+        Insert: {
+          created_at?: string
+          daily_report_enabled?: boolean
+          id?: string
+          include_charts?: boolean
+          include_recommendations?: boolean
+          report_delivery_time?: string
+          updated_at?: string
+          user_id: string
+          weekly_report_enabled?: boolean
+        }
+        Update: {
+          created_at?: string
+          daily_report_enabled?: boolean
+          id?: string
+          include_charts?: boolean
+          include_recommendations?: boolean
+          report_delivery_time?: string
+          updated_at?: string
+          user_id?: string
+          weekly_report_enabled?: boolean
+        }
+        Relationships: []
+      }
       user_roles: {
         Row: {
           created_at: string
@@ -1960,8 +2098,49 @@ export type Database = {
         }
         Relationships: []
       }
+      mv_daily_model_metrics: {
+        Row: {
+          asset: string | null
+          avg_pnl: number | null
+          daily_pnl: number | null
+          model_version: string | null
+          pnl_std_dev: number | null
+          total_trades: number | null
+          trade_date: string | null
+          winning_trades: number | null
+        }
+        Relationships: []
+      }
+      mv_hourly_signal_performance: {
+        Row: {
+          asset: string | null
+          avg_confluence: number | null
+          avg_latency_sec: number | null
+          blocked: number | null
+          executed: number | null
+          hour: string | null
+          total_signals: number | null
+        }
+        Relationships: []
+      }
+      mv_user_trading_stats: {
+        Row: {
+          active_assets: number | null
+          active_days: number | null
+          avg_confluence: number | null
+          last_trade_date: string | null
+          total_pnl: number | null
+          user_id: string | null
+          win_rate: number | null
+        }
+        Relationships: []
+      }
     }
     Functions: {
+      calculate_portfolio_correlations: {
+        Args: { days_back?: number; p_user_id: string }
+        Returns: Json
+      }
       cleanup_old_audit_logs: {
         Args: Record<PropertyKey, never>
         Returns: undefined
@@ -1969,6 +2148,15 @@ export type Database = {
       cleanup_old_rate_limits: {
         Args: Record<PropertyKey, never>
         Returns: undefined
+      }
+      get_expensive_queries: {
+        Args: { limit_count?: number }
+        Returns: {
+          avg_time_ms: number
+          cost_impact: number
+          executions: number
+          query_text: string
+        }[]
       }
       has_role: {
         Args: {
@@ -1984,6 +2172,14 @@ export type Database = {
           message: string
           status: string
         }[]
+      }
+      refresh_signal_performance_mv: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
+      }
+      refresh_user_stats_mv: {
+        Args: Record<PropertyKey, never>
+        Returns: undefined
       }
       trigger_online_ppo_updates: {
         Args: Record<PropertyKey, never>
