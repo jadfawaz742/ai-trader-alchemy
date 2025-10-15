@@ -330,16 +330,20 @@ async function trainComprehensivePPO(
   // Initialize recurrent PPO model
   const model = initializeModel(config.features, 128, config.sequence_length);
   
-  // Create trading environment with domain randomization
-  const env = new TradingEnvironment(trainData, {
-    initialBalance: 100000,
-    maxPositions: 1,
-    feesRange: [0.0004, 0.001],
-    slippageRange: [0.0001, 0.0005],
-    enableActionMasking: config.enable_action_masking,
-    enableStructuralFeatures: config.enable_structural,
-    sequenceLength: config.sequence_length
-  });
+  // Create trading environment with domain randomization and feature config
+  const env = new TradingEnvironment(
+    trainData,
+    {
+      initialBalance: 100000,
+      maxPositions: 1,
+      feesRange: [0.0004, 0.001],
+      slippageRange: [0.0001, 0.0005],
+      enableActionMasking: config.enable_action_masking,
+      enableStructuralFeatures: config.enable_structural,
+      sequenceLength: config.sequence_length
+    },
+    { features: config.features, enableStructural: config.enable_structural }
+  );
   
   // Initialize PPO trainer
   const trainer = new PPOTrainer(model, {

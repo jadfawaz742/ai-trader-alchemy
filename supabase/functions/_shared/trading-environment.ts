@@ -93,6 +93,9 @@ export class TradingEnvironment {
   
   private sequenceLength = 50;
   
+  // Feature configuration for curriculum learning
+  private featureConfig: { features: number; enableStructural: boolean };
+  
   // Risk management
   private riskLimitManager: RiskLimitManager;
   
@@ -104,7 +107,11 @@ export class TradingEnvironment {
     autoCorrected: boolean;
   }> = [];
 
-  constructor(data: OHLCV[], config: Partial<EnvironmentConfig> = {}) {
+  constructor(
+    data: OHLCV[], 
+    config: Partial<EnvironmentConfig> = {},
+    featureConfig?: { features: number; enableStructural: boolean }
+  ) {
     this.data = data;
     this.config = {
       maxRiskPerTrade: config.maxRiskPerTrade ?? 0.02,
@@ -120,6 +127,9 @@ export class TradingEnvironment {
       spreadTicksMin: config.spreadTicksMin ?? 0.5,
       spreadTicksMax: config.spreadTicksMax ?? 2.0
     };
+    
+    // Default to all 31 features if not specified (backward compatible)
+    this.featureConfig = featureConfig || { features: 31, enableStructural: true };
     
     this.state = this.initializeState();
   }
@@ -170,27 +180,50 @@ export class TradingEnvironment {
       sequence.push(features);
     }
     
-    // Pad if needed
+    // Pad if needed (use dynamic feature size from config)
     while (sequence.length < length) {
-      sequence.unshift(new Array(31).fill(0));
+      sequence.unshift(new Array(this.featureConfig.features).fill(0));
     }
     
     return sequence;
   }
 
   /**
-   * Extract 31 features for a single bar
+   * Extract features for a single bar (curriculum learning aware)
+   * - 15 features: technicals only (basic stage)
+   * - 22 features: technicals + regime + S/R (with_sr stage)
+   * - 31 features: all features (full stage)
    */
   private extractFeatures(index: number): number[] {
     const windowData = this.data.slice(Math.max(0, index - 100), index + 1);
     
-    // 15 technical features
+    // Always calculate technicals (15 features)
     const technicals = calculateTechnicalIndicators(windowData, index - Math.max(0, index - 100));
     
-    // 16 structural features
+    // Basic stage: technicals only
+    if (this.featureConfig.features === 15) {
+      return technicals;
+    }
+    
+    // Calculate structural features for higher stages
     const structural = extractStructuralFeatures(windowData, windowData.length - 1);
     
-    // Combine: [15 technicals] + [4 regime] + [1 vol] + [3 SR] + [6 Fib] + [2 swing]
+    // with_sr stage: technicals + regime + S/R (22 features)
+    if (this.featureConfig.features === 22) {
+      return [
+        ...technicals,              // 0-14: technicals
+        structural.reg_acc,         // 15
+        structural.reg_adv,         // 16
+        structural.reg_dist,        // 17
+        structural.reg_decl,        // 18
+        structural.vol_regime,      // 19
+        structural.dist_to_support, // 20
+        structural.dist_to_resistance, // 21
+        structural.sr_strength      // 22
+      ];
+    }
+    
+    // Full stage: all 31 features
     return [
       ...technicals,                        // 0-14: technicals
       structural.reg_acc,                   // 15
