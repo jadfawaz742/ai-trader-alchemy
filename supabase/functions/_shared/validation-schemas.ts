@@ -5,26 +5,34 @@ import { z } from 'https://deno.land/x/zod@v3.22.4/mod.ts';
 
 // ==================== BROKER VALIDATION ====================
 
-export const BrokerCredentialsSchema = z.object({
-  broker_id: z.string().uuid('Invalid broker ID format'),
-  auth_type: z.enum(['api_key', 'oauth'], {
-    errorMap: () => ({ message: 'Auth type must be either api_key or oauth' })
+export const BrokerCredentialsSchema = z.discriminatedUnion('action', [
+  // Validate action - requires credentials
+  z.object({
+    action: z.literal('validate'),
+    broker_id: z.string().uuid('Invalid broker ID format'),
+    auth_type: z.enum(['api_key', 'oauth'], {
+      errorMap: () => ({ message: 'Auth type must be either api_key or oauth' })
+    }),
+    credentials: z.object({
+      api_key: z.string()
+        .min(10, 'API key must be at least 10 characters')
+        .max(256, 'API key must be less than 256 characters')
+        .regex(/^[A-Za-z0-9\-_]+$/, 'API key contains invalid characters'),
+      api_secret: z.string()
+        .min(10, 'API secret must be at least 10 characters')
+        .max(256, 'API secret must be less than 256 characters')
+        .regex(/^[A-Za-z0-9\-_]+$/, 'API secret contains invalid characters'),
+      account_type: z.enum(['live', 'testnet']).optional()
+    })
   }),
-  credentials: z.object({
-    api_key: z.string()
-      .min(10, 'API key must be at least 10 characters')
-      .max(256, 'API key must be less than 256 characters')
-      .regex(/^[A-Za-z0-9\-_]+$/, 'API key contains invalid characters'),
-    api_secret: z.string()
-      .min(10, 'API secret must be at least 10 characters')
-      .max(256, 'API secret must be less than 256 characters')
-      .regex(/^[A-Za-z0-9\-_]+$/, 'API secret contains invalid characters'),
-    account_type: z.enum(['live', 'paper']).optional()
-  }),
-  action: z.enum(['validate', 'disconnect'], {
-    errorMap: () => ({ message: 'Action must be either validate or disconnect' })
+  // Disconnect action - NO credentials needed
+  z.object({
+    action: z.literal('disconnect'),
+    broker_id: z.string().uuid('Invalid broker ID format'),
+    auth_type: z.enum(['api_key', 'oauth']).optional(),
+    credentials: z.any().optional()
   })
-});
+]);
 
 // ==================== SIGNAL VALIDATION ====================
 
