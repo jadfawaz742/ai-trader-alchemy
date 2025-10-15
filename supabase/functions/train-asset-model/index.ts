@@ -60,6 +60,8 @@ function augmentData(data: OHLCV[], targetSize: number): OHLCV[] {
   if (data.length >= targetSize) return data;
   
   const augmented = [...data];
+  const neededDuplicates = targetSize - data.length;
+  
   while (augmented.length < targetSize) {
     const randomBar = data[Math.floor(Math.random() * data.length)];
     const noise = 0.995 + Math.random() * 0.01; // ±0.5% noise
@@ -72,6 +74,13 @@ function augmentData(data: OHLCV[], targetSize: number): OHLCV[] {
       volume: randomBar.volume * (0.9 + Math.random() * 0.2)
     });
   }
+  
+  // Validate augmentation
+  if (augmented.length !== targetSize) {
+    throw new Error(`Augmentation failed: expected ${targetSize} bars, got ${augmented.length}`);
+  }
+  
+  console.log(`✅ Augmented ${data.length} bars to ${augmented.length} bars (added ${neededDuplicates})`);
   return augmented;
 }
 
@@ -473,6 +482,13 @@ async function trainComprehensivePPO(
     let episodeTrades = 0;
     
     while (!done) {
+      // Bounds check before stepping
+      if (env['state'].currentBar >= data.length - 1) {
+        console.log(`Episode ${episode}: Reached end of data at bar ${env['state'].currentBar}`);
+        done = true;
+        break;
+      }
+      
       const { action, value, logProb } = forwardPass(model, sequenceFeatures, false);
       const { nextState, reward, done: isDone, info } = env.step(action);
       

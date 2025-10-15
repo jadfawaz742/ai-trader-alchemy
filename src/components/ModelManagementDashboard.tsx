@@ -193,10 +193,10 @@ export function ModelManagementDashboard() {
     try {
       const { error } = await supabase.functions.invoke('train-asset-model', {
         body: { 
-          userId: user.id, 
-          asset: symbol, 
+          user_id: user.id, 
+          symbol: symbol, 
           forceRetrain: true,
-          useAugmentation: false 
+          use_augmentation: false 
         }
       });
 

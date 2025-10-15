@@ -388,7 +388,20 @@ export class TradingEnvironment {
    * Open a new position with exact TP/SL formulas + validation
    */
   private openPosition(action: HybridAction): TradeResult | undefined {
+    // Bounds check
+    if (this.state.currentBar >= this.data.length) {
+      console.error(`❌ currentBar ${this.state.currentBar} exceeds data length ${this.data.length}`);
+      return undefined;
+    }
+
     const bar = this.data[this.state.currentBar];
+    
+    // Null check
+    if (!bar || bar.close === undefined) {
+      console.error(`❌ Invalid bar at index ${this.state.currentBar}:`, bar);
+      return undefined;
+    }
+    
     const structural = this.getStructuralFeatures(this.state.currentBar);
     
     const P_entry = bar.close;
