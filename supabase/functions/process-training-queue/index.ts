@@ -164,38 +164,65 @@ serve(async (req) => {
     } catch (trainError: any) {
       console.error(`❌ Training failed for ${nextJob.symbol}:`, trainError.message);
       
-      // Increment attempt count
-      const newAttemptCount = (nextJob.attempt_count || 0) + 1;
-      const maxAttempts = 3;
-
-      if (newAttemptCount >= maxAttempts) {
-        // Mark as failed after max attempts
+      const errorMessage = trainError.message || 'Training failed';
+      
+      // Check if this is a permanent failure (symbol not supported)
+      const isPermanentFailure = 
+        errorMessage.includes('Not supported symbols') ||
+        errorMessage.includes('symbol not supported') ||
+        errorMessage.includes('Invalid symbol') ||
+        errorMessage.includes('not found on Bybit');
+      
+      if (isPermanentFailure) {
+        console.log('⚠️ Permanent failure detected - marking as failed without retry');
+        
+        // Update job as permanently failed
         await supabase
           .from('batch_training_jobs')
           .update({ 
             status: 'failed',
-            error_message: trainError.message,
-            updated_at: new Date().toISOString(),
+            error_message: `[PERMANENT] ${errorMessage}`,
             completed_at: new Date().toISOString(),
-            attempt_count: newAttemptCount
-          })
-          .eq('id', nextJob.id);
-        
-        console.log(`❌ Job failed after ${maxAttempts} attempts: ${nextJob.symbol}`);
-      } else {
-        // Requeue for retry
-        await supabase
-          .from('batch_training_jobs')
-          .update({ 
-            status: 'queued',
-            error_message: `Attempt ${newAttemptCount} failed: ${trainError.message}`,
             updated_at: new Date().toISOString(),
-            attempt_count: newAttemptCount,
-            started_at: null // Reset started_at for retry
+            attempt_count: 999 // Mark as max retries to prevent retry
           })
           .eq('id', nextJob.id);
         
-        console.log(`🔄 Job requeued for retry (attempt ${newAttemptCount + 1}/${maxAttempts}): ${nextJob.symbol}`);
+        console.log(`❌ Permanently failed (invalid symbol): ${nextJob.symbol}`);
+      } else {
+        // Transient error - handle retry logic
+        const newAttemptCount = (nextJob.attempt_count || 0) + 1;
+        const maxAttempts = 3;
+
+        if (newAttemptCount >= maxAttempts) {
+          // Mark as failed after max attempts
+          await supabase
+            .from('batch_training_jobs')
+            .update({ 
+              status: 'failed',
+              error_message: errorMessage,
+              updated_at: new Date().toISOString(),
+              completed_at: new Date().toISOString(),
+              attempt_count: newAttemptCount
+            })
+            .eq('id', nextJob.id);
+          
+          console.log(`❌ Job failed after ${maxAttempts} attempts: ${nextJob.symbol}`);
+        } else {
+          // Requeue for retry
+          await supabase
+            .from('batch_training_jobs')
+            .update({ 
+              status: 'queued',
+              error_message: `Attempt ${newAttemptCount} failed: ${errorMessage}`,
+              updated_at: new Date().toISOString(),
+              attempt_count: newAttemptCount,
+              started_at: null // Reset started_at for retry
+            })
+            .eq('id', nextJob.id);
+          
+          console.log(`🔄 Job requeued for retry (attempt ${newAttemptCount + 1}/${maxAttempts}): ${nextJob.symbol}`);
+        }
       }
 
       return new Response(

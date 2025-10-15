@@ -17,6 +17,7 @@ interface BatchJob {
   error_message: string | null;
   performance_metrics: any;
   training_data_points: number | null;
+  attempt_count: number;
 }
 
 export function BatchTrainingMonitor() {
@@ -25,6 +26,7 @@ export function BatchTrainingMonitor() {
   const [batchId, setBatchId] = useState<string | null>(null);
   const [jobs, setJobs] = useState<BatchJob[]>([]);
   const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
+  const [permanentlyFailed, setPermanentlyFailed] = useState(0);
   const [deploymentVersion, setDeploymentVersion] = useState<string>('checking...');
   const { toast } = useToast();
 
@@ -45,6 +47,15 @@ export function BatchTrainingMonitor() {
       if (data?.success) {
         setJobs(data.jobs);
         setStatusCounts(data.statusCounts);
+        
+        // Count permanent failures
+        const permFailed = (data.jobs || []).filter((j: BatchJob) => 
+          j.status === 'failed' && (
+            j.attempt_count >= 999 || 
+            j.error_message?.startsWith('[PERMANENT]')
+          )
+        ).length;
+        setPermanentlyFailed(permFailed);
       }
     };
 
@@ -224,7 +235,7 @@ export function BatchTrainingMonitor() {
               </div>
             )}
 
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+            <div className="grid grid-cols-2 md:grid-cols-5 gap-3">
               <div className="flex items-center gap-2 p-3 bg-muted rounded-lg">
                 <Clock className="h-4 w-4 text-muted-foreground" />
                 <div>
@@ -249,16 +260,24 @@ export function BatchTrainingMonitor() {
                 </div>
               </div>
 
-              <div className="flex items-center gap-2 p-3 bg-destructive/10 rounded-lg">
-                <AlertCircle className="h-4 w-4 text-destructive" />
+              <div className="flex items-center gap-2 p-3 bg-orange-500/10 rounded-lg">
+                <AlertCircle className="h-4 w-4 text-orange-500" />
                 <div>
-                  <div className="text-2xl font-bold">{statusCounts.failed || 0}</div>
-                  <div className="text-xs text-muted-foreground">Failed</div>
+                  <div className="text-2xl font-bold">{(statusCounts.failed || 0) - permanentlyFailed}</div>
+                  <div className="text-xs text-muted-foreground">Retryable</div>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 p-3 bg-destructive/10 rounded-lg">
+                <XCircle className="h-4 w-4 text-destructive" />
+                <div>
+                  <div className="text-2xl font-bold">{permanentlyFailed}</div>
+                  <div className="text-xs text-muted-foreground">Invalid</div>
                 </div>
               </div>
             </div>
 
-            {(statusCounts.failed || 0) > 0 && (
+            {((statusCounts.failed || 0) - permanentlyFailed) > 0 && (
               <Button 
                 onClick={resetFailedJobs}
                 disabled={isResetting}
@@ -273,10 +292,16 @@ export function BatchTrainingMonitor() {
                   </>
                 ) : (
                   <>
-                    Reset {statusCounts.failed} Failed Jobs
+                    Reset {(statusCounts.failed || 0) - permanentlyFailed} Retryable Jobs
                   </>
                 )}
               </Button>
+            )}
+            
+            {permanentlyFailed > 0 && (
+              <div className="text-xs text-orange-500 bg-orange-500/10 p-3 rounded border border-orange-500/20">
+                ⚠️ {permanentlyFailed} jobs failed permanently due to invalid symbols not supported on Bybit
+              </div>
             )}
 
             {isActive && (
@@ -321,7 +346,8 @@ export function BatchTrainingMonitor() {
 
         <div className="text-xs text-muted-foreground space-y-1">
           <p>• Training uses 2 years of historical data per asset</p>
-          <p>• Estimated time: ~5 hours for all 431 assets</p>
+          <p>• Only symbols supported on Bybit will be trained</p>
+          <p>• Invalid symbols are automatically skipped</p>
           <p>• Models are saved to your account automatically</p>
           <p className="pt-2 font-mono">Deployment: {deploymentVersion}</p>
         </div>
