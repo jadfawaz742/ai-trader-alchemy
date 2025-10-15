@@ -93,5 +93,8 @@ verify_jwt = true
 [functions.batch-train-cryptos]
 verify_jwt = true
 
+[functions.batch-training-admin]
+verify_jwt = true
+
 [functions.process-training-queue]
 verify_jwt = false

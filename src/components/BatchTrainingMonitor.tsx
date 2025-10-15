@@ -21,9 +21,11 @@ interface BatchJob {
 
 export function BatchTrainingMonitor() {
   const [isStarting, setIsStarting] = useState(false);
+  const [isResetting, setIsResetting] = useState(false);
   const [batchId, setBatchId] = useState<string | null>(null);
   const [jobs, setJobs] = useState<BatchJob[]>([]);
   const [statusCounts, setStatusCounts] = useState<Record<string, number>>({});
+  const [deploymentVersion, setDeploymentVersion] = useState<string>('checking...');
   const { toast } = useToast();
 
   // Poll for status updates
@@ -107,6 +109,64 @@ export function BatchTrainingMonitor() {
       });
     }
   };
+
+  const resetFailedJobs = async () => {
+    setIsResetting(true);
+    try {
+      const { data, error } = await supabase.functions.invoke('batch-training-admin', {
+        body: { 
+          action: 'reset-failed',
+          batchId: batchId || undefined
+        }
+      });
+
+      if (error) throw error;
+
+      toast({
+        title: "Failed Jobs Reset",
+        description: `${data.resetCount} jobs moved back to queue`,
+      });
+
+      // Refresh status
+      if (batchId) {
+        const { data: statusData } = await supabase.functions.invoke('batch-train-cryptos', {
+          body: { action: 'status', batchId }
+        });
+        
+        if (statusData?.success) {
+          setJobs(statusData.jobs);
+          setStatusCounts(statusData.statusCounts);
+        }
+      }
+    } catch (error: any) {
+      toast({
+        title: "Failed to Reset",
+        description: error.message,
+        variant: "destructive",
+      });
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
+  // Check deployment version on mount
+  useEffect(() => {
+    const checkVersion = async () => {
+      try {
+        const { data, error } = await supabase.functions.invoke('batch-training-admin', {
+          body: { action: 'get-stats' }
+        });
+        
+        if (!error && data?.success) {
+          setDeploymentVersion('v2.0.0 ✅');
+        }
+      } catch {
+        setDeploymentVersion('unknown');
+      }
+    };
+    
+    checkVersion();
+  }, []);
 
   const totalJobs = jobs.length;
   const completedJobs = (statusCounts.completed || 0) + (statusCounts.skipped || 0);
@@ -198,6 +258,27 @@ export function BatchTrainingMonitor() {
               </div>
             </div>
 
+            {(statusCounts.failed || 0) > 0 && (
+              <Button 
+                onClick={resetFailedJobs}
+                disabled={isResetting}
+                variant="outline"
+                size="sm"
+                className="w-full"
+              >
+                {isResetting ? (
+                  <>
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    Resetting...
+                  </>
+                ) : (
+                  <>
+                    Reset {statusCounts.failed} Failed Jobs
+                  </>
+                )}
+              </Button>
+            )}
+
             {isActive && (
               <Button 
                 onClick={cancelBatch} 
@@ -242,6 +323,7 @@ export function BatchTrainingMonitor() {
           <p>• Training uses 2 years of historical data per asset</p>
           <p>• Estimated time: ~5 hours for all 431 assets</p>
           <p>• Models are saved to your account automatically</p>
+          <p className="pt-2 font-mono">Deployment: {deploymentVersion}</p>
         </div>
       </CardContent>
     </Card>

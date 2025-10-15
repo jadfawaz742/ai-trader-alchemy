@@ -1,6 +1,13 @@
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 
+/**
+ * PROCESS TRAINING QUEUE - v2.0.0
+ * Deployed: 2025-10-15
+ * Purpose: Process batch training jobs from queue, call train-asset-model with service role auth
+ * Config: train-asset-model has verify_jwt=false to accept service role calls
+ */
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
@@ -11,15 +18,25 @@ serve(async (req) => {
     return new Response(null, { headers: corsHeaders });
   }
 
+  const startTime = Date.now();
+  console.log('═══════════════════════════════════════════════════');
+  console.log('🚀 PROCESS TRAINING QUEUE v2.0.0 - STARTED');
+  console.log('═══════════════════════════════════════════════════');
+
   try {
     const supabaseUrl = Deno.env.get('SUPABASE_URL')!;
     const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!;
     
+    console.log('🔧 Environment:', {
+      supabaseUrl: supabaseUrl.substring(0, 30) + '...',
+      hasServiceKey: !!supabaseServiceKey,
+      serviceKeyPrefix: supabaseServiceKey?.substring(0, 20) + '...'
+    });
+    
     // Use service role client to bypass RLS
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     
-    console.log('🔑 Using service role key for authentication');
-
+    console.log('✅ Supabase client initialized with service role key');
     console.log('🔄 Checking for queued training jobs...');
 
     // Fetch the next queued job (ordered by priority, then created_at)
@@ -61,24 +78,41 @@ serve(async (req) => {
 
     try {
       console.log(`🎯 Training ${nextJob.symbol} for user ${nextJob.user_id}...`);
+      console.log(`📝 Job details:`, {
+        jobId: nextJob.id,
+        batchId: nextJob.batch_id,
+        priority: nextJob.priority,
+        attemptCount: nextJob.attempt_count || 0
+      });
       
       // Call train-asset-model directly with service role authentication
       const functionUrl = `${supabaseUrl}/functions/v1/train-asset-model`;
+      console.log(`🌐 Calling function: ${functionUrl}`);
+      console.log(`🔑 Using service role authentication`);
+      
+      const requestBody = {
+        symbol: nextJob.symbol,
+        forceRetrain: false,
+        user_id: nextJob.user_id,
+        service_role: true
+      };
+      
+      console.log(`📦 Request body:`, requestBody);
+      
       const response = await fetch(functionUrl, {
         method: 'POST',
         headers: {
           'Authorization': `Bearer ${supabaseServiceKey}`,
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          symbol: nextJob.symbol,
-          forceRetrain: false,
-          user_id: nextJob.user_id,
-          service_role: true
-        })
+        body: JSON.stringify(requestBody)
       });
       
-      console.log(`📊 Training response for ${nextJob.symbol}: status=${response.status}`);
+      console.log(`📊 Training response for ${nextJob.symbol}:`, {
+        status: response.status,
+        statusText: response.statusText,
+        ok: response.ok
+      });
 
       if (!response.ok) {
         const errorText = await response.text();
@@ -110,11 +144,19 @@ serve(async (req) => {
 
       console.log(`📊 Remaining jobs in batch: ${count}`);
 
+      const elapsedTime = Date.now() - startTime;
+      console.log('═══════════════════════════════════════════════════');
+      console.log('✅ PROCESS COMPLETED SUCCESSFULLY');
+      console.log(`⏱️  Elapsed time: ${elapsedTime}ms`);
+      console.log('═══════════════════════════════════════════════════');
+
       return new Response(
         JSON.stringify({ 
           success: true,
           symbol: nextJob.symbol,
-          remaining: count
+          remaining: count,
+          elapsedMs: elapsedTime,
+          version: '2.0.0'
         }),
         { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
       );
