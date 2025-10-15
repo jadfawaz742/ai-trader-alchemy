@@ -69,6 +69,60 @@ serve(async (req) => {
 
     console.log('Processing signal:', signal_id, 'for asset:', signal.asset);
 
+    // PHASE 4: Pre-execution risk checks
+    const { data: userPositions } = await supabaseClient
+      .from('executions')
+      .select('*')
+      .eq('user_id', signal.user_id)
+      .eq('status', 'executed')
+      .gte('created_at', new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString()); // Last 24 hours
+
+    // Calculate current daily PnL and check risk limits
+    let dailyPnL = 0;
+    if (userPositions) {
+      for (const pos of userPositions) {
+        // Simplified PnL calculation - should be enhanced with real-time prices
+        dailyPnL += (pos.executed_price || 0) * (pos.executed_qty || 0) * (pos.side === 'BUY' ? -1 : 1);
+      }
+    }
+
+    // Check if user has breached daily loss cap
+    const MAX_DAILY_LOSS = 0.05; // 5% max daily loss
+    const { data: userRiskParams } = await supabaseClient
+      .from('risk_parameters')
+      .select('*')
+      .eq('user_id', signal.user_id)
+      .single();
+
+    const accountBalance = 100000; // TODO: Fetch from user's account
+    const dailyLossPercent = Math.abs(dailyPnL) / accountBalance;
+
+    if (dailyLossPercent > MAX_DAILY_LOSS) {
+      console.log(`❌ Risk limit violated: Daily loss ${(dailyLossPercent * 100).toFixed(2)}% exceeds ${(MAX_DAILY_LOSS * 100).toFixed(2)}%`);
+      
+      await supabaseClient.from('signals').update({
+        status: 'blocked_by_risk',
+        error_message: `Risk limit exceeded: ${(dailyLossPercent * 100).toFixed(2)}% daily loss`
+      }).eq('id', signal_id);
+
+      // Create alert
+      await supabaseClient.from('trading_alerts').insert({
+        user_id: signal.user_id,
+        asset: signal.asset,
+        alert_type: 'RISK_BREACH',
+        severity: 'CRITICAL',
+        message: `Daily loss limit exceeded: ${(dailyLossPercent * 100).toFixed(2)}%`
+      });
+
+      return new Response(JSON.stringify({ 
+        error: 'Risk limits exceeded',
+        reason: 'Daily loss limit'
+      }), {
+        status: 400,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
     // Validate broker asset support
     const { data: brokerAsset, error: assetError } = await supabaseClient
       .from('broker_assets')

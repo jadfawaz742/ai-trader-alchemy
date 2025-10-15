@@ -64,7 +64,7 @@ serve(async (req) => {
     const activeAssets = activeModels.map(m => m.asset);
     console.log(`📊 Found ${activeAssets.length} active assets:`, activeAssets);
 
-    // 3. Get all user asset preferences that are enabled
+    // 3. Get all user asset preferences that are enabled (Phase 4: Include paper trading flag)
     const { data: userPrefs } = await supabase
       .from('user_asset_prefs')
       .select('*, broker_connections!inner(*)')
@@ -134,7 +134,7 @@ serve(async (req) => {
         console.log(`✅ Generated ${signalsData.signals.length} signals for user ${userId}`);
         totalSignalsGenerated += signalsData.signals.length;
 
-        // 6. Execute each signal
+        // 6. Execute each signal (Phase 4: Check paper trading mode)
         for (const signal of signalsData.signals) {
           try {
             // Find the preference for this asset
@@ -152,27 +152,52 @@ serve(async (req) => {
               continue;
             }
 
-            console.log(`📤 Executing ${signal.side} ${positionSize} ${signal.asset} @ $${signal.price}`);
+            // PHASE 4: Check if paper trading is enabled
+            const { data: prefDetail } = await supabase
+              .from('user_asset_prefs')
+              .select('paper_trading_enabled')
+              .eq('user_id', userId)
+              .eq('asset', signal.asset)
+              .single();
 
-            // Call execute-signal edge function
-            const { data: execData, error: execError } = await supabase.functions.invoke('execute-signal', {
-              body: {
-                signalId: signal.id,
-                userId,
-                brokerId: assetPref.broker_id
+            const isPaperTrading = prefDetail?.paper_trading_enabled !== false; // Default to paper trading
+
+            if (isPaperTrading) {
+              console.log(`📄 Paper trading mode: ${signal.side} ${positionSize} ${signal.asset}`);
+              
+              // Call paper-trade function
+              const { data: paperData, error: paperError } = await supabase.functions.invoke('paper-trade', {
+                body: { signal_id: signal.id }
+              });
+
+              if (paperError) {
+                console.error(`❌ Error in paper trade:`, paperError);
+                continue;
               }
-            });
 
-            if (execError) {
-              console.error(`❌ Error executing signal ${signal.id}:`, execError);
-              continue;
-            }
-
-            if (execData?.success) {
-              console.log(`✅ Trade executed successfully: ${signal.side} ${positionSize} ${signal.asset}`);
-              totalTradesExecuted++;
+              if (paperData?.success) {
+                console.log(`✅ Paper trade created: ${signal.side} ${positionSize} ${signal.asset}`);
+                totalTradesExecuted++;
+              }
             } else {
-              console.log(`⚠️ Trade execution failed: ${execData?.message || 'Unknown error'}`);
+              console.log(`📤 LIVE trading: ${signal.side} ${positionSize} ${signal.asset} @ $${signal.price}`);
+
+              // Call execute-signal edge function for real trading
+              const { data: execData, error: execError } = await supabase.functions.invoke('execute-signal', {
+                body: { signal_id: signal.id }
+              });
+
+              if (execError) {
+                console.error(`❌ Error executing signal ${signal.id}:`, execError);
+                continue;
+              }
+
+              if (execData?.success) {
+                console.log(`✅ Trade executed successfully: ${signal.side} ${positionSize} ${signal.asset}`);
+                totalTradesExecuted++;
+              } else {
+                console.log(`⚠️ Trade execution failed: ${execData?.message || 'Unknown error'}`);
+              }
             }
 
           } catch (signalError) {

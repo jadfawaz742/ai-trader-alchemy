@@ -107,3 +107,9 @@ verify_jwt = true
 
 [functions.validate-model]
 verify_jwt = false
+
+[functions.paper-trade]
+verify_jwt = false
+
+[functions.monitor-live-trading]
+verify_jwt = false

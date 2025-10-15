@@ -828,6 +828,101 @@ export type Database = {
         }
         Relationships: []
       }
+      orchestrator_metrics: {
+        Row: {
+          avg_latency_ms: number | null
+          created_at: string | null
+          id: string
+          run_timestamp: string
+          signals_blocked: number
+          signals_executed: number
+          signals_generated: number
+          users_processed: number
+        }
+        Insert: {
+          avg_latency_ms?: number | null
+          created_at?: string | null
+          id?: string
+          run_timestamp: string
+          signals_blocked: number
+          signals_executed: number
+          signals_generated: number
+          users_processed: number
+        }
+        Update: {
+          avg_latency_ms?: number | null
+          created_at?: string | null
+          id?: string
+          run_timestamp?: string
+          signals_blocked?: number
+          signals_executed?: number
+          signals_generated?: number
+          users_processed?: number
+        }
+        Relationships: []
+      }
+      paper_trades: {
+        Row: {
+          asset: string
+          closed_at: string | null
+          created_at: string | null
+          entry_price: number
+          exit_price: number | null
+          exit_reason: string | null
+          id: string
+          pnl: number | null
+          qty: number
+          side: string
+          signal_id: string | null
+          sl: number | null
+          status: string
+          tp: number | null
+          user_id: string
+        }
+        Insert: {
+          asset: string
+          closed_at?: string | null
+          created_at?: string | null
+          entry_price: number
+          exit_price?: number | null
+          exit_reason?: string | null
+          id?: string
+          pnl?: number | null
+          qty: number
+          side: string
+          signal_id?: string | null
+          sl?: number | null
+          status?: string
+          tp?: number | null
+          user_id: string
+        }
+        Update: {
+          asset?: string
+          closed_at?: string | null
+          created_at?: string | null
+          entry_price?: number
+          exit_price?: number | null
+          exit_reason?: string | null
+          id?: string
+          pnl?: number | null
+          qty?: number
+          side?: string
+          signal_id?: string | null
+          sl?: number | null
+          status?: string
+          tp?: number | null
+          user_id?: string
+        }
+        Relationships: [
+          {
+            foreignKeyName: "paper_trades_signal_id_fkey"
+            columns: ["signal_id"]
+            isOneToOne: false
+            referencedRelation: "signals"
+            referencedColumns: ["id"]
+          },
+        ]
+      }
       portfolios: {
         Row: {
           created_at: string
@@ -1367,6 +1462,39 @@ export type Database = {
           },
         ]
       }
+      trading_alerts: {
+        Row: {
+          acknowledged: boolean | null
+          alert_type: string
+          asset: string
+          created_at: string | null
+          id: string
+          message: string
+          severity: string
+          user_id: string
+        }
+        Insert: {
+          acknowledged?: boolean | null
+          alert_type: string
+          asset: string
+          created_at?: string | null
+          id?: string
+          message: string
+          severity: string
+          user_id: string
+        }
+        Update: {
+          acknowledged?: boolean | null
+          alert_type?: string
+          asset?: string
+          created_at?: string | null
+          id?: string
+          message?: string
+          severity?: string
+          user_id?: string
+        }
+        Relationships: []
+      }
       trading_bot_learning: {
         Row: {
           confidence_level: number | null
@@ -1649,6 +1777,7 @@ export type Database = {
           enabled: boolean
           id: string
           max_exposure_usd: number
+          paper_trading_enabled: boolean | null
           risk_mode: string
           updated_at: string
           user_id: string
@@ -1660,6 +1789,7 @@ export type Database = {
           enabled?: boolean
           id?: string
           max_exposure_usd?: number
+          paper_trading_enabled?: boolean | null
           risk_mode?: string
           updated_at?: string
           user_id: string
@@ -1671,6 +1801,7 @@ export type Database = {
           enabled?: boolean
           id?: string
           max_exposure_usd?: number
+          paper_trading_enabled?: boolean | null
           risk_mode?: string
           updated_at?: string
           user_id?: string

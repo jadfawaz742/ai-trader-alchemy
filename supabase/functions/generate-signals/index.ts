@@ -120,7 +120,7 @@ serve(async (req) => {
           continue;
         }
 
-        // Load trained model for this user and asset from asset_models
+        // Load trained AND VALIDATED model for this user and asset (Phase 4)
         const { data: model } = await supabaseClient
           .from('asset_models')
           .select('*')
@@ -134,8 +134,21 @@ serve(async (req) => {
           console.log(`No trained model found for ${pref.asset} (user: ${pref.user_id})`);
           continue;
         }
+
+        // Check if model has been validated (Phase 3 validation)
+        const { data: validation } = await supabaseClient
+          .from('model_validations')
+          .select('approved')
+          .eq('model_id', model.id)
+          .eq('approved', true)
+          .single();
+
+        if (!validation) {
+          console.log(`⚠️ Skipping ${pref.asset}: Model not validated yet`);
+          continue;
+        }
         
-        console.log(`✅ Found trained model for ${pref.asset}, created: ${model.created_at}`);
+        console.log(`✅ Found validated model for ${pref.asset}, created: ${model.created_at}`);
 
         // Get broker symbol mapping
         const { data: symbolMap } = await supabaseClient
