@@ -169,15 +169,38 @@ export function forwardPass(
     size: number;
   };
 } {
+  // Validate input
+  if (!Array.isArray(sequenceFeatures)) {
+    throw new Error(`sequenceFeatures must be an array, got ${typeof sequenceFeatures}`);
+  }
+  
+  if (sequenceFeatures.length === 0) {
+    throw new Error('sequenceFeatures cannot be empty');
+  }
+  
+  // Validate each feature vector
+  for (let i = 0; i < sequenceFeatures.length; i++) {
+    if (!Array.isArray(sequenceFeatures[i])) {
+      throw new Error(`Feature at index ${i} is not an array: ${typeof sequenceFeatures[i]}`);
+    }
+    if (sequenceFeatures[i].length !== model.feature_size) {
+      throw new Error(`Feature at index ${i} has wrong size: expected ${model.feature_size}, got ${sequenceFeatures[i].length}`);
+    }
+  }
+  
   const hiddenSize = model.hidden_size;
   let hidden = Array(hiddenSize).fill(0);
   let cell = Array(hiddenSize).fill(0);
   
   // Process sequence through LSTM
-  for (const features of sequenceFeatures) {
-    const result = lstmStep(features, hidden, cell, model.lstm_weights, model.lstm_biases);
-    hidden = result.hidden;
-    cell = result.cell;
+  try {
+    for (const features of sequenceFeatures) {
+      const result = lstmStep(features, hidden, cell, model.lstm_weights, model.lstm_biases);
+      hidden = result.hidden;
+      cell = result.cell;
+    }
+  } catch (error) {
+    throw new Error(`LSTM step failed: ${error.message}. Input shape: [${sequenceFeatures.length}, ${sequenceFeatures[0]?.length}]`);
   }
   
   // Generate action from final hidden state

@@ -133,19 +133,22 @@ serve(async (req) => {
           const errorMessage = trainError.message || 'Training failed';
           const dataPoints = parseInt(errorMessage.match(/got (\d+)/)?.[1] || '0');
           
-          // Check if this is a retryable insufficient data error
-          if (errorMessage.includes('Insufficient data') && dataPoints >= 30 && dataPoints < 50) {
+          // Check if this is a retryable insufficient data error (30-200 bars)
+          if (errorMessage.includes('Insufficient data') && dataPoints >= 30 && dataPoints < 200) {
             console.log(`🔄 Retrying ${job.symbol} with data augmentation (${dataPoints} bars)`);
             
-            // Update job to retry with basic curriculum and augmentation
+            // Update job to retry with appropriate curriculum and augmentation
+            const curriculum = dataPoints < 50 ? 'basic' : dataPoints < 100 ? 'basic' : 'with_sr';
+            
             await supabase
               .from('batch_training_jobs')
               .update({
                 status: 'queued',
                 priority: 200, // Lower priority for retries
                 error_message: null,
-                curriculum_stage: 'basic',
+                curriculum_stage: curriculum,
                 use_augmentation: true,
+                attempt_count: (job.attempt_count || 0) + 1,
                 updated_at: new Date().toISOString()
               })
               .eq('id', job.id);

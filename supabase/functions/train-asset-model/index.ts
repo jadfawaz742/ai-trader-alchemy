@@ -195,8 +195,10 @@ serve(async (req) => {
     // Fetch historical data
     const historicalData = await fetchHistoricalData(normalizedSymbol);
     
-    // Adaptive training based on data size
-    const minDataPoints = useAugmentation ? 30 : 50;
+    // Auto-enable augmentation for datasets with 30-200 bars
+    const shouldAugment = useAugmentation || (historicalData.length >= 30 && historicalData.length < 200);
+    const minDataPoints = shouldAugment ? 30 : 50;
+    
     if (historicalData.length < minDataPoints) {
       throw new Error(`Insufficient data for ${normalizedSymbol}. Need at least ${minDataPoints} data points, got ${historicalData.length}.`);
     }
@@ -204,10 +206,11 @@ serve(async (req) => {
     let trainingData = historicalData;
     const config = getTrainingConfig(historicalData.length);
     
-    // Apply data augmentation if requested and needed
-    if (useAugmentation && historicalData.length < 50) {
-      console.log(`📊 Augmenting data from ${historicalData.length} to 50 bars`);
-      trainingData = augmentData(historicalData, 50);
+    // Apply data augmentation if needed
+    if (shouldAugment && historicalData.length < 200) {
+      const targetSize = Math.min(200, historicalData.length * 3);
+      console.log(`📊 Auto-augmenting data from ${historicalData.length} to ${targetSize} bars`);
+      trainingData = augmentData(historicalData, targetSize);
     }
 
     console.log(`📋 Training config: ${config.curriculum_stage} stage, ${config.features} features, ${config.episodes} episodes`);
@@ -254,7 +257,8 @@ serve(async (req) => {
         performance_metrics: result.performance_metrics,
         fine_tuning_metadata: {
           asset_type: assetType,
-          data_augmented: useAugmentation && historicalData.length < 50,
+          data_augmented: shouldAugment && historicalData.length < 200,
+          augmentation_ratio: shouldAugment ? trainingData.length / historicalData.length : 1,
           original_data_points: historicalData.length,
           train_size: trainData.length,
           test_size: testData.length,

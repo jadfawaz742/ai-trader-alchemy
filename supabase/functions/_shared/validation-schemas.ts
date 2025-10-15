@@ -35,7 +35,7 @@ export const SignalExecutionSchema = z.object({
 export const SignalDataSchema = z.object({
   asset: z.string()
     .min(2, 'Asset symbol must be at least 2 characters')
-    .max(12, 'Asset symbol must be less than 12 characters')
+    .max(20, 'Asset symbol must be less than 20 characters')
     .regex(/^[A-Z0-9]+$/, 'Asset symbol must contain only uppercase letters and numbers')
     .transform(val => val.toUpperCase()),
   qty: z.number()
@@ -56,7 +56,7 @@ export const SignalDataSchema = z.object({
 export const TrainingRequestSchema = z.object({
   symbol: z.string()
     .min(2, 'Symbol must be at least 2 characters')
-    .max(12, 'Symbol must be less than 12 characters')
+    .max(20, 'Symbol must be less than 20 characters')
     .regex(/^[A-Z0-9\-]+$/, 'Symbol must contain only uppercase letters, numbers, and hyphens')
     .transform(val => val.trim().toUpperCase()),
   forceRetrain: z.boolean().optional().default(false),
