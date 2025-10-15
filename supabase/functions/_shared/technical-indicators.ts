@@ -295,3 +295,6 @@ export function extractTechnicalFeatures(data: OHLCV[], index: number): number[]
     calculateADX(data, index) / 100 // Normalize to [0, 1]
   ];
 }
+
+// Alias for compatibility with trading-environment.ts
+export const calculateTechnicalIndicators = extractTechnicalFeatures;
