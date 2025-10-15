@@ -274,43 +274,96 @@ serve(async (req) => {
 
     console.log(`✅ Model trained successfully for ${normalizedSymbol}`);
 
-    // Trigger walk-forward validation automatically
-    console.log('🔍 Starting walk-forward validation...');
+    // Trigger walk-forward validation automatically with comprehensive logging
+    console.log('═══════════════════════════════════════════════════');
+    console.log('🔍 STARTING WALK-FORWARD VALIDATION');
+    console.log('═══════════════════════════════════════════════════');
+    
     let validationTriggered = false;
     let validationApproved = false;
+    
+    const supabaseUrl = Deno.env.get('SUPABASE_URL');
+    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+    const validationUrl = `${supabaseUrl}/functions/v1/validate-model`;
+    
+    console.log(`📍 Validation URL: ${validationUrl}`);
+    console.log(`📍 Model ID: ${insertedModel.id}`);
+    console.log(`📍 Asset: ${normalizedSymbol}`);
     
     try {
       const validationStartDate = new Date();
       validationStartDate.setMonth(validationStartDate.getMonth() - 6);
       
-      const validationResponse = await fetch(
-        `${Deno.env.get('SUPABASE_URL')}/functions/v1/validate-model`,
-        {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')}`,
-            'Content-Type': 'application/json',
-          },
-          body: JSON.stringify({
-            modelId: insertedModel.id,
-            asset: normalizedSymbol,
-            startDate: validationStartDate.toISOString(),
-            endDate: new Date().toISOString()
-          })
-        }
-      );
+      const validationPayload = {
+        modelId: insertedModel.id,
+        asset: normalizedSymbol,
+        startDate: validationStartDate.toISOString(),
+        endDate: new Date().toISOString()
+      };
+      
+      console.log('📦 Validation payload:', JSON.stringify(validationPayload, null, 2));
+      console.log('🚀 Initiating validation request...');
+      
+      // Create abort controller for 30 second timeout
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => {
+        console.error('⏰ Validation timeout - aborting request after 30 seconds');
+        controller.abort();
+      }, 30000);
+      
+      const validationResponse = await fetch(validationUrl, {
+        method: 'POST',
+        headers: {
+          'Authorization': `Bearer ${supabaseServiceKey}`,
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(validationPayload),
+        signal: controller.signal
+      });
+      
+      clearTimeout(timeoutId);
+      
+      console.log(`📊 Validation response status: ${validationResponse.status}`);
+      console.log(`📊 Validation response headers:`, Object.fromEntries(validationResponse.headers.entries()));
+      
+      const validationText = await validationResponse.text();
+      console.log(`📄 Validation response body (first 500 chars): ${validationText.substring(0, 500)}`);
       
       if (validationResponse.ok) {
-        const validationResult = await validationResponse.json();
-        validationTriggered = true;
-        validationApproved = validationResult.approved || false;
-        console.log(`✅ Validation completed: ${validationApproved ? 'APPROVED ✓' : 'NOT APPROVED ✗'}`);
+        try {
+          const validationResult = JSON.parse(validationText);
+          validationTriggered = true;
+          validationApproved = validationResult.approved || false;
+          
+          console.log('═══════════════════════════════════════════════════');
+          console.log(`✅ VALIDATION COMPLETED: ${validationApproved ? 'APPROVED ✓' : 'NOT APPROVED ✗'}`);
+          console.log('═══════════════════════════════════════════════════');
+          console.log('Validation results:', JSON.stringify(validationResult, null, 2));
+        } catch (parseError) {
+          console.error('❌ Failed to parse validation response as JSON:', parseError);
+          console.error('Raw response text:', validationText);
+        }
       } else {
-        const errorText = await validationResponse.text();
-        console.warn(`⚠️ Validation failed: ${validationResponse.status} - ${errorText}`);
+        console.error('═══════════════════════════════════════════════════');
+        console.error(`❌ VALIDATION FAILED: HTTP ${validationResponse.status}`);
+        console.error('═══════════════════════════════════════════════════');
+        console.error('Error response:', validationText);
       }
     } catch (validationError) {
-      console.error('❌ Validation error:', validationError);
+      if (validationError.name === 'AbortError') {
+        console.error('═══════════════════════════════════════════════════');
+        console.error('❌ VALIDATION TIMEOUT after 30 seconds');
+        console.error('═══════════════════════════════════════════════════');
+      } else {
+        console.error('═══════════════════════════════════════════════════');
+        console.error('❌ VALIDATION ERROR:', validationError);
+        console.error('═══════════════════════════════════════════════════');
+        console.error('Error details:', {
+          name: validationError.name,
+          message: validationError.message,
+          stack: validationError.stack
+        });
+      }
       // Don't fail the training if validation fails - just log it
     }
 
