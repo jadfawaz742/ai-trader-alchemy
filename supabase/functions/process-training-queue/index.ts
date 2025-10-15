@@ -2,11 +2,14 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 
 /**
- * PROCESS TRAINING QUEUE - v2.0.0
+ * PROCESS TRAINING QUEUE - v3.0.0
  * Deployed: 2025-10-15
- * Purpose: Process batch training jobs from queue, call train-asset-model with service role auth
+ * Purpose: Process MULTIPLE batch training jobs from queue in parallel
  * Config: train-asset-model has verify_jwt=false to accept service role calls
+ * Batch Size: 5 jobs per execution for faster processing
  */
+
+const BATCH_SIZE = 5; // Process 5 jobs in parallel
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -20,7 +23,7 @@ serve(async (req) => {
 
   const startTime = Date.now();
   console.log('═══════════════════════════════════════════════════');
-  console.log('🚀 PROCESS TRAINING QUEUE v2.0.0 - STARTED');
+  console.log(`🚀 PROCESS TRAINING QUEUE v3.0.0 - STARTED (Batch: ${BATCH_SIZE})`);
   console.log('═══════════════════════════════════════════════════');
 
   try {
@@ -37,31 +40,32 @@ serve(async (req) => {
     const supabase = createClient(supabaseUrl, supabaseServiceKey);
     
     console.log('✅ Supabase client initialized with service role key');
-    console.log('🔄 Checking for queued training jobs...');
+    console.log(`🔄 Checking for queued training jobs (batch size: ${BATCH_SIZE})...`);
 
-    // Fetch the next queued job (ordered by priority, then created_at)
-    const { data: nextJob, error: fetchError } = await supabase
+    // Fetch multiple queued jobs (ordered by priority, then created_at)
+    const { data: jobs, error: fetchError } = await supabase
       .from('batch_training_jobs')
       .select('*')
       .eq('status', 'queued')
       .order('priority', { ascending: true })
       .order('created_at', { ascending: true })
-      .limit(1)
-      .single();
+      .limit(BATCH_SIZE);
 
     if (fetchError) {
-      if (fetchError.code === 'PGRST116') {
-        console.log('✅ No queued jobs found');
-        return new Response(JSON.stringify({ message: 'No queued jobs' }), {
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-        });
-      }
       throw fetchError;
     }
 
-    console.log(`📋 Found job: ${nextJob.symbol} (batch: ${nextJob.batch_id})`);
+    if (!jobs || jobs.length === 0) {
+      console.log('✅ No queued jobs found');
+      return new Response(JSON.stringify({ message: 'No queued jobs' }), {
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
-    // Update job status to 'training'
+    console.log(`📋 Found ${jobs.length} jobs to process:`, jobs.map(j => j.symbol).join(', '));
+
+    // Update all jobs to 'training' status
+    const jobIds = jobs.map(j => j.id);
     const { error: updateError } = await supabase
       .from('batch_training_jobs')
       .update({ 
@@ -69,175 +73,151 @@ serve(async (req) => {
         started_at: new Date().toISOString(),
         updated_at: new Date().toISOString()
       })
-      .eq('id', nextJob.id);
+      .in('id', jobIds);
 
     if (updateError) {
-      console.error('❌ Failed to update job status:', updateError);
+      console.error('❌ Failed to update job statuses:', updateError);
       throw updateError;
     }
 
-    try {
-      console.log(`🎯 Training ${nextJob.symbol} for user ${nextJob.user_id}...`);
-      console.log(`📝 Job details:`, {
-        jobId: nextJob.id,
-        batchId: nextJob.batch_id,
-        priority: nextJob.priority,
-        attemptCount: nextJob.attempt_count || 0
-      });
-      
-      // Call train-asset-model directly with service role authentication
-      const functionUrl = `${supabaseUrl}/functions/v1/train-asset-model`;
-      console.log(`🌐 Calling function: ${functionUrl}`);
-      console.log(`🔑 Using service role authentication`);
-      
-      const requestBody = {
-        symbol: nextJob.symbol,
-        forceRetrain: false,
-        user_id: nextJob.user_id,
-        service_role: true
-      };
-      
-      console.log(`📦 Request body:`, requestBody);
-      
-      const response = await fetch(functionUrl, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${supabaseServiceKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(requestBody)
-      });
-      
-      console.log(`📊 Training response for ${nextJob.symbol}:`, {
-        status: response.status,
-        statusText: response.statusText,
-        ok: response.ok
-      });
+    // Process all jobs in parallel
+    const results = await Promise.all(
+      jobs.map(async (job) => {
+        try {
+          console.log(`🎯 Training ${job.symbol} for user ${job.user_id}...`);
+          
+          const functionUrl = `${supabaseUrl}/functions/v1/train-asset-model`;
+          const requestBody = {
+            symbol: job.symbol,
+            forceRetrain: false,
+            user_id: job.user_id,
+            service_role: true
+          };
+          
+          const response = await fetch(functionUrl, {
+            method: 'POST',
+            headers: {
+              'Authorization': `Bearer ${supabaseServiceKey}`,
+              'Content-Type': 'application/json',
+            },
+            body: JSON.stringify(requestBody)
+          });
 
-      if (!response.ok) {
-        const errorText = await response.text();
-        console.error(`❌ Training HTTP error for ${nextJob.symbol}:`, errorText);
-        throw new Error(`HTTP ${response.status}: ${errorText}`);
-      }
+          if (!response.ok) {
+            const errorText = await response.text();
+            throw new Error(`HTTP ${response.status}: ${errorText}`);
+          }
 
-      const trainingResult = await response.json();
-      console.log(`✅ Training completed for ${nextJob.symbol}:`, trainingResult);
+          const trainingResult = await response.json();
+          console.log(`✅ Training completed for ${job.symbol}`);
 
-      // Update job as completed
-      await supabase
-        .from('batch_training_jobs')
-        .update({ 
-          status: 'completed',
-          completed_at: new Date().toISOString(),
-          updated_at: new Date().toISOString(),
-          training_data_points: trainingResult?.dataPoints || null,
-          performance_metrics: trainingResult?.metrics || null
-        })
-        .eq('id', nextJob.id);
-
-      // Check remaining jobs
-      const { count } = await supabase
-        .from('batch_training_jobs')
-        .select('*', { count: 'exact', head: true })
-        .eq('batch_id', nextJob.batch_id)
-        .eq('status', 'queued');
-
-      console.log(`📊 Remaining jobs in batch: ${count}`);
-
-      const elapsedTime = Date.now() - startTime;
-      console.log('═══════════════════════════════════════════════════');
-      console.log('✅ PROCESS COMPLETED SUCCESSFULLY');
-      console.log(`⏱️  Elapsed time: ${elapsedTime}ms`);
-      console.log('═══════════════════════════════════════════════════');
-
-      return new Response(
-        JSON.stringify({ 
-          success: true,
-          symbol: nextJob.symbol,
-          remaining: count,
-          elapsedMs: elapsedTime,
-          version: '2.0.0'
-        }),
-        { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
-      );
-
-    } catch (trainError: any) {
-      console.error(`❌ Training failed for ${nextJob.symbol}:`, trainError.message);
-      
-      const errorMessage = trainError.message || 'Training failed';
-      
-      // Check if this is a permanent failure (symbol not supported)
-      const isPermanentFailure = 
-        errorMessage.includes('Not supported symbols') ||
-        errorMessage.includes('symbol not supported') ||
-        errorMessage.includes('Invalid symbol') ||
-        errorMessage.includes('not found on Bybit');
-      
-      if (isPermanentFailure) {
-        console.log('⚠️ Permanent failure detected - marking as failed without retry');
-        
-        // Update job as permanently failed
-        await supabase
-          .from('batch_training_jobs')
-          .update({ 
-            status: 'failed',
-            error_message: `[PERMANENT] ${errorMessage}`,
-            completed_at: new Date().toISOString(),
-            updated_at: new Date().toISOString(),
-            attempt_count: 999 // Mark as max retries to prevent retry
-          })
-          .eq('id', nextJob.id);
-        
-        console.log(`❌ Permanently failed (invalid symbol): ${nextJob.symbol}`);
-      } else {
-        // Transient error - handle retry logic
-        const newAttemptCount = (nextJob.attempt_count || 0) + 1;
-        const maxAttempts = 3;
-
-        if (newAttemptCount >= maxAttempts) {
-          // Mark as failed after max attempts
+          // Update job as completed
           await supabase
             .from('batch_training_jobs')
             .update({ 
-              status: 'failed',
-              error_message: errorMessage,
-              updated_at: new Date().toISOString(),
+              status: 'completed',
               completed_at: new Date().toISOString(),
-              attempt_count: newAttemptCount
-            })
-            .eq('id', nextJob.id);
-          
-          console.log(`❌ Job failed after ${maxAttempts} attempts: ${nextJob.symbol}`);
-        } else {
-          // Requeue for retry
-          await supabase
-            .from('batch_training_jobs')
-            .update({ 
-              status: 'queued',
-              error_message: `Attempt ${newAttemptCount} failed: ${errorMessage}`,
               updated_at: new Date().toISOString(),
-              attempt_count: newAttemptCount,
-              started_at: null // Reset started_at for retry
+              training_data_points: trainingResult?.dataPoints || null,
+              performance_metrics: trainingResult?.metrics || null
             })
-            .eq('id', nextJob.id);
-          
-          console.log(`🔄 Job requeued for retry (attempt ${newAttemptCount + 1}/${maxAttempts}): ${nextJob.symbol}`);
-        }
-      }
+            .eq('id', job.id);
 
-      return new Response(
-        JSON.stringify({ 
-          success: false,
-          error: trainError.message,
-          symbol: nextJob.symbol,
-          attempt: newAttemptCount
-        }),
-        { 
-          status: 200, // Still return 200 so cron doesn't retry
-          headers: { ...corsHeaders, 'Content-Type': 'application/json' } 
+          return { success: true, symbol: job.symbol };
+
+        } catch (trainError: any) {
+          console.error(`❌ Training failed for ${job.symbol}:`, trainError.message);
+          
+          const errorMessage = trainError.message || 'Training failed';
+          
+          // Check if this is a permanent failure
+          const isPermanentFailure = 
+            errorMessage.includes('Not supported symbols') ||
+            errorMessage.includes('symbol not supported') ||
+            errorMessage.includes('Invalid symbol') ||
+            errorMessage.includes('not found on Bybit');
+          
+          if (isPermanentFailure) {
+            await supabase
+              .from('batch_training_jobs')
+              .update({ 
+                status: 'failed',
+                error_message: `[PERMANENT] ${errorMessage}`,
+                completed_at: new Date().toISOString(),
+                updated_at: new Date().toISOString(),
+                attempt_count: 999
+              })
+              .eq('id', job.id);
+            
+            return { success: false, symbol: job.symbol, error: 'permanent_failure' };
+          } else {
+            // Handle retry logic
+            const newAttemptCount = (job.attempt_count || 0) + 1;
+            const maxAttempts = 3;
+
+            if (newAttemptCount >= maxAttempts) {
+              await supabase
+                .from('batch_training_jobs')
+                .update({ 
+                  status: 'failed',
+                  error_message: errorMessage,
+                  updated_at: new Date().toISOString(),
+                  completed_at: new Date().toISOString(),
+                  attempt_count: newAttemptCount
+                })
+                .eq('id', job.id);
+              
+              return { success: false, symbol: job.symbol, error: 'max_attempts' };
+            } else {
+              await supabase
+                .from('batch_training_jobs')
+                .update({ 
+                  status: 'queued',
+                  error_message: `Attempt ${newAttemptCount} failed: ${errorMessage}`,
+                  updated_at: new Date().toISOString(),
+                  attempt_count: newAttemptCount,
+                  started_at: null
+                })
+                .eq('id', job.id);
+              
+              return { success: false, symbol: job.symbol, error: 'retrying', attempt: newAttemptCount };
+            }
+          }
         }
-      );
-    }
+      })
+    );
+
+    // Count successes and failures
+    const successful = results.filter(r => r.success).length;
+    const failed = results.filter(r => !r.success).length;
+
+    // Check remaining jobs in the first batch
+    const { count } = await supabase
+      .from('batch_training_jobs')
+      .select('*', { count: 'exact', head: true })
+      .eq('batch_id', jobs[0].batch_id)
+      .eq('status', 'queued');
+
+    const elapsedTime = Date.now() - startTime;
+    console.log('═══════════════════════════════════════════════════');
+    console.log(`✅ BATCH COMPLETED: ${successful} succeeded, ${failed} failed`);
+    console.log(`📊 Remaining jobs in batch: ${count}`);
+    console.log(`⏱️  Elapsed time: ${elapsedTime}ms`);
+    console.log('═══════════════════════════════════════════════════');
+
+    return new Response(
+      JSON.stringify({ 
+        success: true,
+        processed: jobs.length,
+        successful,
+        failed,
+        remaining: count,
+        elapsedMs: elapsedTime,
+        version: '3.0.0',
+        results
+      }),
+      { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+    );
 
   } catch (error: any) {
     console.error('❌ Queue processor error:', error);
