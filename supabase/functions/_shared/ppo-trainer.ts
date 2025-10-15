@@ -1,6 +1,6 @@
 // PPO Trainer - Complete PPO training algorithm with GAE, clipping loss, and gradient descent
 
-import { RecurrentPPOModel, HybridAction } from './recurrent-ppo-model.ts';
+import { RecurrentPPOModel, HybridAction, forwardPass } from './recurrent-ppo-model.ts';
 
 export interface PPOConfig {
   gamma: number;           // Discount factor (default: 0.99)
@@ -160,7 +160,7 @@ export class PPOTrainer {
   }
 
   /**
-   * Compute PPO loss components
+   * Compute PPO loss components (updated for single experience)
    * 
    * Actor loss (clipped):
    * L^CLIP = E[ min(r_t * A_t, clip(r_t, 1-ε, 1+ε) * A_t) ]
@@ -172,20 +172,20 @@ export class PPOTrainer {
    * Entropy bonus:
    * L^ENT = E[ H(π(·|s_t)) ]
    */
-  computePPOLoss(
-    oldLogProbs: Experience['logProbs'],
-    newLogProbs: Experience['logProbs'],
-    oldValue: number,
-    newValue: number,
+  private computePPOLoss(
+    exp: Experience,
     advantage: number,
-    returnTarget: number
+    returnTarget: number,
+    newAction: HybridAction,
+    newValue: number,
+    newLogProbs: Experience['logProbs']
   ): { actor_loss: number; critic_loss: number; entropy: number; ratio: number } {
     // Compute probability ratios (in log space for numerical stability)
     const logRatios = {
-      direction: newLogProbs.direction - oldLogProbs.direction,
-      tp_offset: newLogProbs.tp_offset - oldLogProbs.tp_offset,
-      sl_tight: newLogProbs.sl_tight - oldLogProbs.sl_tight,
-      size: newLogProbs.size - oldLogProbs.size
+      direction: newLogProbs.direction - exp.logProbs.direction,
+      tp_offset: newLogProbs.tp_offset - exp.logProbs.tp_offset,
+      sl_tight: newLogProbs.sl_tight - exp.logProbs.sl_tight,
+      size: newLogProbs.size - exp.logProbs.size
     };
     
     // Average ratio across action components
@@ -317,42 +317,232 @@ export class PPOTrainer {
 
   /**
    * Compute gradients for a batch using numerical differentiation
-   * (Simplified version - in production, use automatic differentiation)
+   * Uses finite differences with smart parameter sampling for efficiency
    */
   private computeBatchGradients(
     experiences: Experience[],
     advantages: number[],
     returns: number[]
   ): { gradients: Map<string, number[]>; metrics: any } {
-    const gradients = new Map<string, number[]>();
     
+    // Create closure that computes total loss for given model state
+    const computeTotalLoss = (testModel: RecurrentPPOModel): number => {
+      let totalLoss = 0;
+      
+      for (let i = 0; i < experiences.length; i++) {
+        const exp = experiences[i];
+        const advantage = advantages[i];
+        const returnTarget = returns[i];
+        
+        // Forward pass with test model
+        const result = forwardPass(testModel, exp.state, false);
+        
+        // Compute PPO losses
+        const { actor_loss, critic_loss, entropy } = this.computePPOLoss(
+          exp,
+          advantage,
+          returnTarget,
+          result.action,
+          result.value,
+          result.logProbs
+        );
+        
+        // Combined loss
+        totalLoss += actor_loss + 
+                     this.config.value_loss_coef * critic_loss - 
+                     this.config.entropy_coef * entropy;
+      }
+      
+      return totalLoss / experiences.length;
+    };
+    
+    const gradients = new Map<string, number[]>();
+    const epsilon = 1e-5;
+    
+    // Define parameter groups to update (prioritize actor/critic over LSTM)
+    const paramGroups: Array<{ name: string; sampleRate: number }> = [
+      // Actor heads - most critical for immediate learning
+      { name: 'actor_direction', sampleRate: 0.5 },
+      { name: 'actor_tp_mean', sampleRate: 0.5 },
+      { name: 'actor_tp_std', sampleRate: 0.5 },
+      { name: 'actor_sl_mean', sampleRate: 0.5 },
+      { name: 'actor_sl_std', sampleRate: 0.5 },
+      { name: 'actor_size_mean', sampleRate: 0.5 },
+      { name: 'actor_size_std', sampleRate: 0.5 },
+      
+      // Critic head
+      { name: 'critic_weights', sampleRate: 0.5 },
+      { name: 'critic_bias', sampleRate: 1.0 }, // Always update biases (cheap, high impact)
+      
+      // LSTM - expensive, update less frequently
+      { name: 'lstm_weights', sampleRate: Math.random() < 0.3 ? 0.05 : 0 },
+      { name: 'lstm_biases', sampleRate: Math.random() < 0.3 ? 1.0 : 0 }
+    ];
+    
+    // Clone model for gradient computation to avoid side effects
+    const testModel = JSON.parse(JSON.stringify(this.model)) as RecurrentPPOModel;
+    
+    for (const { name: paramName, sampleRate } of paramGroups) {
+      if (sampleRate === 0) continue;
+      
+      const paramArray = this.flattenParam(testModel, paramName);
+      const paramGrads = new Array(paramArray.length).fill(0);
+      
+      // Sample indices for large parameter arrays
+      const indices = this.sampleIndices(paramArray.length, sampleRate);
+      
+      for (const idx of indices) {
+        // Compute gradient for this specific weight using central difference
+        const originalValue = paramArray[idx];
+        
+        // Forward perturbation
+        paramArray[idx] = originalValue + epsilon;
+        this.updateModelParam(testModel, paramName, paramArray);
+        const lossPlus = computeTotalLoss(testModel);
+        
+        // Backward perturbation
+        paramArray[idx] = originalValue - epsilon;
+        this.updateModelParam(testModel, paramName, paramArray);
+        const lossMinus = computeTotalLoss(testModel);
+        
+        // Restore original value
+        paramArray[idx] = originalValue;
+        this.updateModelParam(testModel, paramName, paramArray);
+        
+        // Central difference gradient
+        paramGrads[idx] = (lossPlus - lossMinus) / (2 * epsilon);
+      }
+      
+      gradients.set(paramName, paramGrads);
+    }
+    
+    // Compute metrics on current batch for monitoring
     let batchActorLoss = 0;
     let batchCriticLoss = 0;
     let batchEntropy = 0;
-    let batchKL = 0;
     
-    // For simplicity, we'll use a subset of experiences for gradient computation
-    // In production, you'd compute exact gradients
-    const sampleExp = experiences[0];
+    for (let i = 0; i < Math.min(experiences.length, 32); i++) {
+      const exp = experiences[i];
+      const result = forwardPass(this.model, exp.state, false);
+      const { actor_loss, critic_loss, entropy } = this.computePPOLoss(
+        exp,
+        advantages[i],
+        returns[i],
+        result.action,
+        result.value,
+        result.logProbs
+      );
+      
+      batchActorLoss += actor_loss;
+      batchCriticLoss += critic_loss;
+      batchEntropy += entropy;
+    }
     
-    // Placeholder: Simplified gradient computation
-    // In real implementation, you'd:
-    // 1. Forward pass through model
-    // 2. Compute loss
-    // 3. Backpropagate to get gradients
-    
-    // For now, return zero gradients (model won't update but won't crash)
-    // This is a placeholder for numerical gradient computation
+    const sampleSize = Math.min(experiences.length, 32);
     
     return {
       gradients,
       metrics: {
-        actor_loss: batchActorLoss / experiences.length,
-        critic_loss: batchCriticLoss / experiences.length,
-        entropy: batchEntropy / experiences.length,
-        kl_divergence: batchKL / experiences.length
+        actor_loss: batchActorLoss / sampleSize,
+        critic_loss: batchCriticLoss / sampleSize,
+        entropy: batchEntropy / sampleSize,
+        kl_divergence: 0, // Placeholder
+        gradient_norm: this.computeGradientNorm(gradients)
       }
     };
+  }
+
+  /**
+   * Flatten parameter (matrix or vector) to 1D array
+   */
+  private flattenParam(model: RecurrentPPOModel, paramName: string): number[] {
+    const param = (model as any)[paramName];
+    
+    if (!param) {
+      throw new Error(`Parameter ${paramName} not found in model`);
+    }
+    
+    if (Array.isArray(param[0])) {
+      // Matrix: flatten to 1D
+      return param.flat();
+    } else {
+      // Vector: already 1D
+      return [...param]; // Clone to avoid mutations
+    }
+  }
+
+  /**
+   * Reconstruct parameter from flat array
+   */
+  private unflattenParam(
+    flat: number[],
+    originalShape: number[][] | number[]
+  ): number[][] | number[] {
+    if (Array.isArray(originalShape[0])) {
+      // Reconstruct matrix
+      const rows = originalShape.length;
+      const cols = (originalShape as number[][])[0].length;
+      const result: number[][] = [];
+      
+      for (let i = 0; i < rows; i++) {
+        result.push(flat.slice(i * cols, (i + 1) * cols));
+      }
+      return result;
+    } else {
+      // Keep as vector
+      return [...flat];
+    }
+  }
+
+  /**
+   * Sample indices for gradient computation (uniform random sampling)
+   */
+  private sampleIndices(totalCount: number, sampleRate: number): number[] {
+    // For small arrays, use all indices
+    if (totalCount < 100 || sampleRate >= 1.0) {
+      return Array.from({ length: totalCount }, (_, i) => i);
+    }
+    
+    // For large arrays, sample uniformly
+    const sampleSize = Math.max(1, Math.ceil(totalCount * sampleRate));
+    const indices: number[] = [];
+    const step = Math.floor(totalCount / sampleSize);
+    
+    for (let i = 0; i < sampleSize; i++) {
+      const idx = (i * step + Math.floor(Math.random() * step)) % totalCount;
+      indices.push(idx);
+    }
+    
+    return indices;
+  }
+
+  /**
+   * Update model parameter from flat array
+   */
+  private updateModelParam(
+    model: RecurrentPPOModel,
+    paramName: string,
+    flatValues: number[]
+  ): void {
+    const originalParam = (model as any)[paramName];
+    (model as any)[paramName] = this.unflattenParam(flatValues, originalParam);
+  }
+
+  /**
+   * Compute gradient norm for monitoring
+   */
+  private computeGradientNorm(gradients: Map<string, number[]>): number {
+    let sumSquares = 0;
+    let count = 0;
+    
+    for (const grads of gradients.values()) {
+      for (const g of grads) {
+        sumSquares += g * g;
+        count++;
+      }
+    }
+    
+    return count > 0 ? Math.sqrt(sumSquares / count) : 0;
   }
 
   /**
