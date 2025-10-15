@@ -7,6 +7,8 @@ import { supabase } from "@/integrations/supabase/client";
 import { useToast } from "@/hooks/use-toast";
 import { Loader2, Play, XCircle, CheckCircle2, Clock, AlertCircle } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Label } from "@/components/ui/label";
 
 interface BatchJob {
   id: string;
@@ -31,6 +33,7 @@ export function BatchTrainingMonitor() {
   const [permanentlyFailed, setPermanentlyFailed] = useState(0);
   const [deploymentVersion, setDeploymentVersion] = useState<string>('checking...');
   const [completedModels, setCompletedModels] = useState<number>(0);
+  const [forceRetrain, setForceRetrain] = useState(false);
   const { toast } = useToast();
 
   // Real-time subscription to asset_models for completion tracking
@@ -107,7 +110,7 @@ export function BatchTrainingMonitor() {
           action: 'start',
           assetType: 'crypto', // Support 'crypto', 'stock', or 'both'
           cryptoMaxAssets: 431,
-          forceRetrain: false
+          forceRetrain: forceRetrain
         }
       });
 
@@ -231,24 +234,44 @@ export function BatchTrainingMonitor() {
       </CardHeader>
       <CardContent className="space-y-4">
         {!batchId ? (
-          <Button 
-            onClick={startBatchTraining} 
-            disabled={isStarting}
-            size="lg"
-            className="w-full"
-          >
-            {isStarting ? (
-              <>
-                <Loader2 className="mr-2 h-4 w-4 animate-spin" />
-                Starting...
-              </>
-            ) : (
-              <>
-                <Play className="mr-2 h-4 w-4" />
-                Start Batch Training
-              </>
-            )}
-          </Button>
+          <>
+            <div className="flex items-center space-x-2 p-4 bg-muted rounded-lg">
+              <Checkbox 
+                id="force-retrain" 
+                checked={forceRetrain}
+                onCheckedChange={(checked) => setForceRetrain(checked as boolean)}
+              />
+              <Label 
+                htmlFor="force-retrain" 
+                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70 cursor-pointer"
+              >
+                Force retrain existing models (with validation)
+              </Label>
+            </div>
+            <div className="text-xs text-muted-foreground bg-blue-500/10 p-3 rounded border border-blue-500/20">
+              ℹ️ {forceRetrain 
+                ? "Will retrain ALL models and run walk-forward validation automatically" 
+                : "Will only train models that don't exist yet (skips existing models)"}
+            </div>
+            <Button 
+              onClick={startBatchTraining} 
+              disabled={isStarting}
+              size="lg"
+              className="w-full"
+            >
+              {isStarting ? (
+                <>
+                  <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                  Starting...
+                </>
+              ) : (
+                <>
+                  <Play className="mr-2 h-4 w-4" />
+                  Start Batch Training {forceRetrain && "(Force Retrain)"}
+                </>
+              )}
+            </Button>
+          </>
         ) : (
           <>
             <div className="space-y-2">
