@@ -247,7 +247,7 @@ serve(async (req) => {
     );
 
     // Check for existing model and determine version
-    const { data: existingModel } = await supabaseClient
+    const { data: activeModel } = await supabaseClient
       .from('asset_models')
       .select('id, model_version, model_storage_path')
       .eq('user_id', userId)
@@ -255,7 +255,7 @@ serve(async (req) => {
       .eq('model_status', 'active')
       .single();
 
-    const newVersion = existingModel ? existingModel.model_version + 1 : 1;
+    const newVersion = activeModel ? activeModel.model_version + 1 : 1;
 
     // Generate storage paths
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
@@ -311,12 +311,12 @@ serve(async (req) => {
     console.log(`✅ Model uploaded successfully: ${modelPath}`);
 
     // Archive old model if exists
-    if (existingModel) {
-      console.log(`📦 Archiving old model v${existingModel.model_version}`);
+    if (activeModel) {
+      console.log(`📦 Archiving old model v${activeModel.model_version}`);
       await supabaseClient
         .from('asset_models')
         .update({ model_status: 'archived' })
-        .eq('id', existingModel.id);
+        .eq('id', activeModel.id);
     }
 
     // Save metadata to database (without model_weights)
