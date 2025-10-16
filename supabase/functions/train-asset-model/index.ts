@@ -28,15 +28,15 @@ interface OHLCV {
 }
 
 // Adaptive training configuration based on data size
-// ⚡ ULTRA-FAST MODE: Optimized for edge function CPU limits (~40s total)
+// ⚡ ULTRA-FAST MODE v2: Minimized for edge function CPU limits (~30-40s total)
 function getTrainingConfig(dataSize: number) {
   if (dataSize < 200) {
     return {
       curriculum_stage: 'basic',
       features: 15, // technicals only
       sequence_length: 30,
-      episodes: 2, // ⚡ Ultra-fast: 2 episodes (was 3)
-      maxStepsPerEpisode: 50, // ⚡ Ultra-fast: cap at 50 steps
+      episodes: 1, // ⚡ ULTRA-FAST: 1 episode only
+      maxStepsPerEpisode: 30, // ⚡ ULTRA-FAST: 30 steps max
       enable_action_masking: false,
       enable_structural: false
     };
@@ -45,8 +45,8 @@ function getTrainingConfig(dataSize: number) {
       curriculum_stage: 'with_sr',
       features: 22, // technicals + S/R + regime
       sequence_length: 40,
-      episodes: 2, // ⚡ Ultra-fast: 2 episodes (was 5)
-      maxStepsPerEpisode: 50, // ⚡ Ultra-fast: cap at 50 steps
+      episodes: 1, // ⚡ ULTRA-FAST: 1 episode only
+      maxStepsPerEpisode: 30, // ⚡ ULTRA-FAST: 30 steps max
       enable_action_masking: false,
       enable_structural: true
     };
@@ -56,8 +56,8 @@ function getTrainingConfig(dataSize: number) {
       curriculum_stage: 'full',
       features: 31, // all features
       sequence_length: 50,
-      episodes: 3, // ⚡ Ultra-fast: 3 episodes (was 8)
-      maxStepsPerEpisode: 50, // ⚡ Ultra-fast: cap at 50 steps
+      episodes: 1, // ⚡ ULTRA-FAST: 1 episode only
+      maxStepsPerEpisode: 30, // ⚡ ULTRA-FAST: 30 steps max
       enable_action_masking: true,
       enable_structural: true
     };
@@ -67,16 +67,16 @@ function getTrainingConfig(dataSize: number) {
       curriculum_stage: 'full',
       features: 25, // ⚡ Reduced: core technicals + key structural (remove some Fib/pivot levels)
       sequence_length: 40, // ⚡ Reduced from 50
-      episodes: 2, // ⚡ Reduced from 3
-      maxStepsPerEpisode: 30, // ⚡ Reduced from 50 (saves ~40% compute per episode)
+      episodes: 1, // ⚡ ULTRA-FAST: 1 episode only
+      maxStepsPerEpisode: 30, // ⚡ ULTRA-FAST: 30 steps max
       enable_action_masking: true,
       enable_structural: true // Keep structural but with fewer features
     };
   }
 }
 
-// CPU timeout protection (edge functions have ~150s limit)
-const MAX_TRAINING_TIME_MS = 90000; // ⚡ Ultra-fast: 90 seconds (stricter limit)
+// CPU timeout protection (Pro tier: 200s limit)
+const MAX_TRAINING_TIME_MS = 120000; // ⚡ ULTRA-FAST: 120 seconds (Pro tier buffer)
 
 // Data augmentation for small datasets
 function augmentData(data: OHLCV[], targetSize: number): OHLCV[] {
