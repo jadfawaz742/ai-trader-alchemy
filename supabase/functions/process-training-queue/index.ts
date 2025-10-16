@@ -2,18 +2,18 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 
 /**
- * PROCESS TRAINING QUEUE - v3.1.0
+ * PROCESS TRAINING QUEUE - v3.2.0
  * Deployed: 2025-10-16
- * Purpose: Process MULTIPLE batch training jobs from queue in parallel
+ * Purpose: Process batch training jobs from queue SEQUENTIALLY
  * Config: train-asset-model has verify_jwt=false to accept service role calls
- * Batch Size: 5 jobs per execution for faster processing
- * Update: Force redeploy for 25-feature extraction fix
+ * Batch Size: 1 job per execution to prevent worker pool exhaustion
+ * Update: Sequential processing to avoid WORKER_LIMIT errors
  */
 
-const FEATURE_FIX_VERSION = '3.1.0';
-console.log(`🔧 process-training-queue v${FEATURE_FIX_VERSION} - 25-feature extraction enabled`);
+const FEATURE_FIX_VERSION = '3.2.0';
+console.log(`🔧 process-training-queue v${FEATURE_FIX_VERSION} - SEQUENTIAL processing mode`);
 
-const BATCH_SIZE = 5; // Process 5 jobs in parallel
+const BATCH_SIZE = 1; // Process 1 job at a time (prevents worker pool exhaustion)
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -84,145 +84,145 @@ serve(async (req) => {
       throw updateError;
     }
 
-    // Process all jobs in parallel
-    const results = await Promise.all(
-      jobs.map(async (job) => {
-        try {
-          console.log(`🎯 Training ${job.symbol} for user ${job.user_id}...`);
-          
-          const functionUrl = `${supabaseUrl}/functions/v1/train-asset-model`;
-          const requestBody = {
-            symbol: job.symbol,
-            forceRetrain: true, // Always retrain for queue-based jobs
-            user_id: job.user_id,
-            service_role: true,
-            curriculum_stage: job.curriculum_stage || 'full',
-            use_augmentation: job.use_augmentation || false
-          };
-          
-          const response = await fetch(functionUrl, {
-            method: 'POST',
-            headers: {
-              'Authorization': `Bearer ${supabaseServiceKey}`,
-              'Content-Type': 'application/json',
-            },
-            body: JSON.stringify(requestBody)
-          });
+    // Process jobs SEQUENTIALLY (one at a time) to prevent worker pool exhaustion
+    const results = [];
+    for (const job of jobs) {
+      try {
+        console.log(`🎯 Training ${job.symbol} for user ${job.user_id}...`);
+        
+        const functionUrl = `${supabaseUrl}/functions/v1/train-asset-model`;
+        const requestBody = {
+          symbol: job.symbol,
+          forceRetrain: true, // Always retrain for queue-based jobs
+          user_id: job.user_id,
+          service_role: true,
+          curriculum_stage: job.curriculum_stage || 'full',
+          use_augmentation: job.use_augmentation || false
+        };
+        
+        const response = await fetch(functionUrl, {
+          method: 'POST',
+          headers: {
+            'Authorization': `Bearer ${supabaseServiceKey}`,
+            'Content-Type': 'application/json',
+          },
+          body: JSON.stringify(requestBody)
+        });
 
-          if (!response.ok) {
-            const errorText = await response.text();
-            throw new Error(`HTTP ${response.status}: ${errorText}`);
-          }
+        if (!response.ok) {
+          const errorText = await response.text();
+          throw new Error(`HTTP ${response.status}: ${errorText}`);
+        }
 
-          const trainingResult = await response.json();
-          
-          // Log validation status
-          const validationStatus = trainingResult.validation_triggered 
-            ? (trainingResult.validation_approved ? '✓ VALIDATED' : '✗ NOT APPROVED')
-            : '⚠ NO VALIDATION';
-          
-          console.log(`✅ Training completed for ${job.symbol} [${validationStatus}]`);
+        const trainingResult = await response.json();
+        
+        // Log validation status
+        const validationStatus = trainingResult.validation_triggered 
+          ? (trainingResult.validation_approved ? '✓ VALIDATED' : '✗ NOT APPROVED')
+          : '⚠ NO VALIDATION';
+        
+        console.log(`✅ Training completed for ${job.symbol} [${validationStatus}]`);
 
-          // Update job as completed
+        // Update job as completed
+        await supabase
+          .from('batch_training_jobs')
+          .update({ 
+            status: 'completed',
+            completed_at: new Date().toISOString(),
+            updated_at: new Date().toISOString(),
+            training_data_points: trainingResult?.dataPoints || null,
+            performance_metrics: trainingResult?.metrics || null
+          })
+          .eq('id', job.id);
+
+        results.push({ success: true, symbol: job.symbol });
+
+      } catch (trainError: any) {
+        console.error(`❌ Training failed for ${job.symbol}:`, trainError.message);
+        
+        const errorMessage = trainError.message || 'Training failed';
+        const dataPoints = parseInt(errorMessage.match(/got (\d+)/)?.[1] || '0');
+        
+        // Check if this is a retryable insufficient data error (30-200 bars)
+        if (errorMessage.includes('Insufficient data') && dataPoints >= 30 && dataPoints < 200) {
+          console.log(`🔄 Retrying ${job.symbol} with data augmentation (${dataPoints} bars)`);
+          
+          // Update job to retry with appropriate curriculum and augmentation
+          const curriculum = dataPoints < 50 ? 'basic' : dataPoints < 100 ? 'basic' : 'with_sr';
+          
+          await supabase
+            .from('batch_training_jobs')
+            .update({
+              status: 'queued',
+              priority: 200, // Lower priority for retries
+              error_message: null,
+              curriculum_stage: curriculum,
+              use_augmentation: true,
+              attempt_count: (job.attempt_count || 0) + 1,
+              updated_at: new Date().toISOString()
+            })
+            .eq('id', job.id);
+          
+          results.push({ success: false, symbol: job.symbol, error: 'retrying_with_augmentation' });
+          continue;
+        }
+        
+        // Check if this is a permanent failure
+        const isPermanentFailure = 
+          errorMessage.includes('Not supported symbols') ||
+          errorMessage.includes('symbol not supported') ||
+          errorMessage.includes('Invalid symbol') ||
+          errorMessage.includes('not found on Bybit') ||
+          (errorMessage.includes('Insufficient data') && dataPoints < 30);
+        
+        if (isPermanentFailure) {
           await supabase
             .from('batch_training_jobs')
             .update({ 
-              status: 'completed',
+              status: 'failed',
+              error_message: `[PERMANENT] ${errorMessage}`,
               completed_at: new Date().toISOString(),
               updated_at: new Date().toISOString(),
-              training_data_points: trainingResult?.dataPoints || null,
-              performance_metrics: trainingResult?.metrics || null
+              attempt_count: 999
             })
             .eq('id', job.id);
+          
+          results.push({ success: false, symbol: job.symbol, error: 'permanent_failure' });
+        } else {
+          // Handle retry logic
+          const newAttemptCount = (job.attempt_count || 0) + 1;
+          const maxAttempts = 3;
 
-          return { success: true, symbol: job.symbol };
-
-        } catch (trainError: any) {
-          console.error(`❌ Training failed for ${job.symbol}:`, trainError.message);
-          
-          const errorMessage = trainError.message || 'Training failed';
-          const dataPoints = parseInt(errorMessage.match(/got (\d+)/)?.[1] || '0');
-          
-          // Check if this is a retryable insufficient data error (30-200 bars)
-          if (errorMessage.includes('Insufficient data') && dataPoints >= 30 && dataPoints < 200) {
-            console.log(`🔄 Retrying ${job.symbol} with data augmentation (${dataPoints} bars)`);
-            
-            // Update job to retry with appropriate curriculum and augmentation
-            const curriculum = dataPoints < 50 ? 'basic' : dataPoints < 100 ? 'basic' : 'with_sr';
-            
-            await supabase
-              .from('batch_training_jobs')
-              .update({
-                status: 'queued',
-                priority: 200, // Lower priority for retries
-                error_message: null,
-                curriculum_stage: curriculum,
-                use_augmentation: true,
-                attempt_count: (job.attempt_count || 0) + 1,
-                updated_at: new Date().toISOString()
-              })
-              .eq('id', job.id);
-            
-            return { success: false, symbol: job.symbol, error: 'retrying_with_augmentation' };
-          }
-          
-          // Check if this is a permanent failure
-          const isPermanentFailure = 
-            errorMessage.includes('Not supported symbols') ||
-            errorMessage.includes('symbol not supported') ||
-            errorMessage.includes('Invalid symbol') ||
-            errorMessage.includes('not found on Bybit') ||
-            (errorMessage.includes('Insufficient data') && dataPoints < 30);
-          
-          if (isPermanentFailure) {
+          if (newAttemptCount >= maxAttempts) {
             await supabase
               .from('batch_training_jobs')
               .update({ 
                 status: 'failed',
-                error_message: `[PERMANENT] ${errorMessage}`,
-                completed_at: new Date().toISOString(),
+                error_message: errorMessage,
                 updated_at: new Date().toISOString(),
-                attempt_count: 999
+                completed_at: new Date().toISOString(),
+                attempt_count: newAttemptCount
               })
               .eq('id', job.id);
             
-            return { success: false, symbol: job.symbol, error: 'permanent_failure' };
+            results.push({ success: false, symbol: job.symbol, error: 'max_attempts' });
           } else {
-            // Handle retry logic
-            const newAttemptCount = (job.attempt_count || 0) + 1;
-            const maxAttempts = 3;
-
-            if (newAttemptCount >= maxAttempts) {
-              await supabase
-                .from('batch_training_jobs')
-                .update({ 
-                  status: 'failed',
-                  error_message: errorMessage,
-                  updated_at: new Date().toISOString(),
-                  completed_at: new Date().toISOString(),
-                  attempt_count: newAttemptCount
-                })
-                .eq('id', job.id);
-              
-              return { success: false, symbol: job.symbol, error: 'max_attempts' };
-            } else {
-              await supabase
-                .from('batch_training_jobs')
-                .update({ 
-                  status: 'queued',
-                  error_message: `Attempt ${newAttemptCount} failed: ${errorMessage}`,
-                  updated_at: new Date().toISOString(),
-                  attempt_count: newAttemptCount,
-                  started_at: null
-                })
-                .eq('id', job.id);
-              
-              return { success: false, symbol: job.symbol, error: 'retrying', attempt: newAttemptCount };
-            }
+            await supabase
+              .from('batch_training_jobs')
+              .update({ 
+                status: 'queued',
+                error_message: `Attempt ${newAttemptCount} failed: ${errorMessage}`,
+                updated_at: new Date().toISOString(),
+                attempt_count: newAttemptCount,
+                started_at: null
+              })
+              .eq('id', job.id);
+            
+            results.push({ success: false, symbol: job.symbol, error: 'retrying', attempt: newAttemptCount });
           }
         }
-      })
-    );
+      }
+    }
 
     // Count successes and failures
     const successful = results.filter(r => r.success).length;
@@ -250,7 +250,7 @@ serve(async (req) => {
         failed,
         remaining: count,
         elapsedMs: elapsedTime,
-        version: '3.0.0',
+        version: '3.2.0',
         results
       }),
       { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
