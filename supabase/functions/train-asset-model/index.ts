@@ -62,15 +62,15 @@ function getTrainingConfig(dataSize: number) {
       enable_structural: true
     };
   } else {
-    // ⚡ Minimal config for very large assets (≥600 bars) to avoid CPU timeouts
+    // ⚡ MINI curriculum for very large assets (≥600 bars) to avoid CPU timeouts
     return {
-      curriculum_stage: 'full',
-      features: 25, // ⚡ Reduced: core technicals + key structural (remove some Fib/pivot levels)
-      sequence_length: 40, // ⚡ Reduced from 50
+      curriculum_stage: 'mini',
+      features: 12, // ⚡ MINI: core technicals only (RSI, MACD, EMA, Volume)
+      sequence_length: 30, // ⚡ Reduced from 40 for faster processing
       episodes: 1, // ⚡ ULTRA-FAST: 1 episode only
       maxStepsPerEpisode: 30, // ⚡ ULTRA-FAST: 30 steps max
-      enable_action_masking: true,
-      enable_structural: true // Keep structural but with fewer features
+      enable_action_masking: false, // ⚡ Disable to save computation
+      enable_structural: false // ⚡ Disable structural features for speed
     };
   }
 }
