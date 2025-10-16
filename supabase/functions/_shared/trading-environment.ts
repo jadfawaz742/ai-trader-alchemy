@@ -231,6 +231,23 @@ export class TradingEnvironment {
       ];
     }
     
+    // 25-feature config: core technicals + essential structural (for large assets)
+    if (this.featureConfig.features === 25) {
+      return [
+        ...technicals,                        // 0-14: technicals (15)
+        structural.reg_acc,                   // 15-18: regime (4)
+        structural.reg_adv,
+        structural.reg_dist,
+        structural.reg_decl,
+        structural.vol_regime,                // 19: vol regime (1)
+        structural.dist_to_support,           // 20-21: S/R (2)
+        structural.dist_to_resistance,
+        structural.dist_38_retrace,           // 22-24: key Fibonacci levels (3)
+        structural.dist_61_retrace,
+        structural.dist_127_dn                // Important downside extension
+      ];  // Total: 25 features
+    }
+    
     // Full stage: all 31 features
     return [
       ...technicals,                        // 0-14: technicals
