@@ -3,6 +3,10 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2';
 import { runBacktestSimulation } from './backtest.ts';
 
+// Force redeploy to pick up 25-feature extraction fix in trading-environment.ts
+const FEATURE_FIX_VERSION = '2.0.0';
+console.log(`🔧 advanced-trading-bot v${FEATURE_FIX_VERSION} - 25-feature extraction enabled`);
+
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
   'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',

@@ -2,12 +2,16 @@ import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 import { createClient } from "https://esm.sh/@supabase/supabase-js@2.39.3";
 
 /**
- * PROCESS TRAINING QUEUE - v3.0.0
- * Deployed: 2025-10-15
+ * PROCESS TRAINING QUEUE - v3.1.0
+ * Deployed: 2025-10-16
  * Purpose: Process MULTIPLE batch training jobs from queue in parallel
  * Config: train-asset-model has verify_jwt=false to accept service role calls
  * Batch Size: 5 jobs per execution for faster processing
+ * Update: Force redeploy for 25-feature extraction fix
  */
+
+const FEATURE_FIX_VERSION = '3.1.0';
+console.log(`🔧 process-training-queue v${FEATURE_FIX_VERSION} - 25-feature extraction enabled`);
 
 const BATCH_SIZE = 5; // Process 5 jobs in parallel
 
