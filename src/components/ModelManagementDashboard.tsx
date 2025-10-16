@@ -8,7 +8,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/u
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
-import { AlertTriangle, RefreshCw, FileText, Activity } from 'lucide-react';
+import { AlertTriangle, RefreshCw, FileText, Activity, Clock } from 'lucide-react';
 
 interface AssetModel {
   id: string;
@@ -70,6 +70,7 @@ export function ModelManagementDashboard() {
   const [loading, setLoading] = useState(true);
   const [retraining, setRetraining] = useState<string | null>(null);
   const [selectedValidation, setSelectedValidation] = useState<ModelValidation | null>(null);
+  const [queuedRetrains, setQueuedRetrains] = useState<Set<string>>(new Set());
 
   useEffect(() => {
     if (user) {
@@ -104,9 +105,33 @@ export function ModelManagementDashboard() {
         )
         .subscribe();
 
+      // Track when queued jobs start training
+      const queueChannel = supabase
+        .channel('queue-status')
+        .on(
+          'postgres_changes',
+          {
+            event: 'UPDATE',
+            schema: 'public',
+            table: 'batch_training_jobs',
+            filter: `user_id=eq.${user.id}`
+          },
+          (payload: any) => {
+            if (payload.new.status === 'training') {
+              setQueuedRetrains(prev => {
+                const next = new Set(prev);
+                next.delete(payload.new.symbol);
+                return next;
+              });
+            }
+          }
+        )
+        .subscribe();
+
       return () => {
         supabase.removeChannel(jobsChannel);
         supabase.removeChannel(validationsChannel);
+        supabase.removeChannel(queueChannel);
       };
     }
   }, [user]);
@@ -193,22 +218,30 @@ export function ModelManagementDashboard() {
     
     setRetraining(symbol);
     try {
-      const { error } = await supabase.functions.invoke('train-asset-model', {
-        body: { 
-          user_id: user.id, 
-          symbol: symbol, 
-          forceRetrain: true,
-          use_augmentation: false 
-        }
-      });
+      // Insert job into batch_training_jobs queue
+      const { error } = await supabase
+        .from('batch_training_jobs')
+        .insert({
+          user_id: user.id,
+          symbol: symbol,
+          batch_id: crypto.randomUUID(),
+          status: 'queued',
+          priority: 50, // High priority for manual retrains
+          curriculum_stage: 'full',
+          use_augmentation: false,
+          attempt_count: 0
+        });
 
       if (error) throw error;
 
-      toast.success(`Started retraining ${symbol} with validation`);
+      // Track as queued
+      setQueuedRetrains(prev => new Set(prev).add(symbol));
+
+      toast.success(`${symbol} queued for retraining. Processing starts within 2 minutes.`);
       await loadModels();
     } catch (error: any) {
-      console.error('Error retraining model:', error);
-      toast.error(error.message || 'Failed to start retraining');
+      console.error('Error queueing retrain:', error);
+      toast.error(error.message || 'Failed to queue retraining');
     } finally {
       setRetraining(null);
     }
@@ -413,10 +446,19 @@ export function ModelManagementDashboard() {
                       <Button 
                         size="sm"
                         onClick={() => retrainModel(model.symbol)}
-                        disabled={retraining === model.symbol}
+                        disabled={retraining === model.symbol || queuedRetrains.has(model.symbol)}
                       >
-                        <RefreshCw className={`h-4 w-4 mr-2 ${retraining === model.symbol ? 'animate-spin' : ''}`} />
-                        {retraining === model.symbol ? 'Retraining...' : 'Retrain'}
+                        {queuedRetrains.has(model.symbol) ? (
+                          <>
+                            <Clock className="h-4 w-4 mr-2" />
+                            Queued for Training
+                          </>
+                        ) : (
+                          <>
+                            <RefreshCw className={`h-4 w-4 mr-2 ${retraining === model.symbol ? 'animate-spin' : ''}`} />
+                            {retraining === model.symbol ? 'Retraining...' : 'Retrain'}
+                          </>
+                        )}
                       </Button>
                     )}
                   </div>

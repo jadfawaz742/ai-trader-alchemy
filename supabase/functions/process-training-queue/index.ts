@@ -89,7 +89,7 @@ serve(async (req) => {
           const functionUrl = `${supabaseUrl}/functions/v1/train-asset-model`;
           const requestBody = {
             symbol: job.symbol,
-            forceRetrain: false,
+            forceRetrain: true, // Always retrain for queue-based jobs
             user_id: job.user_id,
             service_role: true,
             curriculum_stage: job.curriculum_stage || 'full',
