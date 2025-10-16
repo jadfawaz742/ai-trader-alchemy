@@ -47,7 +47,7 @@ export type Database = {
           model_storage_path: string | null
           model_type: string
           model_version: number | null
-          model_weights: Json
+          model_weights: Json | null
           performance_metrics: Json | null
           sequence_length: number | null
           structural_features: Json | null
@@ -70,7 +70,7 @@ export type Database = {
           model_storage_path?: string | null
           model_type: string
           model_version?: number | null
-          model_weights: Json
+          model_weights?: Json | null
           performance_metrics?: Json | null
           sequence_length?: number | null
           structural_features?: Json | null
@@ -93,7 +93,7 @@ export type Database = {
           model_storage_path?: string | null
           model_type?: string
           model_version?: number | null
-          model_weights?: Json
+          model_weights?: Json | null
           performance_metrics?: Json | null
           sequence_length?: number | null
           structural_features?: Json | null
