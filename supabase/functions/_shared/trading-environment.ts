@@ -193,8 +193,10 @@ export class TradingEnvironment {
 
   /**
    * Extract features for a single bar (curriculum learning aware)
-   * - 15 features: technicals only (basic stage)
+   * - 12 features: core technicals (mini stage)
+   * - 15 features: all technicals (basic stage)
    * - 22 features: technicals + regime + S/R (with_sr stage)
+   * - 25 features: technicals + regime + S/R + key Fib (large assets)
    * - 31 features: all features (full stage)
    */
   private extractFeatures(index: number): number[] {
@@ -209,7 +211,25 @@ export class TradingEnvironment {
     // Always calculate technicals (15 features)
     const technicals = calculateTechnicalIndicators(windowData, windowData.length - 1);
     
-    // Basic stage: technicals only
+    // MINI stage: core technicals only (12 features)
+    if (this.featureConfig.features === 12) {
+      return [
+        technicals[0],  // RSI
+        technicals[1],  // MACD
+        technicals[2],  // MACD_signal
+        technicals[3],  // MACD_hist
+        technicals[4],  // BB_upper
+        technicals[5],  // BB_middle
+        technicals[6],  // BB_lower
+        technicals[7],  // ATR
+        technicals[8],  // ADX
+        technicals[9],  // Volume_SMA_ratio
+        technicals[10], // EMA_9
+        technicals[11]  // EMA_21
+      ];
+    }
+    
+    // Basic stage: technicals only (15 features)
     if (this.featureConfig.features === 15) {
       return technicals;
     }
