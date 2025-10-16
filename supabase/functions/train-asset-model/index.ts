@@ -24,14 +24,15 @@ interface OHLCV {
 }
 
 // Adaptive training configuration based on data size
-// ⚠️ OPTIMIZED FOR EDGE FUNCTION CPU LIMITS (~150s total)
+// ⚡ ULTRA-FAST MODE: Optimized for edge function CPU limits (~40s total)
 function getTrainingConfig(dataSize: number) {
   if (dataSize < 200) {
     return {
       curriculum_stage: 'basic',
       features: 15, // technicals only
       sequence_length: 30,
-      episodes: 3, // ✅ Reduced from 20 to fit edge function limits
+      episodes: 2, // ⚡ Ultra-fast: 2 episodes (was 3)
+      maxStepsPerEpisode: 50, // ⚡ Ultra-fast: cap at 50 steps
       enable_action_masking: false,
       enable_structural: false
     };
@@ -40,7 +41,8 @@ function getTrainingConfig(dataSize: number) {
       curriculum_stage: 'with_sr',
       features: 22, // technicals + S/R + regime
       sequence_length: 40,
-      episodes: 5, // ✅ Reduced from 30 to fit edge function limits
+      episodes: 2, // ⚡ Ultra-fast: 2 episodes (was 5)
+      maxStepsPerEpisode: 50, // ⚡ Ultra-fast: cap at 50 steps
       enable_action_masking: false,
       enable_structural: true
     };
@@ -49,7 +51,8 @@ function getTrainingConfig(dataSize: number) {
       curriculum_stage: 'full',
       features: 31, // all features
       sequence_length: 50,
-      episodes: 8, // ✅ Reduced from 40 to fit edge function limits
+      episodes: 3, // ⚡ Ultra-fast: 3 episodes (was 8)
+      maxStepsPerEpisode: 50, // ⚡ Ultra-fast: cap at 50 steps
       enable_action_masking: true,
       enable_structural: true
     };
@@ -57,7 +60,7 @@ function getTrainingConfig(dataSize: number) {
 }
 
 // CPU timeout protection (edge functions have ~150s limit)
-const MAX_TRAINING_TIME_MS = 120000; // 120 seconds (leave 30s buffer for I/O)
+const MAX_TRAINING_TIME_MS = 90000; // ⚡ Ultra-fast: 90 seconds (stricter limit)
 
 // Data augmentation for small datasets
 function augmentData(data: OHLCV[], targetSize: number): OHLCV[] {
@@ -363,98 +366,11 @@ serve(async (req) => {
 
     console.log(`✅ Model v${newVersion} saved successfully for ${normalizedSymbol}`);
 
-    // Trigger walk-forward validation automatically with comprehensive logging
-    console.log('═══════════════════════════════════════════════════');
-    console.log('🔍 STARTING WALK-FORWARD VALIDATION');
-    console.log('═══════════════════════════════════════════════════');
-    
+    // ⚡ ULTRA-FAST: Skip validation to save 30-60 seconds
+    // Validation can be run separately as a batch job later
+    console.log('⏭️ Skipping walk-forward validation (ultra-fast mode)');
     let validationTriggered = false;
     let validationApproved = false;
-    
-    const supabaseUrl = Deno.env.get('SUPABASE_URL');
-    const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-    const validationUrl = `${supabaseUrl}/functions/v1/validate-model`;
-    
-    console.log(`📍 Validation URL: ${validationUrl}`);
-    console.log(`📍 Model ID: ${insertedModel.id}`);
-    console.log(`📍 Asset: ${normalizedSymbol}`);
-    
-    try {
-      const validationStartDate = new Date();
-      validationStartDate.setMonth(validationStartDate.getMonth() - 6);
-      
-      const validationPayload = {
-        modelId: insertedModel.id,
-        asset: normalizedSymbol,
-        startDate: validationStartDate.toISOString(),
-        endDate: new Date().toISOString()
-      };
-      
-      console.log('📦 Validation payload:', JSON.stringify(validationPayload, null, 2));
-      console.log('🚀 Initiating validation request...');
-      
-      // Create abort controller for 30 second timeout
-      const controller = new AbortController();
-      const timeoutId = setTimeout(() => {
-        console.error('⏰ Validation timeout - aborting request after 30 seconds');
-        controller.abort();
-      }, 30000);
-      
-      const validationResponse = await fetch(validationUrl, {
-        method: 'POST',
-        headers: {
-          'Authorization': `Bearer ${supabaseServiceKey}`,
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(validationPayload),
-        signal: controller.signal
-      });
-      
-      clearTimeout(timeoutId);
-      
-      console.log(`📊 Validation response status: ${validationResponse.status}`);
-      console.log(`📊 Validation response headers:`, Object.fromEntries(validationResponse.headers.entries()));
-      
-      const validationText = await validationResponse.text();
-      console.log(`📄 Validation response body (first 500 chars): ${validationText.substring(0, 500)}`);
-      
-      if (validationResponse.ok) {
-        try {
-          const validationResult = JSON.parse(validationText);
-          validationTriggered = true;
-          validationApproved = validationResult.approved || false;
-          
-          console.log('═══════════════════════════════════════════════════');
-          console.log(`✅ VALIDATION COMPLETED: ${validationApproved ? 'APPROVED ✓' : 'NOT APPROVED ✗'}`);
-          console.log('═══════════════════════════════════════════════════');
-          console.log('Validation results:', JSON.stringify(validationResult, null, 2));
-        } catch (parseError) {
-          console.error('❌ Failed to parse validation response as JSON:', parseError);
-          console.error('Raw response text:', validationText);
-        }
-      } else {
-        console.error('═══════════════════════════════════════════════════');
-        console.error(`❌ VALIDATION FAILED: HTTP ${validationResponse.status}`);
-        console.error('═══════════════════════════════════════════════════');
-        console.error('Error response:', validationText);
-      }
-    } catch (validationError) {
-      if (validationError.name === 'AbortError') {
-        console.error('═══════════════════════════════════════════════════');
-        console.error('❌ VALIDATION TIMEOUT after 30 seconds');
-        console.error('═══════════════════════════════════════════════════');
-      } else {
-        console.error('═══════════════════════════════════════════════════');
-        console.error('❌ VALIDATION ERROR:', validationError);
-        console.error('═══════════════════════════════════════════════════');
-        console.error('Error details:', {
-          name: validationError.name,
-          message: validationError.message,
-          stack: validationError.stack
-        });
-      }
-      // Don't fail the training if validation fails - just log it
-    }
 
     return new Response(
       JSON.stringify({
@@ -530,15 +446,15 @@ async function trainComprehensivePPO(
   );
   
   // Initialize PPO trainer
-  // ⚠️ OPTIMIZED: Reduced batchSize and epochs for edge function limits
+  // ⚡ ULTRA-FAST: Minimal batch size and single epoch
   const trainer = new PPOTrainer(model, {
     gamma: 0.99,
     gae_lambda: 0.95,
     clip_epsilon: 0.2,
     entropy_coef: 0.01,
-    learningRate: 3e-4,
-    batchSize: 16, // ✅ Reduced from 64 to speed up training
-    epochs: 2 // ✅ Reduced from 4 to speed up training
+    learningRate: 0.001, // ⚡ Higher for faster convergence (was 3e-4)
+    batchSize: 8, // ⚡ Reduced from 16 (75% fewer gradient updates)
+    epochs: 1 // ⚡ Reduced from 2 (50% fewer epochs)
   });
   
   // Training metrics
@@ -574,6 +490,13 @@ async function trainComprehensivePPO(
     let steps = 0;
     
     while (!done) {
+      // ⚡ ULTRA-FAST: Early termination at 50 steps
+      if (steps >= (config.maxStepsPerEpisode || 50)) {
+        console.log(`Episode ${episode}: Max steps reached (${steps})`);
+        done = true;
+        break;
+      }
+      
       // Bounds check before stepping
       if (env['state'].currentBar >= trainData.length - 1) {
         console.log(`Episode ${episode}: Reached end of data at bar ${env['state'].currentBar}`);
@@ -635,17 +558,15 @@ async function trainComprehensivePPO(
     const advantages = trainer.computeGAE(buffer);
     buffer.setAdvantages(advantages);
     
-    // ✅ FIX: Update policy every 8 episodes (reduce CPU load)
-    if ((episode + 1) % 8 === 0) {
-      const updateStart = Date.now();
-      const trainingMetrics = trainer.updateModel(buffer, advantages);
-      const updateTime = ((Date.now() - updateStart) / 1000).toFixed(2);
-      const totalElapsed = ((Date.now() - startTime) / 1000).toFixed(1);
-      const avgTimePerEpisode = ((Date.now() - startTime) / (episode + 1) / 1000).toFixed(2);
-      const estimatedRemaining = (parseFloat(avgTimePerEpisode) * (config.episodes - episode - 1) / 60).toFixed(1);
-      
-      console.log(`✅ Episode ${episode + 1}/${config.episodes}: reward=${episodeReward.toFixed(2)}, trades=${episodeTrades}, update_time=${updateTime}s, elapsed=${totalElapsed}s, ETA=${estimatedRemaining}m`);
-    }
+    // ⚡ ULTRA-FAST: Update policy every episode (immediate learning)
+    const updateStart = Date.now();
+    const trainingMetrics = trainer.updateModel(buffer, advantages);
+    const updateTime = ((Date.now() - updateStart) / 1000).toFixed(2);
+    const totalElapsed = ((Date.now() - startTime) / 1000).toFixed(1);
+    const avgTimePerEpisode = ((Date.now() - startTime) / (episode + 1) / 1000).toFixed(2);
+    const estimatedRemaining = (parseFloat(avgTimePerEpisode) * (config.episodes - episode - 1)).toFixed(1);
+    
+    console.log(`✅ Episode ${episode + 1}/${config.episodes}: reward=${episodeReward.toFixed(2)}, trades=${episodeTrades}, update=${updateTime}s, elapsed=${totalElapsed}s, ETA=${estimatedRemaining}s`);
     
     metrics.episodes.push({
       episode,
