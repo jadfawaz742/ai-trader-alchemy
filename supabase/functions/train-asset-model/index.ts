@@ -46,7 +46,8 @@ function getTrainingConfig(dataSize: number) {
       enable_action_masking: false,
       enable_structural: true
     };
-  } else {
+  } else if (dataSize < 600) {
+    // Standard full config for medium-large assets
     return {
       curriculum_stage: 'full',
       features: 31, // all features
@@ -55,6 +56,17 @@ function getTrainingConfig(dataSize: number) {
       maxStepsPerEpisode: 50, // ⚡ Ultra-fast: cap at 50 steps
       enable_action_masking: true,
       enable_structural: true
+    };
+  } else {
+    // ⚡ Minimal config for very large assets (≥600 bars) to avoid CPU timeouts
+    return {
+      curriculum_stage: 'full',
+      features: 25, // ⚡ Reduced: core technicals + key structural (remove some Fib/pivot levels)
+      sequence_length: 40, // ⚡ Reduced from 50
+      episodes: 2, // ⚡ Reduced from 3
+      maxStepsPerEpisode: 30, // ⚡ Reduced from 50 (saves ~40% compute per episode)
+      enable_action_masking: true,
+      enable_structural: true // Keep structural but with fewer features
     };
   }
 }
