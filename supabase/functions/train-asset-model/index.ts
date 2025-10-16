@@ -24,13 +24,14 @@ interface OHLCV {
 }
 
 // Adaptive training configuration based on data size
+// ⚠️ OPTIMIZED FOR EDGE FUNCTION CPU LIMITS (~150s total)
 function getTrainingConfig(dataSize: number) {
   if (dataSize < 200) {
     return {
       curriculum_stage: 'basic',
       features: 15, // technicals only
       sequence_length: 30,
-      episodes: 20, // ✅ Reduced for edge function CPU limits
+      episodes: 3, // ✅ Reduced from 20 to fit edge function limits
       enable_action_masking: false,
       enable_structural: false
     };
@@ -39,7 +40,7 @@ function getTrainingConfig(dataSize: number) {
       curriculum_stage: 'with_sr',
       features: 22, // technicals + S/R + regime
       sequence_length: 40,
-      episodes: 30, // ✅ Reduced for edge function CPU limits
+      episodes: 5, // ✅ Reduced from 30 to fit edge function limits
       enable_action_masking: false,
       enable_structural: true
     };
@@ -48,15 +49,15 @@ function getTrainingConfig(dataSize: number) {
       curriculum_stage: 'full',
       features: 31, // all features
       sequence_length: 50,
-      episodes: 40, // ✅ Significantly reduced for edge function CPU limits
+      episodes: 8, // ✅ Reduced from 40 to fit edge function limits
       enable_action_masking: true,
       enable_structural: true
     };
   }
 }
 
-// CPU timeout protection (edge functions have 60s limit)
-const MAX_TRAINING_TIME_MS = 50000; // 50 seconds (leave 10s buffer)
+// CPU timeout protection (edge functions have ~150s limit)
+const MAX_TRAINING_TIME_MS = 120000; // 120 seconds (leave 30s buffer for I/O)
 
 // Data augmentation for small datasets
 function augmentData(data: OHLCV[], targetSize: number): OHLCV[] {
@@ -529,14 +530,15 @@ async function trainComprehensivePPO(
   );
   
   // Initialize PPO trainer
+  // ⚠️ OPTIMIZED: Reduced batchSize and epochs for edge function limits
   const trainer = new PPOTrainer(model, {
     gamma: 0.99,
     gae_lambda: 0.95,
     clip_epsilon: 0.2,
     entropy_coef: 0.01,
     learningRate: 3e-4,
-    batchSize: 64,
-    epochs: 4
+    batchSize: 16, // ✅ Reduced from 64 to speed up training
+    epochs: 2 // ✅ Reduced from 4 to speed up training
   });
   
   // Training metrics
