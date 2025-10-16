@@ -122,3 +122,6 @@ verify_jwt = true
 
 [functions.process-backtest-queue]
 verify_jwt = false
+
+[functions.validate-pending-models]
+verify_jwt = false

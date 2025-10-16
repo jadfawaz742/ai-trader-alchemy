@@ -55,7 +55,7 @@ interface TrainingJob {
   error_message: string | null;
 }
 
-type ModelStatus = 'training' | 'trained' | 'validated' | 'failed' | 'not_validated';
+type ModelStatus = 'training' | 'trained' | 'validated' | 'failed' | 'not_validated' | 'pending_validation';
 
 interface ModelWithStatus {
   model: AssetModel;
@@ -164,9 +164,11 @@ export function ModelManagementDashboard() {
         let status: ModelStatus;
         if (trainingJob?.status === 'training' || trainingJob?.status === 'queued') {
           status = 'training';
-        } else if (validation?.approved) {
+        } else if ((model as any).model_status === 'pending_validation') {
+          status = 'pending_validation';
+        } else if ((model as any).model_status === 'active' || validation?.approved) {
           status = 'validated';
-        } else if (validation?.approved === false) {
+        } else if ((model as any).model_status === 'failed_validation' || validation?.approved === false) {
           status = 'failed';
         } else if (model.training_data_points && model.training_data_points > 0) {
           status = 'not_validated';
@@ -216,6 +218,8 @@ export function ModelManagementDashboard() {
     switch (status) {
       case 'training':
         return <Badge variant="default" className="bg-blue-500"><Activity className="h-3 w-3 mr-1" />Training</Badge>;
+      case 'pending_validation':
+        return <Badge variant="default" className="bg-orange-500">🔄 Pending Validation</Badge>;
       case 'validated':
         return <Badge variant="default" className="bg-green-500">✅ Validated</Badge>;
       case 'failed':

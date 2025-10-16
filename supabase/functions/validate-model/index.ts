@@ -159,14 +159,15 @@ serve(async (req) => {
     }
 
     // 11. Update model status based on validation result
-    const newStatus = report.approved ? 'validated' : 'rejected';
+    const newModelStatus = report.approved ? 'active' : 'failed_validation';
     const { error: statusError } = await supabase
       .from('asset_models')
       .update({ 
+        model_status: newModelStatus, // ✅ Set model_status for signal generation
         updated_at: new Date().toISOString(),
         performance_metrics: {
           ...(modelData.performance_metrics || {}),
-          validation_status: newStatus,
+          validation_status: newModelStatus,
           validation_id: validationRecord.id,
           last_validated: new Date().toISOString()
         }
@@ -177,7 +178,7 @@ serve(async (req) => {
       console.error('⚠️ Failed to update model status:', statusError);
     }
 
-    console.log(`✅ Validation complete. Model status: ${newStatus}`);
+    console.log(`✅ Validation complete. Model status: ${newModelStatus}`);
 
     return new Response(JSON.stringify({
       success: true,

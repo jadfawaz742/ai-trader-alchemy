@@ -334,7 +334,7 @@ serve(async (req) => {
         model_storage_path: modelPath,
         metadata_storage_path: metadataPath,
         model_version: newVersion,
-        model_status: 'active',
+        model_status: 'pending_validation', // 🔄 Mark as pending validation
         action_space: {
           direction: 3,
           tp_offset: [-0.5, 0.5],
@@ -365,10 +365,9 @@ serve(async (req) => {
     }
 
     console.log(`✅ Model v${newVersion} saved successfully for ${normalizedSymbol}`);
-
-    // ⚡ ULTRA-FAST: Skip validation to save 30-60 seconds
-    // Validation can be run separately as a batch job later
-    console.log('⏭️ Skipping walk-forward validation (ultra-fast mode)');
+    console.log('🔄 Model marked as "pending_validation" - validation will run via cron job');
+    console.log('⏭️ Skipping inline validation (split training/validation architecture)');
+    
     let validationTriggered = false;
     let validationApproved = false;
 
