@@ -10,7 +10,7 @@ import { extractStructuralFeatures } from '../_shared/structural-features.ts';
 import { calculateTechnicalIndicators } from '../_shared/technical-indicators.ts';
 
 // Force redeploy to pick up 25-feature extraction fix in trading-environment.ts
-const FEATURE_FIX_VERSION = '2.0.0';
+const FEATURE_FIX_VERSION = '2.0.1-phase1';
 console.log(`🔧 train-asset-model v${FEATURE_FIX_VERSION} - 25-feature extraction enabled`);
 
 const corsHeaders = {
