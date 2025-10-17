@@ -421,7 +421,7 @@ async function fetchHistoricalData(symbol: string): Promise<OHLCV[]> {
       interval: '1d'
     });
     
-    return data.map((d: MarketDataPoint) => ({
+    const mappedData = data.map((d: MarketDataPoint) => ({
       timestamp: d.timestamp,
       open: d.open,
       high: d.high,
@@ -429,6 +429,13 @@ async function fetchHistoricalData(symbol: string): Promise<OHLCV[]> {
       close: d.close,
       volume: d.volume
     }));
+    
+    // 🔧 PHASE 1 FIX: Limit to last 300 bars to prevent WORKER_LIMIT errors
+    // This ensures training completes within edge function limits
+    const limitedData = mappedData.slice(-300);
+    console.log(`📊 Data limited from ${mappedData.length} to ${limitedData.length} bars`);
+    
+    return limitedData;
   } catch (error) {
     console.error(`❌ Error fetching training data:`, error);
     throw error;
