@@ -12,6 +12,8 @@ import torch
 import torch.nn as nn
 from torch.distributions import Categorical, Normal
 import numpy as np
+import json
+from datetime import datetime
 
 from ppo_env import PPOTickEnv
 from reward import reward_function  # just to ensure import works
@@ -197,6 +199,25 @@ def train(symbol: str,
     final_path = os.path.join(ckpt_dir, "final_model.pt")
     torch.save(policy.state_dict(), final_path)
     print(f"[DONE] saved {final_path}")
+    
+    # Save model metadata for tracking
+    metadata = {
+        "symbol": symbol,
+        "asset_type": asset_type or "auto-detected",
+        "version": 1,
+        "trained_at": datetime.utcnow().isoformat(),
+        "total_updates": total_updates,
+        "n_steps": n_steps,
+        "sequence_length": 50,  # From PPOTickEnv
+        "hidden_size": 128,     # From ActorCritic (256 shared -> simplified to 128 for metadata)
+        "model_path": final_path,
+        "training_completed": True
+    }
+    
+    metadata_path = os.path.join(ckpt_dir, "model_metadata.json")
+    with open(metadata_path, 'w') as f:
+        json.dump(metadata, f, indent=2)
+    print(f"[METADATA] saved {metadata_path}")
 
 if __name__ == "__main__":
     import argparse

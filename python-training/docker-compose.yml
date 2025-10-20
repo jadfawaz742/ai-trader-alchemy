@@ -16,9 +16,13 @@ services:
       - BINANCE_API_KEY=${BINANCE_API_KEY}
       - BINANCE_API_SECRET=${BINANCE_API_SECRET}
       - CUDA_VISIBLE_DEVICES=${CUDA_VISIBLE_DEVICES:-0}
+      - GPU_API_KEY=${GPU_API_KEY}
       - SERVER_HOST=${SERVER_HOST:-0.0.0.0}
       - SERVER_PORT=${SERVER_PORT:-8000}
       - LOG_LEVEL=${LOG_LEVEL:-INFO}
+      - ENABLE_HTTPS=${ENABLE_HTTPS:-false}
+      - SSL_CERT_PATH=${SSL_CERT_PATH:-/app/ssl/cert.pem}
+      - SSL_KEY_PATH=${SSL_KEY_PATH:-/app/ssl/key.pem}
     volumes:
       # Persist checkpoints and logs
       - ./checkpoints:/app/checkpoints
@@ -30,7 +34,7 @@ services:
         reservations:
           devices:
             - driver: nvidia
-              count: 1
+              count: 4  # Use all 4x A16 GPUs
               capabilities: [gpu]
     logging:
       driver: "json-file"

@@ -4,7 +4,7 @@ FastAPI GPU Training Server
 Receives training requests from Supabase Edge Functions and executes PPO training on GPU.
 """
 
-from fastapi import FastAPI, BackgroundTasks, HTTPException
+from fastapi import FastAPI, BackgroundTasks, HTTPException, Header
 from pydantic import BaseModel
 import os
 import subprocess
@@ -16,6 +16,11 @@ from typing import Optional
 
 # Load environment variables
 load_dotenv()
+
+# Load GPU API key for authentication
+GPU_API_KEY = os.getenv("GPU_API_KEY")
+if not GPU_API_KEY:
+    logger.warning("⚠️ GPU_API_KEY not set - API authentication disabled!")
 
 # Configure logging
 logging.basicConfig(
@@ -113,13 +118,25 @@ async def health_check():
 
 
 @app.post("/train", response_model=TrainingStatus)
-async def train_model(request: TrainingRequest, background_tasks: BackgroundTasks):
+async def train_model(
+    request: TrainingRequest,
+    background_tasks: BackgroundTasks,
+    x_api_key: str = Header(None, alias="X-API-Key")
+):
     """
     Trigger GPU training for a financial asset
     
     This endpoint starts a background training job and returns immediately.
     The training results will be uploaded to Supabase Storage upon completion.
     """
+    
+    # Authenticate API key
+    if GPU_API_KEY and x_api_key != GPU_API_KEY:
+        logger.warning(f"❌ Invalid API key attempt from user {request.user_id}")
+        raise HTTPException(
+            status_code=401,
+            detail="Invalid or missing API key"
+        )
     
     # Validate request
     if not request.symbol or not request.user_id:
@@ -287,7 +304,9 @@ async def run_training(
             
             # Save model path info
             model_path = f"PPO_Models/{asset_type}/{symbol}/models/final_model.pt"
+            metadata_path = f"PPO_Models/{asset_type}/{symbol}/models/model_metadata.json"
             active_jobs[job_id]["model_path"] = model_path
+            active_jobs[job_id]["metadata_path"] = metadata_path
             
             # Try to parse performance metrics from output
             try:
@@ -339,6 +358,7 @@ if __name__ == "__main__":
     logger.info(f"   Host: {host}")
     logger.info(f"   Port: {port}")
     logger.info(f"   Workers: {workers}")
+    logger.info(f"   API Auth: {'Enabled' if GPU_API_KEY else 'Disabled'}")
     logger.info("=" * 60)
     
     # Check GPU availability
@@ -353,11 +373,28 @@ if __name__ == "__main__":
     except ImportError:
         logger.error("❌ PyTorch not installed!")
     
+    # HTTPS configuration
+    enable_https = os.getenv("ENABLE_HTTPS", "false").lower() == "true"
+    ssl_config = {}
+    
+    if enable_https:
+        ssl_cert = os.getenv("SSL_CERT_PATH")
+        ssl_key = os.getenv("SSL_KEY_PATH")
+        if ssl_cert and ssl_key and os.path.exists(ssl_cert) and os.path.exists(ssl_key):
+            ssl_config = {
+                "ssl_certfile": ssl_cert,
+                "ssl_keyfile": ssl_key
+            }
+            logger.info(f"🔒 HTTPS enabled with certificate: {ssl_cert}")
+        else:
+            logger.warning("⚠️ HTTPS enabled but certificates not found!")
+    
     # Start server
     uvicorn.run(
         app,
         host=host,
         port=port,
         workers=workers,
-        log_level="info"
+        log_level="info",
+        **ssl_config
     )
