@@ -10,8 +10,8 @@ import { extractStructuralFeatures } from '../_shared/structural-features.ts';
 import { calculateTechnicalIndicators } from '../_shared/technical-indicators.ts';
 
 // Force redeploy to pick up 25-feature extraction fix in trading-environment.ts
-const FEATURE_FIX_VERSION = '2.0.1-phase1';
-console.log(`🔧 train-asset-model v${FEATURE_FIX_VERSION} - 25-feature extraction enabled`);
+const FEATURE_FIX_VERSION = '2.1.0-gpu-integration';
+console.log(`🔧 train-asset-model v${FEATURE_FIX_VERSION} - GPU server integration enabled`);
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',
@@ -188,7 +188,56 @@ serve(async (req) => {
 
     const { symbol: normalizedSymbol, forceRetrain } = validatedData;
     const useAugmentation = requestBody.use_augmentation || false;
+    const episodes = requestBody.episodes || 1000;
     console.log(`Training model for asset: ${normalizedSymbol} (forceRetrain: ${forceRetrain}, augmentation: ${useAugmentation})`);
+
+    // 🚀 GPU SERVER INTEGRATION: Try GPU training first, fallback to TypeScript
+    const gpuServerUrl = Deno.env.get('GPU_SERVER_URL');
+    if (gpuServerUrl) {
+      console.log(`🎯 GPU server configured: ${gpuServerUrl}`);
+      try {
+        console.log(`🚀 Attempting GPU training for ${normalizedSymbol}...`);
+        const gpuResponse = await fetch(`${gpuServerUrl}/train`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            symbol: normalizedSymbol,
+            user_id: userId,
+            episodes: episodes,
+            force_retrain: forceRetrain
+          }),
+          signal: AbortSignal.timeout(5000) // 5s timeout for GPU server response
+        });
+
+        if (gpuResponse.ok) {
+          const gpuResult = await gpuResponse.json();
+          console.log(`✅ GPU training initiated successfully for ${normalizedSymbol}`);
+          return new Response(
+            JSON.stringify({
+              success: true,
+              symbol: normalizedSymbol,
+              message: 'GPU training started in background',
+              training_mode: 'gpu',
+              gpu_status: gpuResult,
+              episodes: episodes
+            }),
+            { headers: { ...corsHeaders, 'Content-Type': 'application/json' } }
+          );
+        } else {
+          const errorText = await gpuResponse.text();
+          console.warn(`⚠️ GPU server returned error (${gpuResponse.status}): ${errorText}`);
+          console.log(`⏩ Falling back to TypeScript training...`);
+        }
+      } catch (gpuError) {
+        console.warn(`⚠️ GPU server unavailable: ${gpuError.message}`);
+        console.log(`⏩ Falling back to TypeScript training...`);
+      }
+    } else {
+      console.log(`ℹ️ GPU_SERVER_URL not configured, using TypeScript training`);
+    }
+
+    // FALLBACK: TypeScript training (original implementation)
+    console.log(`🔧 Starting TypeScript-based training for ${normalizedSymbol}...`);
 
     // Check if model already exists
     const { data: existingModel, error: checkError } = await supabaseClient
