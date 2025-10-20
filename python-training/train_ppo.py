@@ -18,6 +18,29 @@ from reward import reward_function  # just to ensure import works
 
 CRYPTO_ROOT = "PPO_Models/Crypto"
 
+def get_asset_root(symbol: str, asset_type: str = None) -> str:
+    """
+    Get root path for asset based on type or auto-detect.
+    
+    Args:
+        symbol: Asset symbol
+        asset_type: Optional explicit type ('Cryptocurrencies' or 'Stocks')
+    
+    Returns:
+        Root path for the asset
+    """
+    if asset_type:
+        return f"PPO_Models/{asset_type}/{symbol}"
+    
+    # Auto-detect if not specified
+    crypto_suffixes = ['USDT', 'BUSD', 'BTC', 'ETH', 'BNB', 'USDC']
+    symbol_upper = symbol.upper()
+    
+    if any(symbol_upper.endswith(suffix) for suffix in crypto_suffixes):
+        return f"PPO_Models/Cryptocurrencies/{symbol}"
+    else:
+        return f"PPO_Models/Stocks/{symbol}"
+
 # ---------- Simple Actor-Critic (hybrid head) ----------
 class ActorCritic(nn.Module):
     def __init__(self, state_dim: int, disc_n: int = 3, cont_n: int = 2):
@@ -134,12 +157,15 @@ def ppo_update(policy, optimizer, batch,
             optimizer.step()
 
 def train(symbol: str,
+          asset_type: str = None,
           n_steps=4096, total_updates=2000,
           ppo_epochs=5, batch_size=256, lr=3e-4,
-          gamma=0.99, lam=0.95,
-          ckpt_dir="PPO_Models/Crypto/CKPTS"):
+          gamma=0.99, lam=0.95):
+    # Get correct asset root path
+    asset_root = get_asset_root(symbol, asset_type)
+    
     # load features
-    fpath = os.path.join(CRYPTO_ROOT, symbol, "features", "features.parquet")
+    fpath = os.path.join(asset_root, "features", "features.parquet")
     if not os.path.exists(fpath):
         raise FileNotFoundError(f"Missing features: {fpath}")
     df = pd.read_parquet(fpath)
@@ -152,6 +178,8 @@ def train(symbol: str,
     policy = ActorCritic(state_dim)
     optimizer = torch.optim.Adam(policy.parameters(), lr=lr)
 
+    # Save checkpoints in asset-specific models folder
+    ckpt_dir = os.path.join(asset_root, "models")
     os.makedirs(ckpt_dir, exist_ok=True)
 
     steps = 0
@@ -162,19 +190,22 @@ def train(symbol: str,
         steps += n_steps
 
         if upd % 50 == 0:
-            path = os.path.join(ckpt_dir, f"{symbol}_ppo_{steps}.pt")
+            path = os.path.join(ckpt_dir, f"checkpoint_step_{steps}.pt")
             torch.save(policy.state_dict(), path)
             print(f"[CKPT] {path}")
 
-    final_path = os.path.join(ckpt_dir, f"{symbol}_ppo_final.pt")
+    final_path = os.path.join(ckpt_dir, "final_model.pt")
     torch.save(policy.state_dict(), final_path)
     print(f"[DONE] saved {final_path}")
 
 if __name__ == "__main__":
     import argparse
     p = argparse.ArgumentParser()
-    p.add_argument("--symbol", required=True)
+    p.add_argument("--symbol", required=True, help="Asset symbol (e.g., BTCUSDT or AAPL)")
+    p.add_argument("--asset_type", choices=["Cryptocurrencies", "Stocks"], 
+                   help="Asset type (optional, auto-detected if not provided)")
     p.add_argument("--steps", type=int, default=4096)
     p.add_argument("--updates", type=int, default=2000)
     args = p.parse_args()
-    train(symbol=args.symbol, n_steps=args.steps, total_updates=args.updates)
+    train(symbol=args.symbol, asset_type=args.asset_type, 
+          n_steps=args.steps, total_updates=args.updates)

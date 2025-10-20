@@ -31,16 +31,39 @@ from tp_sl_suggest import build_tp_sl_suggestions
 CRYPTO_ROOT = "PPO_Models/Crypto"
 
 
+def get_asset_root(symbol: str) -> str:
+    """
+    Auto-detect if symbol is crypto or stock based on naming convention.
+    
+    Crypto symbols typically end with: USDT, BUSD, BTC, ETH, BNB
+    Stock symbols are typically 1-5 letters without crypto suffixes.
+    
+    Returns:
+        Root path for the asset type
+    """
+    crypto_suffixes = ['USDT', 'BUSD', 'BTC', 'ETH', 'BNB', 'USDC']
+    symbol_upper = symbol.upper()
+    
+    if any(symbol_upper.endswith(suffix) for suffix in crypto_suffixes):
+        return f"PPO_Models/Cryptocurrencies/{symbol}"
+    else:
+        return f"PPO_Models/Stocks/{symbol}"
+
+
 def run_features_pipeline(symbol: str) -> None:
     """
     Assemble full features for a single crypto asset (symbol), then save.
 
     Input :
-        PPO_Models/Crypto/<ASSET>/data/processed.parquet
+        PPO_Models/Cryptocurrencies/<ASSET>/data/processed.parquet
+        PPO_Models/Stocks/<ASSET>/data/processed.parquet
     Output:
-        PPO_Models/Crypto/<ASSET>/features/features.parquet
+        PPO_Models/Cryptocurrencies/<ASSET>/features/features.parquet
+        PPO_Models/Stocks/<ASSET>/features/features.parquet
     """
-    data_dir = os.path.join(CRYPTO_ROOT, symbol, "data")
+    # Auto-detect asset type and get correct root path
+    asset_root = get_asset_root(symbol)
+    data_dir = os.path.join(asset_root, "data")
     in_path  = os.path.join(data_dir, "processed.parquet")
 
     if not os.path.exists(in_path):
@@ -68,7 +91,7 @@ def run_features_pipeline(symbol: str) -> None:
     dropped = before - after
     print(f"    -> dropped {dropped} rows; final rows = {after}")
 
-    out_dir = os.path.join(CRYPTO_ROOT, symbol, "features")
+    out_dir = os.path.join(asset_root, "features")
     os.makedirs(out_dir, exist_ok=True)
     out_path = os.path.join(out_dir, "features.parquet")
 

@@ -35,6 +35,24 @@ app = FastAPI(
 active_jobs = {}
 
 
+def detect_asset_type(symbol: str) -> tuple[str, str]:
+    """
+    Detect if symbol is crypto or stock and return (asset_type, data_script).
+    
+    Returns:
+        (asset_type, data_script_path)
+        e.g., ("Cryptocurrencies", "Data-Preparation.py")
+             ("Stocks", "Stock-Data-Preparation.py")
+    """
+    crypto_suffixes = ['USDT', 'BUSD', 'BTC', 'ETH', 'BNB', 'USDC']
+    symbol_upper = symbol.upper()
+    
+    if any(symbol_upper.endswith(suffix) for suffix in crypto_suffixes):
+        return "Cryptocurrencies", "Data-Preparation.py"
+    else:
+        return "Stocks", "Stock-Data-Preparation.py"
+
+
 class TrainingRequest(BaseModel):
     """Training request schema"""
     symbol: str
@@ -184,51 +202,97 @@ async def run_training(
     force_retrain: bool
 ):
     """
-    Execute training script as subprocess
+    Execute training pipeline as subprocess.
     
-    This runs train_ppo.py which will:
-    1. Fetch market data from Binance/Yahoo Finance
-    2. Extract 31 features using features_pipeline.py
-    3. Train LSTM-PPO model on GPU
-    4. Upload trained model to Supabase Storage
-    5. Update asset_models table in Supabase
+    Pipeline steps:
+    1. Detect asset type (Crypto vs Stock)
+    2. Fetch market data (Binance for crypto, Interactive Brokers for stocks)
+    3. Build features using features_pipeline.py
+    4. Train LSTM-PPO model on GPU using train_ppo.py
+    5. Upload trained model to Supabase Storage
+    6. Update asset_models table in Supabase
     """
     try:
-        logger.info(f"🎯 Executing training script for job {job_id}...")
+        logger.info(f"🎯 Starting training pipeline for job {job_id}...")
         
-        # Build command
-        cmd = [
+        # Detect asset type
+        asset_type, data_script = detect_asset_type(symbol)
+        logger.info(f"   Detected asset type: {asset_type}")
+        logger.info(f"   Using data script: {data_script}")
+        logger.info(f"   Output path: PPO_Models/{asset_type}/{symbol}/")
+        
+        # Update job status
+        active_jobs[job_id]["status"] = "fetching_data"
+        active_jobs[job_id]["asset_type"] = asset_type
+        
+        # STEP 1: Fetch market data
+        logger.info(f"📊 [1/3] Fetching market data for {symbol}...")
+        data_cmd = ["python", data_script, "--symbol", symbol]
+        
+        data_result = subprocess.run(
+            data_cmd,
+            capture_output=True,
+            text=True,
+            timeout=600  # 10 min timeout for data fetching
+        )
+        
+        if data_result.returncode != 0:
+            raise RuntimeError(f"Data fetching failed: {data_result.stderr}")
+        
+        logger.info(f"✅ Data fetched successfully")
+        
+        # STEP 2: Build features
+        logger.info(f"🔧 [2/3] Building features for {symbol}...")
+        active_jobs[job_id]["status"] = "building_features"
+        
+        features_cmd = ["python", "features_pipeline.py", "--symbol", symbol]
+        
+        features_result = subprocess.run(
+            features_cmd,
+            capture_output=True,
+            text=True,
+            timeout=600  # 10 min timeout
+        )
+        
+        if features_result.returncode != 0:
+            raise RuntimeError(f"Feature building failed: {features_result.stderr}")
+        
+        logger.info(f"✅ Features built successfully")
+        
+        # STEP 3: Train PPO model
+        logger.info(f"🤖 [3/3] Training PPO model for {symbol}...")
+        active_jobs[job_id]["status"] = "training"
+        
+        train_cmd = [
             "python",
             "train_ppo.py",
             "--symbol", symbol,
-            "--user_id", user_id,
-            "--episodes", str(episodes)
+            "--asset_type", asset_type,
+            "--steps", "4096",
+            "--updates", str(episodes)  # Use episodes as update count
         ]
         
-        if force_retrain:
-            cmd.append("--force_retrain")
-        
-        # Update job status
-        active_jobs[job_id]["status"] = "training"
-        
-        # Execute training
-        result = subprocess.run(
-            cmd,
+        train_result = subprocess.run(
+            train_cmd,
             capture_output=True,
             text=True,
-            timeout=3600  # 1 hour timeout
+            timeout=3600  # 1 hour timeout for training
         )
         
-        # Check result
-        if result.returncode == 0:
-            logger.info(f"✅ Training completed successfully for {symbol}")
+        # Check training result
+        if train_result.returncode == 0:
+            logger.info(f"✅ Full training pipeline completed successfully for {symbol}")
             active_jobs[job_id]["status"] = "completed"
             active_jobs[job_id]["completed_at"] = datetime.utcnow().isoformat()
+            
+            # Save model path info
+            model_path = f"PPO_Models/{asset_type}/{symbol}/models/final_model.pt"
+            active_jobs[job_id]["model_path"] = model_path
             
             # Try to parse performance metrics from output
             try:
                 # Look for JSON metrics in stdout
-                for line in result.stdout.split('\n'):
+                for line in train_result.stdout.split('\n'):
                     if line.startswith('{') and 'win_rate' in line:
                         metrics = json.loads(line)
                         active_jobs[job_id]["metrics"] = metrics
@@ -237,16 +301,19 @@ async def run_training(
                 logger.warning(f"Could not parse metrics: {e}")
             
         else:
-            logger.error(f"❌ Training failed for {symbol}")
-            logger.error(f"   Error: {result.stderr}")
+            logger.error(f"❌ Training pipeline failed for {symbol}")
+            logger.error(f"   Error: {train_result.stderr}")
             active_jobs[job_id]["status"] = "failed"
-            active_jobs[job_id]["error"] = result.stderr[-500:]  # Last 500 chars
+            active_jobs[job_id]["error"] = train_result.stderr[-500:]  # Last 500 chars
             active_jobs[job_id]["failed_at"] = datetime.utcnow().isoformat()
         
-        # Log output
-        logger.info(f"Training output:\n{result.stdout}")
-        if result.stderr:
-            logger.warning(f"Training stderr:\n{result.stderr}")
+        # Log all outputs
+        logger.info(f"Data output:\n{data_result.stdout}")
+        logger.info(f"Features output:\n{features_result.stdout}")
+        logger.info(f"Training output:\n{train_result.stdout}")
+        
+        if train_result.stderr:
+            logger.warning(f"Training stderr:\n{train_result.stderr}")
             
     except subprocess.TimeoutExpired:
         logger.error(f"⏱️ Training timeout for {symbol} (exceeded 1 hour)")

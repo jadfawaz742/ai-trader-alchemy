@@ -20,7 +20,7 @@ from binance.exceptions import BinanceAPIException, BinanceRequestException
 # CONFIG — folder root for crypto
 # ============================================================
 
-CRYPTO_ROOT = "PPO_Models/Crypto"   # base folder for all crypto assets
+CRYPTO_ROOT = "PPO_Models/Cryptocurrencies"   # base folder for all crypto assets
 
 
 
