@@ -707,9 +707,11 @@ async function processBatch(
       let skippedLowConfluence = 0;
       let skippedLowConfidence = 0;
       
-      // 🚨 LOSING STREAK PROTECTION: Stop trading after consecutive losses
-      let consecutiveLosses = 0;
-      const maxConsecutiveLosses = 5;  // Stop after 5 losses in a row
+        // 🚨 PHASE 4: LOSING STREAK PROTECTION - Stop after 2 consecutive losses
+        let consecutiveLosses = 0;
+        const maxConsecutiveLosses = 2;  // Stop after 2 losses in a row
+        let dailyLoss = 0;
+        const maxDailyLoss = initialBalance * 0.03; // 3% daily loss limit
       
       for (let i = minSamplePoints; i < historicalData.length - 1; i += sampleRate) {
         const currentBar = historicalData[i];
@@ -725,8 +727,8 @@ async function processBatch(
         // ✅ CALCULATE CONFLUENCE SCORE using shared logic
         tradingState.confluenceScore = calculateConfluenceScore(tradingState, riskConfig);
         
-        // Require moderate indicator agreement: 0.55 (55%) - balanced threshold
-        const minConfluence = 0.55;
+        // PHASE 2: Require strong indicator agreement: 0.70 (70%) - prevents weak trades
+        const minConfluence = 0.70;
         
         // Skip if confluence too low
         if (tradingState.confluenceScore < minConfluence) {
@@ -767,36 +769,36 @@ async function processBatch(
         riskParams.stopLoss = riskParams.stopLoss * adaptiveParams.stopLossMultiplier;
         riskParams.takeProfit = riskParams.takeProfit * adaptiveParams.takeProfitMultiplier;
         
-        // 🎯 FLEXIBLE POSITION SIZING - Works from $1 to unlimited amounts
+        // 🎯 PHASE 4: CONSERVATIVE POSITION SIZING - Start smaller, scale into winners
         let positionMultiplier = 1.0;
         
-        // Base position size scales with confidence (8-30% of balance)
-        let basePositionPercent = 0.10; // Start with 10% of balance
+        // Base position size scales with confidence (5-25% of balance - reduced from 8-30%)
+        let basePositionPercent = 0.05; // Start with 5% of balance (REDUCED)
         
         if (aiDecision.confidence >= 90) {
-          basePositionPercent = 0.30; // Ultra high confidence = 30% of capital
-          positionMultiplier = 3.5;
-          console.log(`🚀 ULTRA HIGH CONFIDENCE ${symbol}: ${aiDecision.confidence.toFixed(1)}% = 30% of capital (3.5x multiplier)`);
+          basePositionPercent = 0.25; // Ultra high confidence = 25% of capital (REDUCED)
+          positionMultiplier = 3.0;
+          console.log(`🚀 ULTRA HIGH CONFIDENCE ${symbol}: ${aiDecision.confidence.toFixed(1)}% = 25% of capital (3.0x multiplier)`);
         } else if (aiDecision.confidence >= 85) {
-          basePositionPercent = 0.25; // High confidence = 25% of capital
-          positionMultiplier = 2.5;
-          console.log(`💎 HIGH CONFIDENCE ${symbol}: ${aiDecision.confidence.toFixed(1)}% = 25% of capital (2.5x multiplier)`);
+          basePositionPercent = 0.20; // High confidence = 20% of capital (REDUCED)
+          positionMultiplier = 2.2;
+          console.log(`💎 HIGH CONFIDENCE ${symbol}: ${aiDecision.confidence.toFixed(1)}% = 20% of capital (2.2x multiplier)`);
         } else if (aiDecision.confidence >= 80) {
-          basePositionPercent = 0.20; // Strong confidence = 20% of capital
-          positionMultiplier = 2.0;
-          console.log(`🔥 STRONG CONFIDENCE ${symbol}: ${aiDecision.confidence.toFixed(1)}% = 20% of capital (2.0x multiplier)`);
+          basePositionPercent = 0.15; // Strong confidence = 15% of capital (REDUCED)
+          positionMultiplier = 1.8;
+          console.log(`🔥 STRONG CONFIDENCE ${symbol}: ${aiDecision.confidence.toFixed(1)}% = 15% of capital (1.8x multiplier)`);
         } else if (aiDecision.confidence >= 75) {
-          basePositionPercent = 0.15; // Good confidence = 15% of capital
-          positionMultiplier = 1.5;
-          console.log(`📈 GOOD CONFIDENCE ${symbol}: ${aiDecision.confidence.toFixed(1)}% = 15% of capital (1.5x multiplier)`);
+          basePositionPercent = 0.12; // Good confidence = 12% of capital (REDUCED)
+          positionMultiplier = 1.4;
+          console.log(`📈 GOOD CONFIDENCE ${symbol}: ${aiDecision.confidence.toFixed(1)}% = 12% of capital (1.4x multiplier)`);
         } else if (aiDecision.confidence >= 70) {
-          basePositionPercent = 0.12; // Moderate confidence = 12% of capital
-          positionMultiplier = 1.2;
-          console.log(`⚡ MODERATE CONFIDENCE ${symbol}: ${aiDecision.confidence.toFixed(1)}% = 12% of capital (1.2x multiplier)`);
+          basePositionPercent = 0.08; // Moderate confidence = 8% of capital (REDUCED)
+          positionMultiplier = 1.1;
+          console.log(`⚡ MODERATE CONFIDENCE ${symbol}: ${aiDecision.confidence.toFixed(1)}% = 8% of capital (1.1x multiplier)`);
         } else {
-          basePositionPercent = 0.08; // Low confidence = 8% of capital
-          positionMultiplier = 0.8;
-          console.log(`⚠️ LOW CONFIDENCE ${symbol}: ${aiDecision.confidence.toFixed(1)}% = 8% of capital (0.8x multiplier)`);
+          basePositionPercent = 0.05; // Low confidence = 5% of capital (REDUCED)
+          positionMultiplier = 0.7;
+          console.log(`⚠️ LOW CONFIDENCE ${symbol}: ${aiDecision.confidence.toFixed(1)}% = 5% of capital (0.7x multiplier)`);
         }
         
         // 📊 ADAPTIVE POSITION SIZING: Scale down if losing money
@@ -841,42 +843,86 @@ async function processBatch(
           continue;
         }
         
-        // 🎯 Hold position until stop loss or take profit is hit
+        // 🎯 PHASE 1: Hold position until stop loss or take profit is hit (NO TIME LIMIT)
         let exitPrice: number | null = null;
         let exitBar = i + 1;
         let hitStop = false;
         let hitTarget = false;
+        let trailingStopPrice = riskParams.stopLoss;
+        let highestPrice = currentPrice; // Track highest price for trailing stop
+        let lowestPrice = currentPrice; // Track lowest price for trailing stop (for shorts)
+        let barsHeld = 0;
         
         // Scan forward through bars until we hit stop loss or take profit
         while (exitBar < historicalData.length && !exitPrice) {
           const scanBar = historicalData[exitBar];
+          barsHeld++;
           
           if (aiDecision.type === 'BUY') {
-            // For BUY: check if low hit stop loss or high hit take profit
-            if (scanBar.low <= riskParams.stopLoss) {
-              exitPrice = riskParams.stopLoss;
+            // Update highest price and trailing stop
+            if (scanBar.high > highestPrice) {
+              highestPrice = scanBar.high;
+              // PHASE 1: ATR Trailing Stop - Lock in profits
+              trailingStopPrice = Math.max(trailingStopPrice, highestPrice - (tradingState.indicators.atr * 1.5));
+            }
+            
+            // For BUY: check if low hit trailing stop or high hit take profit
+            if (scanBar.low <= trailingStopPrice) {
+              exitPrice = trailingStopPrice;
               hitStop = true;
             } else if (scanBar.high >= riskParams.takeProfit) {
-              exitPrice = riskParams.takeProfit;
-              hitTarget = true;
+              // PHASE 1: Partial profit-taking at intermediate Fibonacci levels
+              const profitReached = (scanBar.high - currentPrice) / (riskParams.takeProfit - currentPrice);
+              if (profitReached >= 0.618) {
+                // Take profit at 61.8% of target
+                exitPrice = riskParams.takeProfit;
+                hitTarget = true;
+              }
             }
           } else {
-            // For SELL: check if high hit stop loss or low hit take profit
-            if (scanBar.high >= riskParams.stopLoss) {
-              exitPrice = riskParams.stopLoss;
+            // Update lowest price and trailing stop for shorts
+            if (scanBar.low < lowestPrice) {
+              lowestPrice = scanBar.low;
+              // PHASE 1: ATR Trailing Stop for shorts
+              trailingStopPrice = Math.min(trailingStopPrice, lowestPrice + (tradingState.indicators.atr * 1.5));
+            }
+            
+            // For SELL: check if high hit trailing stop or low hit take profit
+            if (scanBar.high >= trailingStopPrice) {
+              exitPrice = trailingStopPrice;
               hitStop = true;
             } else if (scanBar.low <= riskParams.takeProfit) {
-              exitPrice = riskParams.takeProfit;
-              hitTarget = true;
+              // PHASE 1: Partial profit-taking
+              const profitReached = (currentPrice - scanBar.low) / (currentPrice - riskParams.takeProfit);
+              if (profitReached >= 0.618) {
+                exitPrice = riskParams.takeProfit;
+                hitTarget = true;
+              }
             }
           }
           
           exitBar++;
           
-          // Safety: don't scan more than 20 bars ahead
-          if (exitBar > i + 20) {
-            // If neither target hit within 20 bars, exit at current price (conservative)
+          // PHASE 3: Time-based stop - Exit if underwater for 50+ bars
+          if (barsHeld >= 50 && !hitTarget) {
+            const currentPnL = aiDecision.type === 'BUY' 
+              ? (scanBar.close - currentPrice) 
+              : (currentPrice - scanBar.close);
+            
+            if (currentPnL < 0 && Math.abs(currentPnL) >= tradingState.indicators.atr) {
+              // Exit at -1 ATR loss maximum after 50 bars
+              exitPrice = scanBar.close;
+              hitStop = true;
+              console.log(`⏱️ Time-based stop: Exit after ${barsHeld} bars with -1 ATR loss`);
+              break;
+            }
+          }
+          
+          // PHASE 1: Extended time limit - 100 bars instead of 20
+          if (exitBar > i + 100) {
+            // Only exit at market if we've exhausted time limit
             exitPrice = historicalData[Math.min(exitBar - 1, historicalData.length - 1)].close;
+            console.log(`⏱️ Extended time limit (100 bars) reached`);
             break;
           }
         }
@@ -898,6 +944,26 @@ async function processBatch(
         
         currentBalance += actualPnL;
         totalTrades++;
+        
+        // PHASE 4: Track daily loss and consecutive losses
+        dailyLoss += actualPnL < 0 ? Math.abs(actualPnL) : 0;
+        
+        if (isWin) {
+          consecutiveLosses = 0; // Reset on win
+        } else {
+          consecutiveLosses++;
+        }
+        
+        // PHASE 4: Check circuit breakers
+        if (dailyLoss > maxDailyLoss) {
+          console.log(`🚨 CIRCUIT BREAKER: Daily loss $${dailyLoss.toFixed(2)} exceeds limit $${maxDailyLoss.toFixed(2)}`);
+          break; // Stop trading for this symbol
+        }
+        
+        if (consecutiveLosses >= maxConsecutiveLosses) {
+          console.log(`🚨 CIRCUIT BREAKER: ${consecutiveLosses} consecutive losses, stopping trades for ${symbol}`);
+          break; // Stop trading after 2 consecutive losses
+        }
         totalConfidence += aiDecision.confidence;
         
         if (isWin) {

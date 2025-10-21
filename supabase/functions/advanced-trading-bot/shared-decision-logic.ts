@@ -416,28 +416,28 @@ export async function makeAITradingDecision(
     }
   }
   
-  // 🌪️ VOLATILITY FILTER: Graduated penalty based on severity
+  // 🌪️ PHASE 2: VOLATILITY FILTER - Stricter thresholds (8% instead of 12%)
   const volatilityATR = state.indicators.atr;
   const currentPrice = state.price;
   if (volatilityATR && currentPrice > 0) {
     const volatilityATRPercent = (volatilityATR / currentPrice) * 100;
     
-    // Graduated volatility penalty
-    if (volatilityATRPercent > 12) {
-      // EXTREME volatility (meme stocks like QUBT)
+    // PHASE 2: Stricter volatility filter
+    if (volatilityATRPercent > 8) {
+      // EXTREME volatility (meme stocks) - Lower threshold from 12% to 8%
       confidence = confidence * 0.40;  // -60% penalty
       reasons.push(`EXTREME volatility (ATR ${volatilityATRPercent.toFixed(1)}%): -60% confidence`);
       
-      if (confidence < 80) {
+      if (confidence < 85) { // Raised from 80%
         action = 'HOLD';
         reasons.push(`Too volatile for safe trading`);
       }
-    } else if (volatilityATRPercent > 8) {
-      // HIGH volatility (growth stocks)
+    } else if (volatilityATRPercent > 5) {
+      // HIGH volatility (growth stocks) - Lower threshold from 8% to 5%
       confidence = confidence * 0.70;  // -30% penalty
       reasons.push(`High volatility (ATR ${volatilityATRPercent.toFixed(1)}%): -30% confidence`);
       
-      if (confidence < 70) {
+      if (confidence < 75) { // Raised from 70%
         action = 'HOLD';
         reasons.push(`Volatility makes signals unreliable`);
       }
@@ -476,27 +476,30 @@ export async function makeAITradingDecision(
     const priceLow = Math.min(...fibLevels);
     const priceRange = priceHigh - priceLow;
     
-    // Use 38.2% Fibonacci retracement for stop loss (or 50% for lower confidence)
-    const fibRetracementLevel = confidence > 75 ? 0.382 : 0.5;
+    // PHASE 3: Use 50% or 61.8% Fibonacci retracement for wider stops
+    const fibRetracementLevel = confidence > 75 ? 0.5 : 0.618; // Changed from 0.382/0.5
     const fibStopLoss = state.price - (priceRange * fibRetracementLevel);
     
-    // Use ATR-based stop loss as backup
-    const atrStopLoss = state.price - (atr * 2);
+    // PHASE 3: Use ATR-based stop loss (wider - 2.5x ATR instead of 2x)
+    const atrStopLoss = state.price - (atr * 2.5);
     
     // Choose the more conservative stop (further from price for safety)
     stopLoss = Math.min(fibStopLoss, atrStopLoss);
     
-    // Calculate Fibonacci extension for take profit
-    // 🌊 Phase adjustment: favor extensions in trends, retracements in consolidation
+    // PHASE 3: Calculate closer take profit targets
+    // Use 1.0 or 1.272 Fib extension instead of 1.272 or 1.618
     let fibExtensionLevel: number;
     if (favorExtensions) {
-      // Uptrend: use aggressive Fibonacci extensions
-      fibExtensionLevel = confidence > 80 ? 1.618 : 1.272;
+      // Uptrend: use moderate Fibonacci extensions (REDUCED from 1.618/1.272)
+      fibExtensionLevel = confidence > 85 ? 1.272 : 1.0; // More conservative
     } else {
-      // Accumulation/Distribution: use conservative Fibonacci retracements
-      fibExtensionLevel = confidence > 80 ? 1.272 : 1.0;
+      // Accumulation/Distribution: use conservative targets
+      fibExtensionLevel = confidence > 85 ? 1.0 : 0.786; // Even more conservative
     }
-    const fibTakeProfit = state.price + (priceRange * (fibExtensionLevel - 1));
+    
+    // PHASE 3: Adjust TP/SL based on volatility
+    const volatilityMultiplier = volatilityATR / currentPrice > 0.04 ? 1.5 : 1.0;
+    const fibTakeProfit = state.price + (priceRange * (fibExtensionLevel - 1) * volatilityMultiplier);
     
     // Use ATR-based take profit as backup
     const atrTakeProfit = state.price + (atr * (confidence > 80 ? 5 : 4));
@@ -511,27 +514,29 @@ export async function makeAITradingDecision(
     const priceLow = Math.min(...fibLevels);
     const priceRange = priceHigh - priceLow;
     
-    // Use 38.2% Fibonacci retracement for stop loss (or 50% for lower confidence)
-    const fibRetracementLevel = confidence > 75 ? 0.382 : 0.5;
+    // PHASE 3: Use 50% or 61.8% Fibonacci retracement for wider stops
+    const fibRetracementLevel = confidence > 75 ? 0.5 : 0.618;
     const fibStopLoss = state.price + (priceRange * fibRetracementLevel);
     
-    // Use ATR-based stop loss as backup
-    const atrStopLoss = state.price + (atr * 2);
+    // PHASE 3: Use ATR-based stop loss (wider - 2.5x ATR)
+    const atrStopLoss = state.price + (atr * 2.5);
     
     // Choose the more conservative stop (further from price for safety)
     stopLoss = Math.max(fibStopLoss, atrStopLoss);
     
-    // Calculate Fibonacci extension for take profit
-    // 🌊 Phase adjustment: favor extensions in trends, retracements in consolidation
+    // PHASE 3: Calculate closer take profit targets
     let fibExtensionLevel: number;
     if (favorExtensions) {
-      // Downtrend: use aggressive Fibonacci extensions
-      fibExtensionLevel = confidence > 80 ? 1.618 : 1.272;
+      // Downtrend: use moderate Fibonacci extensions
+      fibExtensionLevel = confidence > 85 ? 1.272 : 1.0;
     } else {
-      // Accumulation/Distribution: use conservative Fibonacci retracements
-      fibExtensionLevel = confidence > 80 ? 1.272 : 1.0;
+      // Accumulation/Distribution: use conservative targets
+      fibExtensionLevel = confidence > 85 ? 1.0 : 0.786;
     }
-    const fibTakeProfit = state.price - (priceRange * (fibExtensionLevel - 1));
+    
+    // PHASE 3: Adjust TP/SL based on volatility
+    const volatilityMultiplier = volatilityATR / currentPrice > 0.04 ? 1.5 : 1.0;
+    const fibTakeProfit = state.price - (priceRange * (fibExtensionLevel - 1) * volatilityMultiplier);
     
     // Use ATR-based take profit as backup
     const atrTakeProfit = state.price - (atr * (confidence > 80 ? 5 : 4));
