@@ -557,53 +557,164 @@ export async function makeAITradingDecision(
   };
 }
 
-// Calculate enhanced confluence score
+// Calculate enhanced confluence score - PHASE 1: Measures directional AGREEMENT
 export function calculateConfluenceScore(state: TradingState, riskLevel: RiskLevel): number {
-  let score = 0.0;
-  let maxScore = 0.0;
+  let trendScore = 0.0;
+  let momentumScore = 0.0;
+  let riskScore = 0.0;
   
-  // EMA 200 + MACD trend confirmation (25%)
-  maxScore += 0.25;
-  const emaDeviation = Math.abs((state.price - state.indicators.ema200) / state.indicators.ema200);
-  if (emaDeviation > 0.02) {
-    const macdAlign = (state.price > state.indicators.ema200 && state.indicators.macd.histogram > 0) ||
-                      (state.price < state.indicators.ema200 && state.indicators.macd.histogram < 0);
-    if (macdAlign) score += 0.25;
+  const details: string[] = []; // For debugging
+  
+  // ===== TREND AGREEMENT (40% weight) =====
+  // Determine overall trend direction from multiple indicators
+  let trendBullish = 0;
+  let trendBearish = 0;
+  
+  // 1. EMA 200 Trend
+  if (state.price > state.indicators.ema200 * 1.02) {
+    trendBullish++;
+    details.push("EMA200: Bullish");
+  } else if (state.price < state.indicators.ema200 * 0.98) {
+    trendBearish++;
+    details.push("EMA200: Bearish");
+  } else {
+    details.push("EMA200: Neutral");
   }
   
-  // Ichimoku cloud (20%)
-  maxScore += 0.20;
-  if (Math.abs(state.indicators.ichimoku.signal) > 0.5) {
-    score += 0.20;
+  // 2. MACD Trend
+  if (state.indicators.macd.histogram > 0 && state.indicators.macd.macd > state.indicators.macd.signal) {
+    trendBullish++;
+    details.push("MACD: Bullish");
+  } else if (state.indicators.macd.histogram < 0 && state.indicators.macd.macd < state.indicators.macd.signal) {
+    trendBearish++;
+    details.push("MACD: Bearish");
+  } else {
+    details.push("MACD: Neutral");
   }
   
-  // Bollinger Bands position (15%)
-  maxScore += 0.15;
+  // 3. Ichimoku Trend
+  if (state.indicators.ichimoku.signal > 0) {
+    trendBullish++;
+    details.push("Ichimoku: Bullish");
+  } else if (state.indicators.ichimoku.signal < 0) {
+    trendBearish++;
+    details.push("Ichimoku: Bearish");
+  } else {
+    details.push("Ichimoku: Neutral");
+  }
+  
+  // Calculate trend agreement score
+  const totalTrendIndicators = 3;
+  if (trendBullish > trendBearish) {
+    trendScore = (trendBullish / totalTrendIndicators) * 0.40;
+  } else if (trendBearish > trendBullish) {
+    trendScore = (trendBearish / totalTrendIndicators) * 0.40;
+  } else {
+    trendScore = 0; // No agreement
+  }
+  
+  // ===== MOMENTUM CONFIRMATION (30% weight) =====
+  let momentumBullish = 0;
+  let momentumBearish = 0;
+  
+  // 1. RSI Position (if available, else use Bollinger)
   const bbPosition = state.indicators.bollinger.position;
-  if (bbPosition < 0.2 || bbPosition > 0.8) {
-    score += 0.15;
+  if (bbPosition < 0.3) {
+    momentumBullish++;
+    details.push("BB: Oversold (Bullish)");
+  } else if (bbPosition > 0.7) {
+    momentumBearish++;
+    details.push("BB: Overbought (Bearish)");
+  } else {
+    details.push("BB: Mid-range");
   }
   
-  // Volume confirmation (15%)
-  maxScore += 0.15;
-  if (Math.abs(state.indicators.obv) > 500000) {
-    score += 0.15;
+  // 2. Volume Trend
+  if (state.indicators.obv > 0) {
+    momentumBullish++;
+    details.push("Volume: Bullish");
+  } else if (state.indicators.obv < 0) {
+    momentumBearish++;
+    details.push("Volume: Bearish");
+  } else {
+    details.push("Volume: Neutral");
   }
   
-  // Market condition alignment (15%)
-  maxScore += 0.15;
+  // 3. Market Phase alignment
+  if (state.marketPhase) {
+    if (state.marketPhase.phase === 'uptrend') {
+      momentumBullish++;
+      details.push("Phase: Uptrend");
+    } else if (state.marketPhase.phase === 'downtrend') {
+      momentumBearish++;
+      details.push("Phase: Downtrend");
+    } else {
+      details.push(`Phase: ${state.marketPhase.phase}`);
+    }
+  }
+  
+  // Calculate momentum agreement score
+  const totalMomentumIndicators = state.marketPhase ? 3 : 2;
+  if (momentumBullish > momentumBearish) {
+    momentumScore = (momentumBullish / totalMomentumIndicators) * 0.30;
+  } else if (momentumBearish > momentumBullish) {
+    momentumScore = (momentumBearish / totalMomentumIndicators) * 0.30;
+  } else {
+    momentumScore = 0; // No agreement
+  }
+  
+  // ===== RISK ENVIRONMENT (30% weight) =====
+  let riskConditions = 0;
+  const totalRiskConditions = 2;
+  
+  // 1. Volatility is suitable (not too high, not too low)
+  const atrPercent = (state.indicators.atr / state.price) * 100;
+  if (atrPercent >= 2 && atrPercent <= 8) {
+    riskConditions++;
+    details.push(`Volatility: Good (${atrPercent.toFixed(1)}%)`);
+  } else if (atrPercent > 8) {
+    details.push(`Volatility: Too High (${atrPercent.toFixed(1)}%)`);
+  } else {
+    details.push(`Volatility: Too Low (${atrPercent.toFixed(1)}%)`);
+  }
+  
+  // 2. Market condition is not sideways (directional movement available)
   if (state.marketCondition !== 'sideways') {
-    score += 0.15;
+    riskConditions++;
+    details.push(`Market: ${state.marketCondition}`);
+  } else {
+    details.push("Market: Sideways");
   }
   
-  // Volatility (10%)
-  maxScore += 0.10;
-  const atrPercent = state.indicators.atr / state.price;
-  if (atrPercent > 0.02 && atrPercent < 0.06) {
-    score += 0.10;
+  riskScore = (riskConditions / totalRiskConditions) * 0.30;
+  
+  // ===== FINAL CONFLUENCE SCORE =====
+  const finalScore = trendScore + momentumScore + riskScore;
+  
+  // Store details in state for debugging (add property if needed)
+  (state as any).confluenceDetails = details;
+  
+  return finalScore;
+}
+
+// PHASE 2: Calculate dynamic confluence threshold based on volatility
+export function getDynamicConfluenceThreshold(state: TradingState, multiTimeframeAligned: boolean): number {
+  const atrPercent = (state.indicators.atr / state.price) * 100;
+  
+  let threshold = 0.65; // Base threshold (Normal volatility)
+  
+  if (atrPercent > 6) {
+    threshold = 0.75; // High volatility requires stronger agreement
+  } else if (atrPercent < 2) {
+    threshold = 0.60; // Low volatility can trade with slightly lower confluence
   }
   
-  return score;
+  // Multi-timeframe boost: Lower threshold by 0.05 if all timeframes align
+  if (multiTimeframeAligned) {
+    threshold -= 0.05;
+  }
+  
+  return threshold;
 }
 
 // Calculate risk parameters using Fibonacci + ATR + Support/Resistance
@@ -638,9 +749,20 @@ export function calculateRiskParameters(
       
       if (supportLevels.length > 0) {
         const nearestSupport = supportLevels[0].price;
-        // Use Fibonacci retracement or support, whichever is closer but still safe
-        const fib382Stop = currentPrice - (priceRange * 0.382);
-        stopLoss = Math.max(nearestSupport, fib382Stop, currentPrice - (atr * 2.5));
+        // PHASE 3: Wider stops - Use 50% or 61.8% Fib, 3.5-4.0 ATR for crypto
+        const fib50Stop = currentPrice - (priceRange * 0.5);
+        const fib618Stop = currentPrice - (priceRange * 0.618);
+        const isCrypto = state.price < 100000; // Rough heuristic: crypto typically < $100k
+        const atrMultiplier = isCrypto ? 3.5 : 2.5;
+        const atrStop = currentPrice - (atr * atrMultiplier);
+        
+        // Use the widest safe stop
+        stopLoss = Math.max(nearestSupport, fib618Stop, atrStop);
+        
+        // Enforce minimum stop distance
+        const minStopPercent = isCrypto ? 0.04 : 0.02; // 4% crypto, 2% stocks
+        const minStopPrice = currentPrice * (1 - minStopPercent);
+        stopLoss = Math.min(stopLoss, minStopPrice);
       }
       
       // Find nearest resistance for target
@@ -663,8 +785,19 @@ export function calculateRiskParameters(
       
       if (resistanceLevels.length > 0) {
         const nearestResistance = resistanceLevels[0].price;
-        const fib382Stop = currentPrice + (priceRange * 0.382);
-        stopLoss = Math.min(nearestResistance, fib382Stop, currentPrice + (atr * 2.5));
+        // PHASE 3: Wider stops for shorts
+        const fib50Stop = currentPrice + (priceRange * 0.5);
+        const fib618Stop = currentPrice + (priceRange * 0.618);
+        const isCrypto = state.price < 100000;
+        const atrMultiplier = isCrypto ? 3.5 : 2.5;
+        const atrStop = currentPrice + (atr * atrMultiplier);
+        
+        stopLoss = Math.min(nearestResistance, fib618Stop, atrStop);
+        
+        // Enforce minimum stop distance for shorts
+        const minStopPercent = isCrypto ? 0.04 : 0.02;
+        const maxStopPrice = currentPrice * (1 + minStopPercent);
+        stopLoss = Math.max(stopLoss, maxStopPrice);
       }
       
       // Find nearest support for target

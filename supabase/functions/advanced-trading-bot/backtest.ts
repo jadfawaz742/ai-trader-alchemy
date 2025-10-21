@@ -3,6 +3,7 @@ import {
   calculateConfluenceScore, 
   calculateRiskParameters,
   detectMarketPhase,
+  getDynamicConfluenceThreshold,
   TradingState,
   TradingAction,
   RiskLevel
@@ -727,15 +728,24 @@ async function processBatch(
         // ✅ CALCULATE CONFLUENCE SCORE using shared logic
         tradingState.confluenceScore = calculateConfluenceScore(tradingState, riskConfig);
         
-        // PHASE 2: Require strong indicator agreement: 0.70 (70%) - prevents weak trades
-        const minConfluence = 0.70;
+        // PHASE 2 & 5: Dynamic confluence threshold based on volatility
+        const multiTimeframeAligned = multiTimeframeAnalysis.confluence >= 66;
+        const minConfluence = getDynamicConfluenceThreshold(tradingState, multiTimeframeAligned);
+        
+        // PHASE 6: Debug logging for confluence breakdown
+        const confluenceDetails = (tradingState as any).confluenceDetails || [];
         
         // Skip if confluence too low
         if (tradingState.confluenceScore < minConfluence) {
           skippedLowConfluence++;
-          console.log(`⏭️ Skip: confluence ${tradingState.confluenceScore.toFixed(2)} < ${minConfluence}`);
+          console.log(`⏭️ Skip: confluence ${tradingState.confluenceScore.toFixed(2)} < ${minConfluence.toFixed(2)} (dynamic threshold)`);
+          console.log(`   📊 Confluence breakdown: ${confluenceDetails.join(', ')}`);
           continue;
         }
+        
+        console.log(`✅ Confluence: ${tradingState.confluenceScore.toFixed(2)} >= ${minConfluence.toFixed(2)}`);
+        console.log(`   📊 Breakdown: ${confluenceDetails.join(', ')}`);
+
         
         // ✅ MAKE AI TRADING DECISION using shared logic (same as live trading!)
         const aiDecision = await makeAITradingDecision(
@@ -761,9 +771,20 @@ async function processBatch(
         aiDecision.confidence = Math.max(0, Math.min(100, aiDecision.confidence + mtfBoost));
         
         console.log(`🤖 AI Decision for ${symbol}: ${aiDecision.type} with ${aiDecision.confidence.toFixed(1)}% confidence ${trainedModel ? '(using trained model)' : '(rule-based)'}`);
+        console.log(`   💡 Reasoning: ${aiDecision.reasoning || 'N/A'}`);
         
         // ✅ CALCULATE RISK PARAMETERS using shared logic
         const riskParams = calculateRiskParameters(tradingState, aiDecision, symbol);
+        
+        // PHASE 6: Debug log TP/SL calculations
+        const riskRewardRatio = Math.abs(riskParams.takeProfit - currentPrice) / Math.abs(currentPrice - riskParams.stopLoss);
+        const stopDistancePercent = (Math.abs(currentPrice - riskParams.stopLoss) / currentPrice) * 100;
+        const profitDistancePercent = (Math.abs(riskParams.takeProfit - currentPrice) / currentPrice) * 100;
+        
+        console.log(`   🎯 Stop Loss: ${riskParams.stopLoss.toFixed(6)} (${stopDistancePercent.toFixed(2)}% away)`);
+        console.log(`   🎯 Take Profit: ${riskParams.takeProfit.toFixed(6)} (${profitDistancePercent.toFixed(2)}% away)`);
+        console.log(`   📊 Risk:Reward = 1:${riskRewardRatio.toFixed(2)}`);
+
         
         // Apply adaptive multipliers
         riskParams.stopLoss = riskParams.stopLoss * adaptiveParams.stopLossMultiplier;
@@ -1107,6 +1128,18 @@ async function processBatch(
       
       // Log filtering summary for this symbol
       console.log(`📊 ${symbol} filtering summary: ${skippedLowConfluence} skipped (low confluence), ${skippedLowConfidence} skipped (low confidence), ${trades.filter(t => t.symbol === symbol).length} trades executed`);
+      
+      // PHASE 6: Per-symbol performance logging
+      const symbolTrades = trades.filter(t => t.symbol === symbol);
+      if (symbolTrades.length > 0) {
+        const symbolWins = symbolTrades.filter(t => t.result === 'WIN').length;
+        const winRate = (symbolWins / symbolTrades.length) * 100;
+        const avgConfidence = symbolTrades.reduce((sum, t) => sum + t.confidence, 0) / symbolTrades.length;
+        const symbolPnL = symbolTrades.reduce((sum, t) => sum + (t.pnl || 0), 0);
+        const roi = (symbolPnL / initialBalance) * 100;
+        console.log(`   📈 ${symbol} Performance: ${winRate.toFixed(1)}% win rate, ${avgConfidence.toFixed(1)}% avg confidence, ${roi.toFixed(2)}% ROI`);
+      }
+
       
     } catch (error) {
       console.error(`Error backtesting ${symbol}:`, error);
