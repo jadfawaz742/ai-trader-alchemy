@@ -104,9 +104,14 @@ const AdvancedTradingBot: React.FC = () => {
       symbols: trainedAssets,
       color: "text-purple-600"
     },
+    highQuality: {
+      name: "✨ High Quality (Recommended)", 
+      symbols: ['BTC-USD', 'ETH-USD', 'SOL-USD', 'BNB-USD', 'AAPL', 'MSFT', 'GOOGL', 'NVDA', 'TSLA', 'META'],
+      color: "text-green-600"
+    },
     crypto: {
-      name: "🪙 Cryptocurrencies", 
-      symbols: ['BTC-USD', 'ETH-USD', 'SOL-USD', 'ADA-USD', 'DOT-USD', 'AVAX-USD', 'MATIC-USD', 'LINK-USD', 'UNI-USD', 'AAVE-USD'],
+      name: "🪙 Other Cryptocurrencies", 
+      symbols: ['ADA-USD', 'DOT-USD', 'AVAX-USD', 'MATIC-USD', 'LINK-USD', 'UNI-USD', 'AAVE-USD'],
       color: "text-orange-600"
     },
     growth: {
@@ -115,24 +120,24 @@ const AdvancedTradingBot: React.FC = () => {
       color: "text-blue-600"
     },
     volatile: {
-      name: "🔥 Volatile Stocks", 
-      symbols: ['TSLA', 'NVDA', 'AMD', 'MRNA', 'ZM', 'ROKU', 'NFLX', 'SQ', 'SHOP', 'TWTR', 'SNAP', 'UBER', 'LYFT', 'PLTR', 'GME', 'AMC', 'BB', 'MEME', 'SPCE', 'COIN'],
+      name: "⚠️ High Risk / Volatile (Not Recommended)", 
+      symbols: ['AMD', 'MRNA', 'ROKU', 'NFLX', 'SQ', 'SHOP', 'SNAP', 'UBER', 'LYFT', 'PLTR', 'GME', 'AMC', 'BB', 'SPCE', 'COIN'],
       color: "text-red-600"
     },
     stable: {
       name: "🛡️ Stable Stocks", 
-      symbols: ['AAPL', 'MSFT', 'GOOGL', 'AMZN', 'META', 'JNJ', 'PG', 'KO', 'WMT', 'VZ'],
-      color: "text-green-600"
+      symbols: ['AMZN', 'JNJ', 'PG', 'KO', 'WMT', 'VZ'],
+      color: "text-teal-600"
     },
     semiStable: {
       name: "⚖️ Semi-Stable Stocks", 
-      symbols: ['INTC', 'IBM', 'ORCL', 'CRM', 'ADBE', 'NOW', 'SNOW', 'DDOG', 'ZS', 'OKTA'],
+      symbols: ['INTC', 'IBM', 'ORCL', 'CRM', 'ADBE', 'NOW', 'ZS'],
       color: "text-yellow-600"
     }
   };
 
   const [botConfig, setBotConfig] = useState<BotConfig>({
-    symbols: ['BTC-USD', 'ETH-USD', 'AAPL', 'TSLA', 'NVDA'],
+    symbols: ['BTC-USD', 'ETH-USD', 'SOL-USD', 'BNB-USD', 'AAPL', 'MSFT', 'GOOGL', 'NVDA', 'TSLA', 'META'],
     mode: 'simulation',
     riskLevel: 'moderate',
     portfolioBalance: 100000,
@@ -140,7 +145,7 @@ const AdvancedTradingBot: React.FC = () => {
     tradingFrequency: 'medium',
     maxDailyTrades: 10,
     backtestMode: true,
-    backtestPeriod: '1month'
+    backtestPeriod: '1week'
   });
 
   const [signals, setSignals] = useState<TradingSignal[]>([]);
