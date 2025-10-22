@@ -557,18 +557,19 @@ export async function makeAITradingDecision(
   };
 }
 
-// Calculate enhanced confluence score - PHASE 1: Measures directional AGREEMENT
+// Calculate enhanced confluence score - PHASE 4: GRADIENT SCORING (relaxed thresholds)
 export function calculateConfluenceScore(state: TradingState, riskLevel: RiskLevel): number {
   let trendScore = 0.0;
   let momentumScore = 0.0;
   let riskScore = 0.0;
   
   const details: string[] = []; // For debugging
+  const isCrypto = state.symbol.includes('-USD') || state.symbol.includes('USDT');
   
-  // ===== TREND AGREEMENT (40% weight) =====
-  // Determine overall trend direction from multiple indicators
+  // ===== TREND AGREEMENT (40% weight) - GRADIENT SCORING =====
   let trendBullish = 0;
   let trendBearish = 0;
+  let trendNeutral = 0;
   
   // 1. EMA 200 Trend
   if (state.price > state.indicators.ema200 * 1.02) {
@@ -578,6 +579,7 @@ export function calculateConfluenceScore(state: TradingState, riskLevel: RiskLev
     trendBearish++;
     details.push("EMA200: Bearish");
   } else {
+    trendNeutral++;
     details.push("EMA200: Neutral");
   }
   
@@ -589,54 +591,64 @@ export function calculateConfluenceScore(state: TradingState, riskLevel: RiskLev
     trendBearish++;
     details.push("MACD: Bearish");
   } else {
+    trendNeutral++;
     details.push("MACD: Neutral");
   }
   
   // 3. Ichimoku Trend
-  if (state.indicators.ichimoku.signal > 0) {
+  if (state.indicators.ichimoku.signal > 0.3) {
     trendBullish++;
     details.push("Ichimoku: Bullish");
-  } else if (state.indicators.ichimoku.signal < 0) {
+  } else if (state.indicators.ichimoku.signal < -0.3) {
     trendBearish++;
     details.push("Ichimoku: Bearish");
   } else {
+    trendNeutral++;
     details.push("Ichimoku: Neutral");
   }
   
-  // Calculate trend agreement score
-  const totalTrendIndicators = 3;
-  if (trendBullish > trendBearish) {
-    trendScore = (trendBullish / totalTrendIndicators) * 0.40;
-  } else if (trendBearish > trendBullish) {
-    trendScore = (trendBearish / totalTrendIndicators) * 0.40;
+  // GRADIENT SCORING: Partial credit for 2/3 agreement, neutral doesn't hurt
+  const trendAgreement = Math.max(trendBullish, trendBearish);
+  if (trendAgreement === 3) {
+    trendScore = 1.0 * 0.40; // All 3 agree: 100%
+  } else if (trendAgreement === 2) {
+    trendScore = 0.67 * 0.40; // 2/3 agree: 67%
+  } else if (trendAgreement === 1 && trendNeutral >= 1) {
+    trendScore = 0.50 * 0.40; // 1 bullish/bearish + neutrals: 50%
+  } else if (trendBullish > 0 && trendBearish > 0) {
+    trendScore = 0.33 * 0.40; // Mixed signals: 33%
   } else {
-    trendScore = 0; // No agreement
+    trendScore = 0.0; // No clear signal
   }
   
-  // ===== MOMENTUM CONFIRMATION (30% weight) =====
+  // ===== MOMENTUM CONFIRMATION (30% weight) - GRADIENT SCORING =====
   let momentumBullish = 0;
   let momentumBearish = 0;
+  let momentumNeutral = 0;
   
-  // 1. RSI Position (if available, else use Bollinger)
+  // 1. Bollinger Bands
   const bbPosition = state.indicators.bollinger.position;
-  if (bbPosition < 0.3) {
+  if (bbPosition < 0.25) {
     momentumBullish++;
     details.push("BB: Oversold (Bullish)");
-  } else if (bbPosition > 0.7) {
+  } else if (bbPosition > 0.75) {
     momentumBearish++;
     details.push("BB: Overbought (Bearish)");
   } else {
+    momentumNeutral++;
     details.push("BB: Mid-range");
   }
   
-  // 2. Volume Trend
-  if (state.indicators.obv > 0) {
-    momentumBullish++;
+  // 2. Volume Trend (reduced weight for crypto from 30% to 10%)
+  const volumeWeight = isCrypto ? 0.3 : 1.0; // Crypto: 30% of normal weight
+  if (state.indicators.obv > 500000) {
+    momentumBullish += volumeWeight;
     details.push("Volume: Bullish");
-  } else if (state.indicators.obv < 0) {
-    momentumBearish++;
+  } else if (state.indicators.obv < -500000) {
+    momentumBearish += volumeWeight;
     details.push("Volume: Bearish");
   } else {
+    momentumNeutral += volumeWeight;
     details.push("Volume: Neutral");
   }
   
@@ -649,72 +661,95 @@ export function calculateConfluenceScore(state: TradingState, riskLevel: RiskLev
       momentumBearish++;
       details.push("Phase: Downtrend");
     } else {
+      momentumNeutral++;
       details.push(`Phase: ${state.marketPhase.phase}`);
     }
   }
   
-  // Calculate momentum agreement score
-  const totalMomentumIndicators = state.marketPhase ? 3 : 2;
-  if (momentumBullish > momentumBearish) {
-    momentumScore = (momentumBullish / totalMomentumIndicators) * 0.30;
-  } else if (momentumBearish > momentumBullish) {
-    momentumScore = (momentumBearish / totalMomentumIndicators) * 0.30;
+  // GRADIENT SCORING: Partial credit for 2/3 agreement
+  const totalMomentum = momentumBullish + momentumBearish + momentumNeutral;
+  const momentumAgreement = Math.max(momentumBullish, momentumBearish);
+  const momentumRatio = momentumAgreement / totalMomentum;
+  
+  if (momentumRatio >= 0.8) {
+    momentumScore = 1.0 * 0.30; // Strong confirmation: 100%
+  } else if (momentumRatio >= 0.6) {
+    momentumScore = 0.67 * 0.30; // Moderate: 67%
+  } else if (momentumRatio >= 0.4) {
+    momentumScore = 0.50 * 0.30; // Weak: 50%
   } else {
-    momentumScore = 0; // No agreement
+    momentumScore = 0.33 * 0.30; // Mixed: 33%
   }
   
-  // ===== RISK ENVIRONMENT (30% weight) =====
-  let riskConditions = 0;
-  const totalRiskConditions = 2;
-  
-  // 1. Volatility is suitable (not too high, not too low)
+  // ===== RISK ENVIRONMENT (30% weight) - GRADIENT SCORING =====
+  // 1. Volatility scoring (separate from entry filter)
   const atrPercent = (state.indicators.atr / state.price) * 100;
-  if (atrPercent >= 2 && atrPercent <= 8) {
-    riskConditions++;
-    details.push(`Volatility: Good (${atrPercent.toFixed(1)}%)`);
-  } else if (atrPercent > 8) {
-    details.push(`Volatility: Too High (${atrPercent.toFixed(1)}%)`);
+  let volatilityScore = 0.0;
+  
+  if (atrPercent >= 2 && atrPercent <= 6) {
+    volatilityScore = 1.0; // Ideal: 100%
+    details.push(`Volatility: Ideal (${atrPercent.toFixed(1)}%)`);
+  } else if ((atrPercent >= 1 && atrPercent < 2) || (atrPercent > 6 && atrPercent <= 8)) {
+    volatilityScore = 0.75; // Acceptable: 75%
+    details.push(`Volatility: Acceptable (${atrPercent.toFixed(1)}%)`);
+  } else if (atrPercent < 1) {
+    volatilityScore = 0.50; // Low but tradeable: 50%
+    details.push(`Volatility: Low (${atrPercent.toFixed(1)}%)`);
+  } else if (atrPercent > 8 && atrPercent <= 10) {
+    volatilityScore = 0.40; // High but manageable: 40%
+    details.push(`Volatility: High (${atrPercent.toFixed(1)}%)`);
   } else {
-    details.push(`Volatility: Too Low (${atrPercent.toFixed(1)}%)`);
+    volatilityScore = 0.25; // Extreme: 25%
+    details.push(`Volatility: Extreme (${atrPercent.toFixed(1)}%)`);
   }
   
-  // 2. Market condition is not sideways (directional movement available)
-  if (state.marketCondition !== 'sideways') {
-    riskConditions++;
+  // 2. Market condition (trending vs sideways)
+  let marketScore = 0.0;
+  if (state.marketCondition === 'bullish' || state.marketCondition === 'bearish') {
+    marketScore = 1.0; // Strong trend: 100%
     details.push(`Market: ${state.marketCondition}`);
-  } else {
+  } else if (state.marketCondition === 'sideways') {
+    marketScore = 0.5; // Sideways still tradeable: 50%
     details.push("Market: Sideways");
+  } else {
+    marketScore = 0.75; // Other conditions: 75%
+    details.push(`Market: ${state.marketCondition}`);
   }
   
-  riskScore = (riskConditions / totalRiskConditions) * 0.30;
+  riskScore = ((volatilityScore + marketScore) / 2) * 0.30;
   
   // ===== FINAL CONFLUENCE SCORE =====
   const finalScore = trendScore + momentumScore + riskScore;
   
-  // Store details in state for debugging (add property if needed)
+  // Store details in state for debugging
   (state as any).confluenceDetails = details;
   
   return finalScore;
 }
 
-// PHASE 2: Calculate dynamic confluence threshold based on volatility
+// Returns dynamic confluence threshold based on market conditions - PHASE 4: RELAXED THRESHOLDS
 export function getDynamicConfluenceThreshold(state: TradingState, multiTimeframeAligned: boolean): number {
   const atrPercent = (state.indicators.atr / state.price) * 100;
   
-  let threshold = 0.65; // Base threshold (Normal volatility)
+  // Base threshold - MUCH LOWER for gradient scoring
+  let threshold = 0.50; // Phase 4: Lowered from 0.60 to 0.50
   
-  if (atrPercent > 6) {
-    threshold = 0.75; // High volatility requires stronger agreement
-  } else if (atrPercent < 2) {
-    threshold = 0.60; // Low volatility can trade with slightly lower confluence
+  // Adjust for volatility (smaller adjustments)
+  if (atrPercent < 1) {
+    threshold += 0.05; // Very low volatility = need slightly more confluence
+  } else if (atrPercent > 8) {
+    threshold += 0.10; // Extreme volatility = need more confluence
+  } else if (atrPercent >= 2 && atrPercent <= 6) {
+    threshold -= 0.05; // Ideal volatility = can lower threshold
   }
   
-  // Multi-timeframe boost: Lower threshold by 0.05 if all timeframes align
+  // Multi-timeframe bonus
   if (multiTimeframeAligned) {
-    threshold -= 0.05;
+    threshold -= 0.05; // Strong multi-timeframe = lower threshold
   }
   
-  return threshold;
+  // Clamp to reasonable range: 0.45 to 0.60
+  return Math.max(0.45, Math.min(0.60, threshold));
 }
 
 // Calculate risk parameters using Fibonacci + ATR + Support/Resistance

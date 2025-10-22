@@ -520,53 +520,135 @@ export async function makeAITradingDecision(
   };
 }
 
-// Calculate enhanced confluence score
+// Calculate enhanced confluence score - PHASE 4: GRADIENT SCORING (matches advanced-trading-bot)
 export function calculateConfluenceScore(state: TradingState, riskLevel: RiskLevel): number {
-  let score = 0.0;
-  let maxScore = 0.0;
+  let trendScore = 0.0;
+  let momentumScore = 0.0;
+  let riskScore = 0.0;
   
-  // EMA 200 + MACD trend confirmation (25%)
-  maxScore += 0.25;
-  const emaDeviation = Math.abs((state.price - state.indicators.ema200) / state.indicators.ema200);
-  if (emaDeviation > 0.02) {
-    const macdAlign = (state.price > state.indicators.ema200 && state.indicators.macd.histogram > 0) ||
-                      (state.price < state.indicators.ema200 && state.indicators.macd.histogram < 0);
-    if (macdAlign) score += 0.25;
+  const isCrypto = state.symbol.includes('-USD') || state.symbol.includes('USDT');
+  
+  // ===== TREND AGREEMENT (40% weight) - GRADIENT SCORING =====
+  let trendBullish = 0;
+  let trendBearish = 0;
+  let trendNeutral = 0;
+  
+  // 1. EMA 200 Trend
+  if (state.price > state.indicators.ema200 * 1.02) {
+    trendBullish++;
+  } else if (state.price < state.indicators.ema200 * 0.98) {
+    trendBearish++;
+  } else {
+    trendNeutral++;
   }
   
-  // Ichimoku cloud (20%)
-  maxScore += 0.20;
-  if (Math.abs(state.indicators.ichimoku.signal) > 0.5) {
-    score += 0.20;
+  // 2. MACD Trend
+  if (state.indicators.macd.histogram > 0 && state.indicators.macd.macd > state.indicators.macd.signal) {
+    trendBullish++;
+  } else if (state.indicators.macd.histogram < 0 && state.indicators.macd.macd < state.indicators.macd.signal) {
+    trendBearish++;
+  } else {
+    trendNeutral++;
   }
   
-  // Bollinger Bands position (15%)
-  maxScore += 0.15;
+  // 3. Ichimoku Trend
+  if (state.indicators.ichimoku.signal > 0.3) {
+    trendBullish++;
+  } else if (state.indicators.ichimoku.signal < -0.3) {
+    trendBearish++;
+  } else {
+    trendNeutral++;
+  }
+  
+  // GRADIENT SCORING: Partial credit for 2/3 agreement
+  const trendAgreement = Math.max(trendBullish, trendBearish);
+  if (trendAgreement === 3) {
+    trendScore = 1.0 * 0.40; // All 3 agree: 100%
+  } else if (trendAgreement === 2) {
+    trendScore = 0.67 * 0.40; // 2/3 agree: 67%
+  } else if (trendAgreement === 1 && trendNeutral >= 1) {
+    trendScore = 0.50 * 0.40; // 1 + neutrals: 50%
+  } else if (trendBullish > 0 && trendBearish > 0) {
+    trendScore = 0.33 * 0.40; // Mixed: 33%
+  }
+  
+  // ===== MOMENTUM CONFIRMATION (30% weight) - GRADIENT SCORING =====
+  let momentumBullish = 0;
+  let momentumBearish = 0;
+  let momentumNeutral = 0;
+  
   const bbPosition = state.indicators.bollinger.position;
-  if (bbPosition < 0.2 || bbPosition > 0.8) {
-    score += 0.15;
+  if (bbPosition < 0.25) {
+    momentumBullish++;
+  } else if (bbPosition > 0.75) {
+    momentumBearish++;
+  } else {
+    momentumNeutral++;
   }
   
-  // Volume confirmation (15%)
-  maxScore += 0.15;
-  if (Math.abs(state.indicators.obv) > 500000) {
-    score += 0.15;
+  // Volume (reduced weight for crypto)
+  const volumeWeight = isCrypto ? 0.3 : 1.0;
+  if (state.indicators.obv > 500000) {
+    momentumBullish += volumeWeight;
+  } else if (state.indicators.obv < -500000) {
+    momentumBearish += volumeWeight;
+  } else {
+    momentumNeutral += volumeWeight;
   }
   
-  // Market condition alignment (15%)
-  maxScore += 0.15;
-  if (state.marketCondition !== 'sideways') {
-    score += 0.15;
+  // Market Phase
+  if (state.marketPhase) {
+    if (state.marketPhase.phase === 'uptrend') {
+      momentumBullish++;
+    } else if (state.marketPhase.phase === 'downtrend') {
+      momentumBearish++;
+    } else {
+      momentumNeutral++;
+    }
   }
   
-  // Volatility (10%)
-  maxScore += 0.10;
-  const atrPercent = state.indicators.atr / state.price;
-  if (atrPercent > 0.02 && atrPercent < 0.06) {
-    score += 0.10;
+  const totalMomentum = momentumBullish + momentumBearish + momentumNeutral;
+  const momentumAgreement = Math.max(momentumBullish, momentumBearish);
+  const momentumRatio = momentumAgreement / totalMomentum;
+  
+  if (momentumRatio >= 0.8) {
+    momentumScore = 1.0 * 0.30;
+  } else if (momentumRatio >= 0.6) {
+    momentumScore = 0.67 * 0.30;
+  } else if (momentumRatio >= 0.4) {
+    momentumScore = 0.50 * 0.30;
+  } else {
+    momentumScore = 0.33 * 0.30;
   }
   
-  return score;
+  // ===== RISK ENVIRONMENT (30% weight) - GRADIENT SCORING =====
+  const atrPercent = (state.indicators.atr / state.price) * 100;
+  let volatilityScore = 0.0;
+  
+  if (atrPercent >= 2 && atrPercent <= 6) {
+    volatilityScore = 1.0;
+  } else if ((atrPercent >= 1 && atrPercent < 2) || (atrPercent > 6 && atrPercent <= 8)) {
+    volatilityScore = 0.75;
+  } else if (atrPercent < 1) {
+    volatilityScore = 0.50;
+  } else if (atrPercent > 8 && atrPercent <= 10) {
+    volatilityScore = 0.40;
+  } else {
+    volatilityScore = 0.25;
+  }
+  
+  let marketScore = 0.0;
+  if (state.marketCondition === 'bullish' || state.marketCondition === 'bearish') {
+    marketScore = 1.0;
+  } else if (state.marketCondition === 'sideways') {
+    marketScore = 0.5;
+  } else {
+    marketScore = 0.75;
+  }
+  
+  riskScore = ((volatilityScore + marketScore) / 2) * 0.30;
+  
+  return trendScore + momentumScore + riskScore;
 }
 
 // Calculate risk parameters using Fibonacci + ATR + Support/Resistance
