@@ -25,7 +25,7 @@ class PPOTickEnv(gym.Env):
         feature_cols: list[str] | None = None,
         tp_bounds=(0.8, 3.0),
         sl_bounds=(0.5, 1.6),
-        conf_threshold: float = 0.30,
+        conf_threshold: float = 0.15,
         max_policy_delta_tp: float = 0.5,   # action continuous head clamp
         max_policy_delta_sl: float = 0.3,   # action continuous head clamp
         use_suggestions: bool = True,       # start from tp/sl suggestions if available

@@ -20,7 +20,11 @@ from binance.exceptions import BinanceAPIException, BinanceRequestException
 # CONFIG — folder root for crypto
 # ============================================================
 
-CRYPTO_ROOT = "PPO_Models/Cryptocurrencies"   # base folder for all crypto assets
+_CURR_DIR = os.path.dirname(os.path.abspath(__file__))
+# go one level up to project root
+_BASE_DIR = os.path.dirname(_CURR_DIR)
+
+CRYPTO_ROOT = os.path.join(_BASE_DIR, "PPO_Models", "Cryptocurrencies")
 
 
 

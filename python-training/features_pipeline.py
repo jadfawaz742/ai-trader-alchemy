@@ -28,9 +28,6 @@ from fibo_features import compute_fib_features
 from entry_meta_features import build_entry_meta_features
 from tp_sl_suggest import build_tp_sl_suggestions
 
-CRYPTO_ROOT = "PPO_Models/Crypto"
-
-
 def get_asset_root(symbol: str) -> str:
     """
     Auto-detect if symbol is crypto or stock based on naming convention.

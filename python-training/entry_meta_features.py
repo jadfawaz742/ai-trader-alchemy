@@ -9,7 +9,7 @@
 from __future__ import annotations
 import numpy as np
 import pandas as pd
-import pandas_ta as ta  # only used for robust Bollinger width (optional)
+import talib as ta  # swapped from pandas_ta to TA-Lib
 
 def _clamp01(x):
     return np.clip(x, 0.0, 1.0)
@@ -106,10 +106,13 @@ def build_entry_meta_features(
     out["macd_reliability"] = _clamp01(0.6 * out["regime_trending"] + 0.4 * (out["vol_regime"] >= 1).astype(float))
 
     # ---------- Bollinger / Mean-reversion context ----------
-    # Recompute BB width robustly (we need width, not just position). Falls back to vol_regime.
+    # Recompute BB width robustly (we need width, not just position). Falls back to zeros if TA-Lib fails.
     try:
-        bb = ta.bbands(out["close"], length=20, std=2)
-        bb_width = _safe_div_num((bb["BBU_20_2.0"] - bb["BBL_20_2.0"]).values, out["close"].values, default=0.0)
+        upper, middle, lower = ta.BBANDS(
+            out["close"].values.astype(float),
+            timeperiod=20, nbdevup=2, nbdevdn=2, matype=0
+        )
+        bb_width = _safe_div_num((upper - lower), out["close"].values, default=0.0)
     except Exception:
         bb_width = np.zeros(len(out), dtype=float)
 

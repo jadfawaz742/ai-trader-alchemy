@@ -24,8 +24,9 @@ logger = logging.getLogger(__name__)
 # ============================================================
 # CONFIG — folder root for stocks
 # ============================================================
-
-STOCKS_ROOT = "PPO_Models/Stocks"   # base folder for all stock assets
+_CURR_DIR = os.path.dirname(os.path.abspath(__file__))
+_BASE_DIR = os.path.dirname(_CURR_DIR)
+STOCKS_ROOT = os.path.join(_BASE_DIR, "PPO_Models", "Stocks")
 
 # IB Connection settings
 IB_HOST = os.getenv("IB_HOST", "127.0.0.1")
