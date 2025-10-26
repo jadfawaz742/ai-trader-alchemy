@@ -36,17 +36,17 @@ serve(async (req) => {
 
     console.log(`🧪 TEST TRADE: Creating test signal for ${side} ${qty} ${asset}`);
 
-    // Get active broker connection
+    // Get connected broker connection
     const { data: connection } = await supabaseClient
       .from('broker_connections')
-      .select('id, broker')
+      .select('id, broker_id, brokers(name)')
       .eq('user_id', user.id)
-      .eq('status', 'active')
+      .eq('status', 'connected')
       .single();
 
     if (!connection) {
       return new Response(JSON.stringify({ 
-        error: 'No active broker connection found' 
+        error: 'No connected broker found. Please connect to Binance Testnet first.' 
       }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -95,11 +95,7 @@ serve(async (req) => {
         sl,
         tp,
         status: 'queued',
-        confidence: 1.0,
-        reasoning: `🧪 TEST TRADE: Manual test signal created via test-trade function`,
-        broker_connection_id: connection.id,
-        broker: connection.broker,
-        paper_trading: true
+        broker_id: connection.broker_id
       })
       .select()
       .single();
@@ -115,29 +111,12 @@ serve(async (req) => {
     console.log(`✅ Test signal created: ${signal.id}`);
     console.log(`   Asset: ${asset}, Side: ${side}, Qty: ${qty}`);
     console.log(`   Price: ${currentPrice}, SL: ${sl.toFixed(2)}, TP: ${tp.toFixed(2)}`);
-
-    // Invoke paper-trade function
-    const { data: paperTradeResult, error: paperTradeError } = await supabaseClient.functions.invoke(
-      'paper-trade',
-      { body: { signal_id: signal.id } }
-    );
-
-    if (paperTradeError) {
-      console.error('Error invoking paper-trade:', paperTradeError);
-      return new Response(JSON.stringify({ 
-        signal,
-        paper_trade_error: paperTradeError.message 
-      }), {
-        status: 200,
-        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
-      });
-    }
+    console.log(`   Broker: ${connection.brokers?.name || 'Unknown'}`);
 
     return new Response(JSON.stringify({
       success: true,
       signal,
-      paper_trade: paperTradeResult,
-      message: '🧪 Test trade created and executed in paper trading mode'
+      message: `🧪 Test signal created for ${asset}. The orchestrator will process it automatically.`
     }), {
       headers: { ...corsHeaders, 'Content-Type': 'application/json' },
     });
