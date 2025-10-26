@@ -71,14 +71,11 @@ serve(async (req) => {
 
     console.log(`Triggering trading cycle for user ${user.id} with ${prefs.length} assets`);
 
-    // Invoke the inference service
+    // Invoke the generate-signals service
     const { data: result, error: invokeError } = await supabase.functions.invoke(
-      'inference-service',
+      'generate-signals',
       {
-        body: { 
-          userId: user.id,
-          manualTrigger: true 
-        }
+        body: {}
       }
     );
 

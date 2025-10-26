@@ -2355,14 +2355,8 @@ export type Database = {
         Args: { days_back?: number; p_user_id: string }
         Returns: Json
       }
-      cleanup_old_audit_logs: {
-        Args: Record<PropertyKey, never>
-        Returns: undefined
-      }
-      cleanup_old_rate_limits: {
-        Args: Record<PropertyKey, never>
-        Returns: undefined
-      }
+      cleanup_old_audit_logs: { Args: never; Returns: undefined }
+      cleanup_old_rate_limits: { Args: never; Returns: undefined }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
@@ -2371,25 +2365,16 @@ export type Database = {
         Returns: boolean
       }
       migrate_legacy_credentials: {
-        Args: Record<PropertyKey, never>
+        Args: never
         Returns: {
           connection_id: string
           message: string
           status: string
         }[]
       }
-      refresh_signal_performance_mv: {
-        Args: Record<PropertyKey, never>
-        Returns: undefined
-      }
-      refresh_user_stats_mv: {
-        Args: Record<PropertyKey, never>
-        Returns: undefined
-      }
-      trigger_online_ppo_updates: {
-        Args: Record<PropertyKey, never>
-        Returns: undefined
-      }
+      refresh_signal_performance_mv: { Args: never; Returns: undefined }
+      refresh_user_stats_mv: { Args: never; Returns: undefined }
+      trigger_online_ppo_updates: { Args: never; Returns: undefined }
     }
     Enums: {
       app_role: "admin" | "moderator" | "user"
