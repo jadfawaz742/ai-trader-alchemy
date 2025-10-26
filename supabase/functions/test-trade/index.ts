@@ -35,6 +35,8 @@ serve(async (req) => {
     } = await req.json();
 
     console.log(`🧪 TEST TRADE: Creating test signal for ${side} ${qty} ${asset}`);
+    console.log(`📋 User ID: ${user.id}`);
+    console.log(`📋 Asset: ${asset}, Side: ${side}, Qty: ${qty}`);
 
     // Get connected broker connection
     const { data: connection } = await supabaseClient
@@ -53,21 +55,28 @@ serve(async (req) => {
       });
     }
 
+    console.log(`🔌 Broker connection found:`, connection);
+
     // Get current price if not provided
     let currentPrice = price;
     if (!currentPrice) {
-      const { data: marketData } = await supabaseClient
-        .from('market_data')
-        .select('current_price')
-        .eq('symbol', asset)
-        .single();
-      
-      currentPrice = marketData?.current_price || 0;
+      try {
+        // Fetch current price from Binance directly
+        const binanceUrl = `https://api.binance.com/api/v3/ticker/price?symbol=${asset}`;
+        console.log(`📊 Fetching price from Binance: ${binanceUrl}`);
+        const response = await fetch(binanceUrl);
+        const priceData = await response.json();
+        currentPrice = parseFloat(priceData.price);
+        console.log(`📊 Fetched current price from Binance: ${currentPrice}`);
+      } catch (priceError) {
+        console.error('Error fetching price from Binance:', priceError);
+        currentPrice = 0;
+      }
     }
 
-    if (!currentPrice) {
+    if (!currentPrice || currentPrice === 0) {
       return new Response(JSON.stringify({ 
-        error: 'Could not determine current price' 
+        error: `Could not determine current price for ${asset}. Please provide a price manually.`
       }), {
         status: 400,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
@@ -82,6 +91,8 @@ serve(async (req) => {
     const tp = side === 'BUY'
       ? currentPrice * (1 + tp_pct / 100)
       : currentPrice * (1 - tp_pct / 100);
+
+    console.log(`💰 Price: ${currentPrice}, SL: ${sl}, TP: ${tp}`);
 
     // Create test signal
     const { data: signal, error: signalError } = await supabaseClient
