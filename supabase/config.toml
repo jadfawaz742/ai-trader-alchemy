@@ -125,3 +125,6 @@ verify_jwt = false
 
 [functions.validate-pending-models]
 verify_jwt = false
+
+[functions.test-trade]
+verify_jwt = true
