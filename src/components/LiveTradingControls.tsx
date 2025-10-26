@@ -37,6 +37,7 @@ export function LiveTradingControls() {
   const [loadingSymbols, setLoadingSymbols] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+  const [testing, setTesting] = useState<string | null>(null);
 
   // New asset form
   const [newAsset, setNewAsset] = useState('');
@@ -220,6 +221,30 @@ export function LiveTradingControls() {
     } catch (error: any) {
       console.error('Error removing asset:', error);
       toast.error('Failed to remove asset');
+    }
+  };
+
+  const testTrade = async (asset: string) => {
+    try {
+      setTesting(asset);
+      const { data, error } = await supabase.functions.invoke('test-trade', {
+        body: {
+          asset,
+          side: 'BUY',
+          qty: 0.001,
+          sl_pct: 2.0,
+          tp_pct: 3.0
+        }
+      });
+
+      if (error) throw error;
+
+      toast.success(`Test trade created for ${asset}! Check Recent Trades.`);
+    } catch (error: any) {
+      console.error('Error creating test trade:', error);
+      toast.error(`Failed to create test trade: ${error.message}`);
+    } finally {
+      setTesting(null);
     }
   };
 
@@ -446,14 +471,25 @@ export function LiveTradingControls() {
                     </div>
                   </div>
 
-                  <Button
-                    size="sm"
-                    variant="destructive"
-                    onClick={() => removeAsset(pref.id)}
-                    className="mt-4"
-                  >
-                    Remove Asset
-                  </Button>
+                  <div className="flex gap-2 mt-4">
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      onClick={() => testTrade(pref.asset)}
+                      disabled={testing === pref.asset || !pref.enabled}
+                      className="flex-1"
+                    >
+                      <Play className="h-4 w-4 mr-2" />
+                      {testing === pref.asset ? 'Creating...' : 'Test Trade'}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="destructive"
+                      onClick={() => removeAsset(pref.id)}
+                    >
+                      Remove Asset
+                    </Button>
+                  </div>
                 </div>
               ))}
             </div>
