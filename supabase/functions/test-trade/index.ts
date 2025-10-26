@@ -39,12 +39,22 @@ serve(async (req) => {
     console.log(`📋 Asset: ${asset}, Side: ${side}, Qty: ${qty}`);
 
     // Get connected broker connection
-    const { data: connection } = await supabaseClient
+    const { data: connection, error: connectionError } = await supabaseClient
       .from('broker_connections')
-      .select('id, broker_id, brokers(name)')
+      .select('id, broker_id')
       .eq('user_id', user.id)
       .eq('status', 'connected')
       .single();
+
+    if (connectionError) {
+      console.error('❌ Error fetching broker connection:', connectionError);
+      return new Response(JSON.stringify({ 
+        error: `Failed to fetch broker connection: ${connectionError.message}` 
+      }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
 
     if (!connection) {
       return new Response(JSON.stringify({ 
@@ -122,7 +132,7 @@ serve(async (req) => {
     console.log(`✅ Test signal created: ${signal.id}`);
     console.log(`   Asset: ${asset}, Side: ${side}, Qty: ${qty}`);
     console.log(`   Price: ${currentPrice}, SL: ${sl.toFixed(2)}, TP: ${tp.toFixed(2)}`);
-    console.log(`   Broker: ${connection.brokers?.name || 'Unknown'}`);
+    console.log(`   Broker ID: ${connection.broker_id}`);
 
     return new Response(JSON.stringify({
       success: true,
