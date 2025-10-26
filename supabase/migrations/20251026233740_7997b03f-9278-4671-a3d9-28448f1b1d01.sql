@@ -1,0 +1,45 @@
+-- Insert manual validation approval for BTCUSDT testnet model
+INSERT INTO model_validations (
+  model_id,
+  asset,
+  train_months,
+  test_months,
+  total_windows,
+  passed_windows,
+  failed_windows,
+  avg_test_win_rate,
+  avg_test_sharpe,
+  avg_test_drawdown,
+  total_test_pnl,
+  win_rate_std_dev,
+  sharpe_std_dev,
+  approved,
+  full_report,
+  recommendation,
+  created_at
+) VALUES (
+  '4fe18e45-dbdf-4de2-8d58-d481afc7806c',
+  'BTCUSDT',
+  12,
+  3,
+  1,
+  1,
+  0,
+  0.3797,
+  0.0,
+  -1.0,
+  21777.94,
+  0.0,
+  0.0,
+  true,
+  jsonb_build_object(
+    'validation_type', 'manual_testnet',
+    'testnet_only', true,
+    'manual_approval', true,
+    'warning', 'Model uploaded for testnet validation - NOT PRODUCTION READY',
+    'performance_note', 'Win rate 37.97% is below threshold',
+    'approved_for', 'paper_trading_only'
+  ),
+  'APPROVED FOR TESTNET PAPER TRADING ONLY - Monitor performance over 24-48 hours',
+  now()
+);
