@@ -26,6 +26,8 @@ serve(async (req) => {
 
     const { signal_id } = await req.json();
 
+    console.log(`🔍 Processing paper trade for signal: ${signal_id}`);
+
     // Fetch signal
     const { data: signal, error: signalError } = await supabaseClient
       .from('signals')
@@ -33,7 +35,19 @@ serve(async (req) => {
       .eq('id', signal_id)
       .single();
 
-    if (signalError || !signal) {
+    if (signalError) {
+      console.error('❌ Error fetching signal:', signalError);
+      return new Response(JSON.stringify({ 
+        error: 'Failed to fetch signal',
+        details: signalError.message 
+      }), {
+        status: 500,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+
+    if (!signal) {
+      console.error('❌ Signal not found:', signal_id);
       return new Response(JSON.stringify({ error: 'Signal not found' }), {
         status: 404,
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },

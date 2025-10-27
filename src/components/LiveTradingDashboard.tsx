@@ -22,6 +22,18 @@ interface PaperPosition {
   created_at: string;
 }
 
+interface QueuedSignal {
+  id: string;
+  asset: string;
+  side: string;
+  qty: number;
+  limit_price: number;
+  sl: number;
+  tp: number;
+  status: string;
+  created_at: string;
+}
+
 interface TradingAlert {
   id: string;
   asset: string;
@@ -42,9 +54,11 @@ interface AssetPref {
 export function LiveTradingDashboard() {
   const { user } = useAuth();
   const [positions, setPositions] = useState<PaperPosition[]>([]);
+  const [queuedSignals, setQueuedSignals] = useState<QueuedSignal[]>([]);
   const [alerts, setAlerts] = useState<TradingAlert[]>([]);
   const [assetPrefs, setAssetPrefs] = useState<AssetPref[]>([]);
   const [loading, setLoading] = useState(true);
+  const [processing, setProcessing] = useState(false);
   const [metrics, setMetrics] = useState({
     totalPnL: 0,
     winRate: 0,
@@ -100,6 +114,16 @@ export function LiveTradingDashboard() {
 
       setPositions(positionsData || []);
 
+      // Load queued signals
+      const { data: signalsData } = await supabase
+        .from('signals')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('status', 'queued')
+        .order('created_at', { ascending: false });
+
+      setQueuedSignals(signalsData || []);
+
       // Load alerts
       const { data: alertsData } = await supabase
         .from('trading_alerts')
@@ -125,11 +149,20 @@ export function LiveTradingDashboard() {
       const winningTrades = positionsData?.filter(p => (p.pnl || 0) > 0).length || 0;
       const totalTrades = positionsData?.length || 0;
       
+      // Count signals from today
+      const today = new Date();
+      today.setHours(0, 0, 0, 0);
+      const { count: todaySignalsCount } = await supabase
+        .from('signals')
+        .select('*', { count: 'exact', head: true })
+        .eq('user_id', user.id)
+        .gte('created_at', today.toISOString());
+
       setMetrics({
         totalPnL,
         winRate: totalTrades > 0 ? (winningTrades / totalTrades) * 100 : 0,
         activePositions: positionsData?.length || 0,
-        signalsToday: 0 // TODO: Fetch from signals table
+        signalsToday: todaySignalsCount || 0
       });
 
     } catch (error) {
@@ -175,6 +208,36 @@ export function LiveTradingDashboard() {
     }
   };
 
+  const processSignalsNow = async () => {
+    if (!user) return;
+    
+    setProcessing(true);
+    try {
+      // Process each queued signal through paper-trade
+      for (const signal of queuedSignals) {
+        const { error } = await supabase.functions.invoke('paper-trade', {
+          body: { signal_id: signal.id }
+        });
+        
+        if (error) {
+          console.error('Error processing signal:', error);
+        }
+      }
+      
+      toast.success('Processing signals...');
+      
+      // Reload dashboard after 2 seconds to see results
+      setTimeout(() => {
+        loadDashboardData();
+      }, 2000);
+    } catch (error) {
+      console.error('Error processing signals:', error);
+      toast.error('Failed to process signals');
+    } finally {
+      setProcessing(false);
+    }
+  };
+
   const getSeverityColor = (severity: string) => {
     switch (severity) {
       case 'CRITICAL': return 'destructive';
@@ -193,6 +256,15 @@ export function LiveTradingDashboard() {
     <div className="space-y-6 p-6">
       <div className="flex items-center justify-between">
         <h1 className="text-3xl font-bold">Live Trading Dashboard</h1>
+        {queuedSignals.length > 0 && (
+          <button
+            onClick={processSignalsNow}
+            disabled={processing}
+            className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50"
+          >
+            {processing ? 'Processing...' : `Process ${queuedSignals.length} Queued Signal${queuedSignals.length > 1 ? 's' : ''}`}
+          </button>
+        )}
       </div>
 
       {/* Metrics Cards */}
@@ -310,6 +382,54 @@ export function LiveTradingDashboard() {
           </Table>
         </CardContent>
       </Card>
+
+      {/* Queued Signals */}
+      {queuedSignals.length > 0 && (
+        <Card>
+          <CardHeader>
+            <CardTitle>Queued Signals ({queuedSignals.length})</CardTitle>
+            <CardDescription>Test trades waiting to be processed into paper trades</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Asset</TableHead>
+                  <TableHead>Side</TableHead>
+                  <TableHead>Qty</TableHead>
+                  <TableHead>Price</TableHead>
+                  <TableHead>SL</TableHead>
+                  <TableHead>TP</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Created</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {queuedSignals.map(signal => (
+                  <TableRow key={signal.id}>
+                    <TableCell className="font-medium">{signal.asset}</TableCell>
+                    <TableCell>
+                      <Badge variant={signal.side === 'BUY' ? 'default' : 'secondary'}>
+                        {signal.side}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>{signal.qty}</TableCell>
+                    <TableCell>${signal.limit_price?.toFixed(2) || '-'}</TableCell>
+                    <TableCell>${signal.sl?.toFixed(2) || '-'}</TableCell>
+                    <TableCell>${signal.tp?.toFixed(2) || '-'}</TableCell>
+                    <TableCell>
+                      <Badge variant="outline">{signal.status}</Badge>
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {new Date(signal.created_at).toLocaleString()}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Active Positions */}
       <Card>
