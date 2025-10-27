@@ -125,6 +125,39 @@ After every 100 live trades:
 4. Shadow model created and validated
 5. If performance improves by 2%+, promotes to active
 
+## ⚙️ TP/SL Configuration
+
+The training environment uses **tightened ATR-based ranges** for Take Profit and Stop Loss:
+
+**Take Profit (TP)**: `1.2x - 2.0x ATR`
+- Minimum: 1.2x ATR (realistic target)
+- Maximum: 2.0x ATR (achievable in normal conditions)
+
+**Stop Loss (SL)**: `0.8x - 1.2x ATR`
+- Minimum: 0.8x ATR (tight risk management)
+- Maximum: 1.2x ATR (prevents loose stops)
+
+### Risk:Reward Matrix
+```
+          SL=0.8   SL=1.0   SL=1.2
+TP=1.2    1.5:1    1.2:1    1.0:1
+TP=1.5    1.9:1    1.5:1    1.25:1
+TP=2.0    2.5:1    2.0:1    1.67:1
+```
+
+**Benefits:**
+✅ Guaranteed minimum R:R of 1:1 (breakeven at 50% win rate)  
+✅ Maximum R:R of 2.5:1 (excellent risk-adjusted returns)  
+✅ Forces model to learn realistic price action  
+✅ Tighter stops = better risk management  
+✅ More achievable targets = higher win rates
+
+**Example for BTC @ $115k with ATR=$2,300:**
+- TP range: $2,760 - $4,600 (2.4% - 4.0% move)
+- SL range: $1,840 - $2,760 (1.6% - 2.4% move)
+
+**Note:** Models trained with these bounds will output TP/SL values within these ranges. Retrain existing models to adopt the new configuration.
+
 ## 🔗 Supabase Integration
 
 ### Data Flow

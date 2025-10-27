@@ -219,9 +219,9 @@ def build_tp_sl_suggestions(df: pd.DataFrame) -> pd.DataFrame:
             sl_best[row_i]   = float(sl_dists_short[k][row_i])
             sl_score_best[row_i] = float(sl_scores_short[k][row_i])
 
-    # Guard rails: clip to reasonable ATR range (same as your earlier bounds)
-    tp_best = np.clip(tp_best, 0.8, 3.0)
-    sl_best = np.clip(sl_best, 0.5, 1.6)
+    # Guard rails: clip to reasonable ATR range (tightened for realistic trading)
+    tp_best = np.clip(tp_best, 1.2, 2.0)  # 1.2x-2.0x ATR
+    sl_best = np.clip(sl_best, 0.8, 1.2)  # 0.8x-1.2x ATR
 
     out["tp_mult_suggested"] = tp_best
     out["sl_mult_suggested"] = sl_best

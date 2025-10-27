@@ -210,7 +210,7 @@ def train(symbol: str,
     
     print(f"Loaded {len(df)} rows for {symbol}")
     
-    # Initialize environment
+    # Initialize environment (uses tightened bounds: tp_bounds=(1.2, 2.0), sl_bounds=(0.8, 1.2))
     env = PPOTickEnv(df, conf_threshold=0.30, use_suggestions=True)
     
     # Initialize policy on device
