@@ -14,6 +14,7 @@ import { MarketResearchDashboard } from "@/components/dashboards/MarketResearchD
 import { LiveTradingMasterControl } from "@/components/LiveTradingMasterControl";
 import { LiveTradingDashboard } from "@/components/LiveTradingDashboard";
 import { BatchTrainingMonitor } from "@/components/BatchTrainingMonitor";
+import { ClearPaperTradingButton } from "@/components/ClearPaperTradingButton";
 
 const AdvancedTrading = () => {
   const { user, loading, signOut, isAuthenticated } = useAuth();
@@ -148,6 +149,9 @@ const AdvancedTrading = () => {
             </TabsContent>
 
             <TabsContent value="live" className="space-y-6">
+              <div className="flex justify-end mb-4">
+                <ClearPaperTradingButton />
+              </div>
               <LiveTradingDashboard />
             </TabsContent>
 
