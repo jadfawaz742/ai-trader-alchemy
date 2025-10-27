@@ -38,6 +38,9 @@ export const ClearPaperTradingButton = () => {
 
       const { data, error } = await supabase.functions.invoke('clear-paper-trading', {
         body: { clearType },
+        headers: {
+          Authorization: `Bearer ${session.access_token}`
+        }
       });
 
       if (error) throw error;
