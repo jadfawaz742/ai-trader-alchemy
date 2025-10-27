@@ -17,6 +17,36 @@ export interface ModelMetadata {
 }
 
 /**
+ * Validate model structure has required PyTorch layer weights
+ */
+function validateModelStructure(weights: any): boolean {
+  const required = [
+    'shared.0.weight',
+    'shared.0.bias',
+    'shared.2.weight',
+    'shared.2.bias',
+    'actor_discrete.weight',
+    'actor_discrete.bias',
+    'actor_mu.weight',
+    'actor_mu.bias',
+    'actor_logstd',
+    'critic.weight',
+    'critic.bias'
+  ];
+  
+  const presentKeys = Object.keys(weights);
+  const missingKeys = required.filter(key => !presentKeys.includes(key));
+  
+  if (missingKeys.length > 0) {
+    console.error(`❌ Missing required model parameters: ${missingKeys.join(', ')}`);
+    return false;
+  }
+  
+  console.log(`✅ Model structure validated: ${presentKeys.length} parameters found`);
+  return true;
+}
+
+/**
  * Load model weights from storage bucket
  */
 export async function loadModelFromStorage(
@@ -35,10 +65,27 @@ export async function loadModelFromStorage(
     throw new Error(`Model download failed: ${error.message}`);
   }
   
-  const modelJson = await data.text();
-  const modelWeights = JSON.parse(modelJson);
+  console.log(`📦 Downloaded ${data.size} bytes, MIME: ${data.type}`);
   
-  console.log(`✅ Model loaded successfully (${data.size} bytes)`);
+  const modelJson = await data.text();
+  console.log(`📄 First 200 chars: ${modelJson.substring(0, 200)}`);
+  
+  let modelWeights;
+  try {
+    modelWeights = JSON.parse(modelJson);
+  } catch (parseError) {
+    console.error(`❌ JSON parse error: ${parseError}`);
+    throw new Error(`Failed to parse model JSON: ${parseError}`);
+  }
+  
+  const keys = Object.keys(modelWeights);
+  console.log(`🔑 Model has ${keys.length} top-level keys: ${keys.slice(0, 10).join(', ')}`);
+  
+  if (!validateModelStructure(modelWeights)) {
+    throw new Error('Invalid model structure: missing required neural network parameters');
+  }
+  
+  console.log(`✅ Model loaded and validated successfully`);
   return modelWeights;
 }
 

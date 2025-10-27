@@ -243,10 +243,20 @@ def train(symbol: str,
             torch.save(policy.state_dict(), ckpt_path)
             print(f"[CKPT] {ckpt_path}")
     
-    # Save final model
-    final_path = os.path.join(ckpt_dir, "final_model.pt")
-    torch.save(policy.state_dict(), final_path)
-    print(f"[DONE] saved {final_path}")
+    # Helper function to convert PyTorch state dict to JSON-serializable format
+    def state_dict_to_json(state_dict):
+        """Convert PyTorch state dict to JSON-serializable format"""
+        json_dict = {}
+        for key, tensor in state_dict.items():
+            json_dict[key] = tensor.cpu().detach().numpy().tolist()
+        return json_dict
+    
+    # Save final model as JSON for TypeScript compatibility
+    final_path = os.path.join(ckpt_dir, "final_model.json")
+    model_json = state_dict_to_json(policy.state_dict())
+    with open(final_path, "w") as f:
+        json.dump(model_json, f)
+    print(f"[DONE] saved {final_path} (JSON format)")
     
     # Save metadata
     metadata = {
