@@ -1556,7 +1556,7 @@ export type Database = {
             foreignKeyName: "signals_model_id_fkey"
             columns: ["model_id"]
             isOneToOne: false
-            referencedRelation: "models"
+            referencedRelation: "asset_models"
             referencedColumns: ["id"]
           },
         ]
