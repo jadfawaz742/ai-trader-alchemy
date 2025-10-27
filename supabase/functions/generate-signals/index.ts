@@ -270,7 +270,7 @@ serve(async (req) => {
               side: signal.action,
               qty: normalizedQty,
               order_type: signal.order_type || 'MARKET',
-              limit_price: signal.limit_price,
+              limit_price: tradingState.price, // Store current market price as entry reference
               tp: signal.tp,
               sl: signal.sl,
               status: 'queued',
@@ -508,15 +508,18 @@ function calculateIchimoku(highs: number[], lows: number[], prices: number[]): {
 }
 
 function calculatePositionSize(pref: any, currentPrice: number): number {
-  const riskMultiplier = {
-    'low': 0.5,
-    'medium': 1.0,
-    'high': 1.5,
-    'aggressive': 2.0,
-  }[pref.risk_mode] || 1.0;
+  // Position size as percentage of max exposure based on risk mode
+  // Conservative: 10%, Medium: 20%, High: 30%, Aggressive: 40%
+  const positionSizePct = {
+    'low': 0.10,
+    'medium': 0.20,
+    'high': 0.30,
+    'aggressive': 0.40,
+  }[pref.risk_mode] || 0.20;
   
   const maxExposure = pref.max_exposure_usd || 0;
-  let rawQty = (maxExposure / currentPrice) * riskMultiplier;
+  const positionValue = maxExposure * positionSizePct;
+  let rawQty = positionValue / currentPrice;
   
   // Apply model's size multiplier if provided (from PPO inference)
   const sizeMultiplier = (pref as any).sizeMultiplier || 1.0;
@@ -529,14 +532,16 @@ function calculatePositionSize(pref: any, currentPrice: number): number {
   
   console.log(`💰 Position Size Calculation:
     - Max Exposure: $${maxExposure.toLocaleString()}
+    - Position Size %: ${(positionSizePct * 100).toFixed(0)}%
+    - Position Value: $${positionValue.toLocaleString()}
     - Current Price: $${currentPrice.toLocaleString()}
-    - Risk Mode: ${pref.risk_mode} (${riskMultiplier}x)
+    - Risk Mode: ${pref.risk_mode}
     - Size Multiplier: ${sizeMultiplier.toFixed(3)}x
     - Raw Qty: ${rawQty.toFixed(8)}
     - Final Qty: ${finalQty.toFixed(8)}`);
   
   if (finalQty === 0 || !isFinite(finalQty)) {
-    console.error(`❌ Invalid qty calculated! max_exposure=${maxExposure}, price=${currentPrice}, risk=${riskMultiplier}`);
+    console.error(`❌ Invalid qty calculated! max_exposure=${maxExposure}, price=${currentPrice}, positionPct=${positionSizePct}`);
     return 0;
   }
   
