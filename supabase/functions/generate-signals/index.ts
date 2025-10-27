@@ -5,9 +5,9 @@ import { fetchMultiTimeframeData, analyzeMultiTimeframe, getMultiTimeframeBoost 
 import { fetchMarketData as fetchUnifiedData, type MarketDataPoint } from "../_shared/market-data-fetcher.ts";
 import { isCryptoSymbol, getAssetType } from "../_shared/symbol-utils.ts";
 
-// Force redeploy to pick up 25-feature extraction fix in trading-environment.ts
-const FEATURE_FIX_VERSION = '2.0.0';
-console.log(`🔧 generate-signals v${FEATURE_FIX_VERSION} - 25-feature extraction enabled`);
+// Force redeploy to pick up PPO inference debugging
+const FEATURE_FIX_VERSION = '3.0.0';
+console.log(`🔧 generate-signals v${FEATURE_FIX_VERSION} - PPO inference with debug logging`);
 
 const corsHeaders = {
   'Access-Control-Allow-Origin': '*',

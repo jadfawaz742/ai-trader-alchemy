@@ -273,14 +273,28 @@ export async function makeAITradingDecision(
 ): Promise<TradingAction> {
   
   // 🧠 USE TRAINED PPO MODEL IF AVAILABLE
+  console.log(`🔍 PPO Check: modelWeights=${!!modelWeights}, marketData=${!!marketData}, dataLength=${marketData?.length || 0}`);
+  
   if (modelWeights && marketData && marketData.length >= 200) {
-    console.log(`🤖 Using trained PPO model for ${symbol} inference`);
+    console.log(`🧠 Running PPO inference for ${symbol}...`);
+    console.log(`   - Model structure: ${JSON.stringify(Object.keys(modelWeights || {}))}`);
+    console.log(`   - Market data points: ${marketData.length}`);
+    console.log(`   - Current price: ${marketData[marketData.length - 1]?.close}`);
     
     try {
+      console.log(`📥 Importing PPO inference module...`);
       const { runPPOInference, ppoActionToSignalType } = await import('../_shared/ppo-inference.ts');
       
+      console.log(`🎯 Calling runPPOInference with ${marketData.length} data points...`);
       const inferenceResult = await runPPOInference(modelWeights, marketData, true);
+      console.log(`✅ PPO inference complete! Result:`, {
+        action: inferenceResult.action,
+        confidence: inferenceResult.confidence,
+        value: inferenceResult.value
+      });
+      
       const signalType = ppoActionToSignalType(inferenceResult.action.direction);
+      console.log(`📊 Signal type: ${signalType}`);
       
       // Calculate TP/SL based on model outputs and ATR
       const atr = state.indicators.atr;
