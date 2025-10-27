@@ -85,6 +85,37 @@ serve(async (req) => {
 
     console.log(`👥 Found ${userPrefs.length} enabled user-asset combinations`);
 
+    // 3.5. FIRST, process any existing queued signals
+    const { data: queuedSignals } = await supabase
+      .from('signals')
+      .select('*')
+      .eq('status', 'queued')
+      .order('created_at', { ascending: true });
+
+    if (queuedSignals && queuedSignals.length > 0) {
+      console.log(`\n📋 Found ${queuedSignals.length} queued signals to process...`);
+      
+      for (const signal of queuedSignals) {
+        try {
+          console.log(`📤 Processing queued signal ${signal.id} for ${signal.asset}...`);
+          
+          const { data: paperData, error: paperError } = await supabase.functions.invoke('paper-trade', {
+            body: { signal_id: signal.id }
+          });
+          
+          if (paperError) {
+            console.error(`❌ Error processing queued signal ${signal.id}:`, paperError);
+          } else if (paperData?.success) {
+            console.log(`✅ Processed queued signal ${signal.id} into paper trade`);
+          }
+        } catch (err) {
+          console.error(`❌ Exception processing queued signal ${signal.id}:`, err);
+        }
+      }
+    } else {
+      console.log(`ℹ️ No queued signals found to process`);
+    }
+
     // 4. For each user, generate signals for their enabled assets
     const userAssetMap = new Map<string, UserAssetPref[]>();
     userPrefs.forEach(pref => {

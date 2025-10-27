@@ -211,28 +211,60 @@ export function LiveTradingDashboard() {
   const processSignalsNow = async () => {
     if (!user) return;
     
+    if (queuedSignals.length === 0) {
+      toast.error('No queued signals to process');
+      return;
+    }
+    
     setProcessing(true);
     try {
+      console.log(`🔄 Processing ${queuedSignals.length} queued signals...`);
+      
+      let successCount = 0;
+      let errorCount = 0;
+      
       // Process each queued signal through paper-trade
       for (const signal of queuedSignals) {
-        const { error } = await supabase.functions.invoke('paper-trade', {
-          body: { signal_id: signal.id }
-        });
-        
-        if (error) {
-          console.error('Error processing signal:', error);
+        try {
+          console.log(`📤 Processing signal ${signal.id} for ${signal.asset}...`);
+          
+          const { data, error } = await supabase.functions.invoke('paper-trade', {
+            body: { signal_id: signal.id }
+          });
+          
+          if (error) {
+            console.error(`❌ Error processing signal ${signal.id}:`, error);
+            errorCount++;
+          } else if (data?.success) {
+            console.log(`✅ Successfully created paper trade for ${signal.asset}`);
+            successCount++;
+          } else {
+            console.error(`❌ Paper trade failed for ${signal.asset}:`, data);
+            errorCount++;
+          }
+        } catch (err) {
+          console.error(`❌ Exception processing signal ${signal.id}:`, err);
+          errorCount++;
         }
       }
       
-      toast.success('Processing signals...');
+      console.log(`📊 Processing complete: ${successCount} succeeded, ${errorCount} failed`);
       
-      // Reload dashboard after 2 seconds to see results
+      if (successCount > 0) {
+        toast.success(`Successfully processed ${successCount} signal(s) into paper trades`);
+      }
+      
+      if (errorCount > 0) {
+        toast.error(`Failed to process ${errorCount} signal(s). Check console for details.`);
+      }
+      
+      // Reload dashboard
       setTimeout(() => {
         loadDashboardData();
-      }, 2000);
+      }, 1000);
     } catch (error) {
-      console.error('Error processing signals:', error);
-      toast.error('Failed to process signals');
+      console.error('❌ Fatal error in processSignalsNow:', error);
+      toast.error(`Failed to process signals: ${error instanceof Error ? error.message : 'Unknown error'}`);
     } finally {
       setProcessing(false);
     }

@@ -239,7 +239,9 @@ export function LiveTradingControls() {
 
       if (error) throw error;
 
-      toast.success(`Test trade created for ${asset}! Check Recent Trades.`);
+      toast.success(`Signal queued for ${asset}! Go to "Live Trading" tab to process it.`, {
+        duration: 5000,
+      });
     } catch (error: any) {
       console.error('Error creating test trade:', error);
       toast.error(`Failed to create test trade: ${error.message}`);
