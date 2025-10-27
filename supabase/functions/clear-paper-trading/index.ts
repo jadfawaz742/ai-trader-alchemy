@@ -17,8 +17,8 @@ Deno.serve(async (req) => {
       }
     );
 
-    // Get user_id from request body or from auth token
-    const { user_id } = await req.json();
+    // Get user_id and clearType from request body or from auth token
+    const { user_id, clearType = 'queued_only' } = await req.json();
     
     let userId: string;
     
@@ -48,34 +48,64 @@ Deno.serve(async (req) => {
       userId = user.id;
     }
 
-    // Delete queued signals
-    const { error: signalsError, count: signalsDeleted } = await supabaseClient
-      .from('signals')
-      .delete({ count: 'exact' })
-      .eq('user_id', userId)
-      .eq('status', 'queued');
+    let signalsDeleted = 0;
+    let tradesDeleted = 0;
 
-    if (signalsError) {
-      throw new Error(`Failed to delete signals: ${signalsError.message}`);
-    }
+    if (clearType === 'complete') {
+      // Delete ALL signals (any status)
+      const { error: signalsError, count: sDeleted } = await supabaseClient
+        .from('signals')
+        .delete({ count: 'exact' })
+        .eq('user_id', userId);
 
-    // Delete open paper trades
-    const { error: tradesError, count: tradesDeleted } = await supabaseClient
-      .from('paper_trades')
-      .delete({ count: 'exact' })
-      .eq('user_id', userId)
-      .eq('status', 'open');
+      if (signalsError) {
+        throw new Error(`Failed to delete signals: ${signalsError.message}`);
+      }
+      signalsDeleted = sDeleted || 0;
 
-    if (tradesError) {
-      throw new Error(`Failed to delete paper trades: ${tradesError.message}`);
+      // Delete ALL paper trades (any status)
+      const { error: tradesError, count: tDeleted } = await supabaseClient
+        .from('paper_trades')
+        .delete({ count: 'exact' })
+        .eq('user_id', userId);
+
+      if (tradesError) {
+        throw new Error(`Failed to delete paper trades: ${tradesError.message}`);
+      }
+      tradesDeleted = tDeleted || 0;
+    } else {
+      // Delete queued signals only
+      const { error: signalsError, count: sDeleted } = await supabaseClient
+        .from('signals')
+        .delete({ count: 'exact' })
+        .eq('user_id', userId)
+        .eq('status', 'queued');
+
+      if (signalsError) {
+        throw new Error(`Failed to delete signals: ${signalsError.message}`);
+      }
+      signalsDeleted = sDeleted || 0;
+
+      // Delete open paper trades only
+      const { error: tradesError, count: tDeleted } = await supabaseClient
+        .from('paper_trades')
+        .delete({ count: 'exact' })
+        .eq('user_id', userId)
+        .eq('status', 'open');
+
+      if (tradesError) {
+        throw new Error(`Failed to delete paper trades: ${tradesError.message}`);
+      }
+      tradesDeleted = tDeleted || 0;
     }
 
     return new Response(
       JSON.stringify({
         success: true,
-        message: 'Successfully cleared paper trading data',
-        signalsDeleted: signalsDeleted || 0,
-        tradesDeleted: tradesDeleted || 0,
+        message: `Successfully cleared paper trading data (${clearType})`,
+        clearType,
+        signalsDeleted,
+        tradesDeleted,
       }),
       {
         status: 200,

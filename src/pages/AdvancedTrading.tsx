@@ -15,6 +15,7 @@ import { LiveTradingMasterControl } from "@/components/LiveTradingMasterControl"
 import { LiveTradingDashboard } from "@/components/LiveTradingDashboard";
 import { BatchTrainingMonitor } from "@/components/BatchTrainingMonitor";
 import { ClearPaperTradingButton } from "@/components/ClearPaperTradingButton";
+import { ClosePaperTradesButton } from "@/components/ClosePaperTradesButton";
 
 const AdvancedTrading = () => {
   const { user, loading, signOut, isAuthenticated } = useAuth();
@@ -149,7 +150,8 @@ const AdvancedTrading = () => {
             </TabsContent>
 
             <TabsContent value="live" className="space-y-6">
-              <div className="flex justify-end mb-4">
+              <div className="flex justify-end gap-2 mb-4">
+                <ClosePaperTradesButton />
                 <ClearPaperTradingButton />
               </div>
               <LiveTradingDashboard />
