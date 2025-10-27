@@ -131,3 +131,6 @@ verify_jwt = true
 
 [functions.update-paper-trades]
 verify_jwt = false
+
+[functions.fix-model-storage]
+verify_jwt = false
