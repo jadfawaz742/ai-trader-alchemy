@@ -221,12 +221,30 @@ serve(async (req) => {
             .eq('asset', pref.asset)
             .single();
 
+          console.log(`📋 Broker constraints for ${pref.asset}:`, {
+            min_qty: brokerAsset?.min_qty,
+            step_size: brokerAsset?.step_size,
+            min_notional: brokerAsset?.min_notional
+          });
+
           // Normalize quantity to venue requirements
           const normalizedQty = normalizeQuantity(
             signal.qty,
-            brokerAsset?.min_qty || 0,
-            brokerAsset?.step_size || 1
+            brokerAsset?.min_qty || 0.001,
+            brokerAsset?.step_size || 0.001
           );
+
+          // Validate position size makes sense
+          const positionValue = normalizedQty * tradingState.price;
+          const expectedMinValue = pref.max_exposure_usd * 0.1; // At least 10% of max exposure
+          
+          if (positionValue < expectedMinValue) {
+            console.error(`❌ Position size too small! 
+              - Position Value: $${positionValue.toFixed(2)}
+              - Expected Min: $${expectedMinValue.toFixed(2)}
+              - Max Exposure: $${pref.max_exposure_usd}
+              - This indicates a calculation error!`);
+          }
 
           // Create signal with dedupe key
           const dedupeKey = `${pref.user_id}_${pref.asset}_${Date.now()}`;
@@ -484,14 +502,56 @@ function calculatePositionSize(pref: any, currentPrice: number): number {
     'low': 0.5,
     'medium': 1.0,
     'high': 1.5,
+    'aggressive': 2.0,
   }[pref.risk_mode] || 1.0;
   
-  return Math.floor((pref.max_exposure_usd / currentPrice) * riskMultiplier);
+  const maxExposure = pref.max_exposure_usd || 0;
+  const rawQty = (maxExposure / currentPrice) * riskMultiplier;
+  const finalQty = Math.floor(rawQty * 100000) / 100000; // Keep 5 decimals for crypto
+  
+  console.log(`💰 Position Size Calculation:
+    - Max Exposure: $${maxExposure.toLocaleString()}
+    - Current Price: $${currentPrice.toLocaleString()}
+    - Risk Mode: ${pref.risk_mode} (${riskMultiplier}x)
+    - Raw Qty: ${rawQty.toFixed(8)}
+    - Final Qty: ${finalQty.toFixed(8)}`);
+  
+  if (finalQty === 0 || !isFinite(finalQty)) {
+    console.error(`❌ Invalid qty calculated! max_exposure=${maxExposure}, price=${currentPrice}, risk=${riskMultiplier}`);
+    return 0;
+  }
+  
+  return finalQty;
 }
 
 function normalizeQuantity(qty: number, minQty: number, stepSize: number): number {
-  const normalized = Math.max(qty, minQty);
-  return Math.floor(normalized / stepSize) * stepSize;
+  console.log(`🔧 Normalizing quantity:
+    - Input Qty: ${qty}
+    - Min Qty: ${minQty}
+    - Step Size: ${stepSize}`);
+  
+  // If calculated qty is 0, don't force it to minQty - something is wrong
+  if (qty === 0) {
+    console.error(`❌ Cannot normalize qty=0! Check position size calculation.`);
+    return 0;
+  }
+  
+  // Ensure qty meets minimum
+  let normalized = Math.max(qty, minQty);
+  
+  // Round down to nearest step size
+  if (stepSize > 0) {
+    normalized = Math.floor(normalized / stepSize) * stepSize;
+  }
+  
+  console.log(`✅ Normalized Qty: ${normalized}`);
+  
+  // Validate we didn't reduce it by more than 10%
+  if (normalized < qty * 0.9 && qty > minQty) {
+    console.warn(`⚠️ Normalized qty (${normalized}) is significantly less than calculated qty (${qty})`);
+  }
+  
+  return normalized;
 }
 
 async function queueSignalExecution(signal: any, pref: any) {
