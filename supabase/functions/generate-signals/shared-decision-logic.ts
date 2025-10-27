@@ -268,8 +268,72 @@ export async function makeAITradingDecision(
   state: TradingState,
   symbol: string,
   enableShorts: boolean,
-  modelWeights?: any
+  modelWeights?: any,
+  marketData?: any[] // Add market data for PPO inference
 ): Promise<TradingAction> {
+  
+  // 🧠 USE TRAINED PPO MODEL IF AVAILABLE
+  if (modelWeights && marketData && marketData.length >= 200) {
+    console.log(`🤖 Using trained PPO model for ${symbol} inference`);
+    
+    try {
+      const { runPPOInference, ppoActionToSignalType } = await import('../_shared/ppo-inference.ts');
+      
+      const inferenceResult = await runPPOInference(modelWeights, marketData, true);
+      const signalType = ppoActionToSignalType(inferenceResult.action.direction);
+      
+      // Calculate TP/SL based on model outputs and ATR
+      const atr = state.indicators.atr;
+      const currentPrice = state.price;
+      
+      // Model outputs: tp_offset in [-0.5, 0.5] ATR, sl_tight in [0.5, 2.0]x
+      const tpDistance = (2.0 + inferenceResult.action.tp_offset) * atr; // Base 2.0 ATR + offset
+      const slDistance = inferenceResult.action.sl_tight * atr; // Direct multiplier
+      
+      let stopLoss = currentPrice;
+      let takeProfit = currentPrice;
+      
+      if (signalType === 'BUY') {
+        takeProfit = currentPrice + tpDistance;
+        stopLoss = currentPrice - slDistance;
+      } else if (signalType === 'SELL') {
+        takeProfit = currentPrice - tpDistance;
+        stopLoss = currentPrice + slDistance;
+      }
+      
+      // Size multiplier from model (0-1 scale)
+      const sizeMultiplier = inferenceResult.action.size;
+      
+      console.log(`🎯 Model Decision: ${signalType} (confidence: ${(inferenceResult.confidence * 100).toFixed(1)}%)
+        - TP: $${takeProfit.toFixed(2)} (${tpDistance.toFixed(2)} away)
+        - SL: $${stopLoss.toFixed(2)} (${slDistance.toFixed(2)} away)
+        - Size Multiplier: ${sizeMultiplier.toFixed(3)}x
+        - Value Estimate: ${inferenceResult.value.toFixed(4)}`);
+      
+      return {
+        type: signalType,
+        confidence: inferenceResult.confidence * 100, // Convert to percentage
+        stopLoss,
+        takeProfit,
+        reasons: [
+          `PPO Model (v=${inferenceResult.value.toFixed(2)})`,
+          `${inferenceResult.featureCount} features × ${inferenceResult.sequenceLength} sequence`,
+          `Size: ${(sizeMultiplier * 100).toFixed(1)}%`,
+        ],
+        riskLevel: inferenceResult.confidence > 0.7 ? 'medium' : 'low',
+        sizeMultiplier, // Pass to position sizing
+      };
+      
+    } catch (error) {
+      console.error(`❌ PPO inference failed: ${error.message}`);
+      console.log('⚠️ Falling back to rule-based decision logic');
+      // Fall through to rule-based logic
+    }
+  }
+  
+  // 📊 FALLBACK: RULE-BASED SCORING
+  console.log(`📊 Using rule-based scoring for ${symbol}`);
+  
   let bullishScore = 0;
   let bearishScore = 0;
   const reasons: string[] = [];

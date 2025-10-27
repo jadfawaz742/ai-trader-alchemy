@@ -197,14 +197,24 @@ serve(async (req) => {
           continue;
         }
 
-        // Run AI trading decision with full market analysis (enableShorts = true)
-        const decision = await makeAITradingDecision(tradingState, pref.asset, true, modelWeights);
+        // Run AI trading decision with full market analysis (pass marketData for PPO inference)
+        const decision = await makeAITradingDecision(
+          tradingState, 
+          pref.asset, 
+          true, 
+          modelWeights,
+          marketData // Pass market data for feature extraction
+        );
         
         console.log(`Decision for ${pref.asset}: ${decision.type} (confidence: ${decision.confidence.toFixed(1)}%)`);
 
         const signal = decision.type !== 'HOLD' ? {
           action: decision.type,
-          qty: calculatePositionSize(pref, tradingState.price),
+          // Apply model's size multiplier if provided (from PPO inference)
+          qty: calculatePositionSize(
+            { ...pref, sizeMultiplier: (decision as any).sizeMultiplier || 1.0 }, 
+            tradingState.price
+          ),
           order_type: 'MARKET',
           tp: decision.takeProfit,
           sl: decision.stopLoss,
@@ -506,13 +516,22 @@ function calculatePositionSize(pref: any, currentPrice: number): number {
   }[pref.risk_mode] || 1.0;
   
   const maxExposure = pref.max_exposure_usd || 0;
-  const rawQty = (maxExposure / currentPrice) * riskMultiplier;
+  let rawQty = (maxExposure / currentPrice) * riskMultiplier;
+  
+  // Apply model's size multiplier if provided (from PPO inference)
+  const sizeMultiplier = (pref as any).sizeMultiplier || 1.0;
+  if (sizeMultiplier !== 1.0) {
+    console.log(`🎯 Applying model size multiplier: ${sizeMultiplier.toFixed(3)}x`);
+    rawQty *= sizeMultiplier;
+  }
+  
   const finalQty = Math.floor(rawQty * 100000) / 100000; // Keep 5 decimals for crypto
   
   console.log(`💰 Position Size Calculation:
     - Max Exposure: $${maxExposure.toLocaleString()}
     - Current Price: $${currentPrice.toLocaleString()}
     - Risk Mode: ${pref.risk_mode} (${riskMultiplier}x)
+    - Size Multiplier: ${sizeMultiplier.toFixed(3)}x
     - Raw Qty: ${rawQty.toFixed(8)}
     - Final Qty: ${finalQty.toFixed(8)}`);
   
