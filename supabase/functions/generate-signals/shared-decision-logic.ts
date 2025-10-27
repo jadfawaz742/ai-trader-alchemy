@@ -312,15 +312,16 @@ export async function makeAITradingDecision(
       
       return {
         type: signalType,
-        confidence: inferenceResult.confidence * 100, // Convert to percentage
+        quantity: 0, // Will be calculated in generate-signals/index.ts
         stopLoss,
         takeProfit,
-        reasons: [
+        confidence: inferenceResult.confidence * 100, // Convert to percentage
+        reasoning: [
           `PPO Model (v=${inferenceResult.value.toFixed(2)})`,
           `${inferenceResult.featureCount} features × ${inferenceResult.sequenceLength} sequence`,
           `Size: ${(sizeMultiplier * 100).toFixed(1)}%`,
-        ],
-        riskLevel: inferenceResult.confidence > 0.7 ? 'medium' : 'low',
+        ].join(', '),
+        confluenceLevel: inferenceResult.confidence > 0.7 ? 'STRONG' : 'MODERATE',
         sizeMultiplier, // Pass to position sizing
       };
       
