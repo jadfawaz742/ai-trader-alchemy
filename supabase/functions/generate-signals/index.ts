@@ -324,7 +324,7 @@ async function fetchMarketData(symbol: string, brokerId: string): Promise<Market
   try {
     const data = await fetchUnifiedData({
       symbol,
-      range: '6mo',
+      range: '1y',
       interval: '1d'
     });
     
