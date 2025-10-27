@@ -113,6 +113,57 @@ async function fetchBinanceData(options: MarketDataOptions): Promise<MarketDataP
 }
 
 /**
+ * Fetch current spot price for a symbol
+ */
+export async function fetchCurrentPrice(symbol: string): Promise<number> {
+  console.log(`💰 Fetching current price for ${symbol}`);
+  
+  try {
+    if (isCryptoSymbol(symbol)) {
+      const binanceSymbol = convertToBinanceFormat(symbol);
+      const url = `https://api.binance.com/api/v3/ticker/price?symbol=${binanceSymbol}`;
+      
+      const response = await fetch(url, {
+        headers: { 'User-Agent': 'Mozilla/5.0' }
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Binance API error: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      const price = parseFloat(data.price);
+      console.log(`✅ ${symbol} current price: $${price}`);
+      return price;
+    } else {
+      // For stocks, use Yahoo Finance quote endpoint
+      const url = `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?interval=1m&range=1d`;
+      
+      const response = await fetch(url, {
+        headers: { 'User-Agent': 'Mozilla/5.0' }
+      });
+      
+      if (!response.ok) {
+        throw new Error(`Yahoo Finance API error: ${response.status}`);
+      }
+      
+      const data = await response.json();
+      const price = data?.chart?.result?.[0]?.meta?.regularMarketPrice;
+      
+      if (!price) {
+        throw new Error('No price data available');
+      }
+      
+      console.log(`✅ ${symbol} current price: $${price}`);
+      return price;
+    }
+  } catch (error) {
+    console.error(`❌ Error fetching current price for ${symbol}:`, error);
+    throw error;
+  }
+}
+
+/**
  * Fetch stock data from Yahoo Finance API
  */
 async function fetchYahooFinanceData(options: MarketDataOptions): Promise<MarketDataPoint[]> {

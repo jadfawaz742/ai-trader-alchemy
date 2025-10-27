@@ -22,6 +22,7 @@ interface PerformanceMetrics {
   riskRewardRatio: number;
   bestTrade: number;
   worstTrade: number;
+  unrealizedPnL?: number;
 }
 
 interface AssetPerformance {
@@ -66,7 +67,7 @@ export function PaperTradingPerformance() {
       else startDate = new Date(0); // All time
 
       // Fetch closed trades
-      const { data: trades, error } = await supabase
+      const { data: closedTrades, error: closedError } = await supabase
         .from('paper_trades')
         .select('*')
         .eq('user_id', user.id)
@@ -74,7 +75,18 @@ export function PaperTradingPerformance() {
         .gte('closed_at', startDate.toISOString())
         .order('closed_at', { ascending: true });
 
-      if (error) throw error;
+      if (closedError) throw closedError;
+
+      // Fetch open trades for unrealized P&L
+      const { data: openTrades, error: openError } = await supabase
+        .from('paper_trades')
+        .select('*')
+        .eq('user_id', user.id)
+        .eq('status', 'open');
+
+      if (openError) throw openError;
+
+      const trades = closedTrades || [];
 
       if (!trades || trades.length === 0) {
         setMetrics(null);
@@ -125,6 +137,9 @@ export function PaperTradingPerformance() {
       // Risk/Reward ratio
       const riskRewardRatio = avgLoss !== 0 ? Math.abs(avgProfit / avgLoss) : 0;
 
+      // Calculate unrealized P&L from open trades
+      const unrealizedPnL = (openTrades || []).reduce((sum, t) => sum + (Number(t.pnl) || 0), 0);
+
       setMetrics({
         totalPnL,
         winRate,
@@ -139,6 +154,7 @@ export function PaperTradingPerformance() {
         riskRewardRatio,
         bestTrade,
         worstTrade,
+        unrealizedPnL,
       });
 
       // Calculate per-asset performance
@@ -227,7 +243,7 @@ export function PaperTradingPerformance() {
           <CardHeader className="pb-2">
             <CardTitle className="text-sm font-medium flex items-center gap-2">
               <DollarSign className="h-4 w-4" />
-              Total P&L
+              Realized P&L
             </CardTitle>
           </CardHeader>
           <CardContent>
@@ -236,6 +252,23 @@ export function PaperTradingPerformance() {
             </div>
             <p className="text-xs text-muted-foreground mt-1">
               Best: ${metrics.bestTrade.toFixed(2)} | Worst: ${metrics.worstTrade.toFixed(2)}
+            </p>
+          </CardContent>
+        </Card>
+
+        <Card>
+          <CardHeader className="pb-2">
+            <CardTitle className="text-sm font-medium flex items-center gap-2">
+              <TrendingUp className="h-4 w-4" />
+              Unrealized P&L
+            </CardTitle>
+          </CardHeader>
+          <CardContent>
+            <div className={`text-2xl font-bold ${(metrics.unrealizedPnL || 0) >= 0 ? 'text-success' : 'text-destructive'}`}>
+              ${(metrics.unrealizedPnL || 0).toFixed(2)}
+            </div>
+            <p className="text-xs text-muted-foreground mt-1">
+              From open positions
             </p>
           </CardContent>
         </Card>

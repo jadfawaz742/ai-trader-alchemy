@@ -61,6 +61,8 @@ export function LiveTradingDashboard() {
   const [assetPrefs, setAssetPrefs] = useState<AssetPref[]>([]);
   const [loading, setLoading] = useState(true);
   const [processing, setProcessing] = useState(false);
+  const [refreshing, setRefreshing] = useState(false);
+  const [lastUpdated, setLastUpdated] = useState<Date | null>(null);
   const [metrics, setMetrics] = useState({
     totalPnL: 0,
     winRate: 0,
@@ -95,8 +97,14 @@ export function LiveTradingDashboard() {
         )
         .subscribe();
 
+      // Auto-refresh positions every 30 seconds
+      const refreshInterval = setInterval(() => {
+        refreshPositions();
+      }, 30000);
+
       return () => {
         supabase.removeChannel(channel);
+        clearInterval(refreshInterval);
       };
     }
   }, [user]);
@@ -210,6 +218,35 @@ export function LiveTradingDashboard() {
     }
   };
 
+  const refreshPositions = async () => {
+    if (!user || refreshing) return;
+
+    setRefreshing(true);
+    try {
+      console.log('🔄 Refreshing position P&L...');
+      
+      const { data, error } = await supabase.functions.invoke('update-paper-trades', {
+        body: { user_id: user.id }
+      });
+
+      if (error) throw error;
+
+      console.log('✅ Positions refreshed:', data);
+      
+      if (data?.closed > 0) {
+        toast.success(`${data.closed} position(s) auto-closed (TP/SL hit)`);
+      }
+
+      setLastUpdated(new Date());
+      await loadDashboardData();
+    } catch (error: any) {
+      console.error('❌ Error refreshing positions:', error);
+      toast.error(`Failed to refresh: ${error.message}`);
+    } finally {
+      setRefreshing(false);
+    }
+  };
+
   const processSignalsNow = async () => {
     if (!user) return;
     
@@ -289,16 +326,32 @@ export function LiveTradingDashboard() {
   return (
     <div className="space-y-6 p-6">
       <div className="flex items-center justify-between">
-        <h1 className="text-3xl font-bold">Live Trading Dashboard</h1>
-        {queuedSignals.length > 0 && (
+        <div>
+          <h1 className="text-3xl font-bold">Live Trading Dashboard</h1>
+          {lastUpdated && (
+            <p className="text-sm text-muted-foreground mt-1">
+              Last updated: {lastUpdated.toLocaleTimeString()}
+            </p>
+          )}
+        </div>
+        <div className="flex gap-2">
           <button
-            onClick={processSignalsNow}
-            disabled={processing}
-            className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50"
+            onClick={refreshPositions}
+            disabled={refreshing}
+            className="px-4 py-2 bg-secondary text-secondary-foreground rounded-md hover:bg-secondary/90 disabled:opacity-50"
           >
-            {processing ? 'Processing...' : `Process ${queuedSignals.length} Queued Signal${queuedSignals.length > 1 ? 's' : ''}`}
+            {refreshing ? 'Refreshing...' : 'Refresh P&L'}
           </button>
-        )}
+          {queuedSignals.length > 0 && (
+            <button
+              onClick={processSignalsNow}
+              disabled={processing}
+              className="px-4 py-2 bg-primary text-primary-foreground rounded-md hover:bg-primary/90 disabled:opacity-50"
+            >
+              {processing ? 'Processing...' : `Process ${queuedSignals.length} Queued Signal${queuedSignals.length > 1 ? 's' : ''}`}
+            </button>
+          )}
+        </div>
       </div>
 
       <Tabs defaultValue="overview" className="w-full">
