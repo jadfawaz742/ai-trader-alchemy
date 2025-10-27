@@ -346,13 +346,18 @@ async def run_training(
             "--updates", str(episodes),
             "--device", device
         ]
+        
+        # Set environment variable for user_id (for Supabase upload)
+        env = os.environ.copy()
+        env["TRAINING_USER_ID"] = user_id
 
         result = subprocess.run(
             train_cmd,
             capture_output=True,
             text=True,
             timeout=7200,
-            cwd=os.path.dirname(os.path.abspath(__file__))
+            cwd=os.path.dirname(os.path.abspath(__file__)),
+            env=env  # Pass environment with TRAINING_USER_ID
         )
 
         if result.returncode != 0:

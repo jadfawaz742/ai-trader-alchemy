@@ -283,6 +283,33 @@ def train(symbol: str,
     with open(metadata_path, "w") as f:
         json.dump(metadata, f, indent=2)
     print(f"[METADATA] saved {metadata_path}")
+    
+    # Upload to Supabase Storage
+    print("[UPLOAD] Uploading model to Supabase Storage...")
+    try:
+        from supabase_uploader import upload_model_to_storage
+        
+        upload_result = upload_model_to_storage(
+            symbol=symbol,
+            user_id=os.getenv("TRAINING_USER_ID", "system"),
+            model_path=final_path,
+            metadata_path=metadata_path,
+            asset_type=asset_type or "auto-detected"
+        )
+        
+        if upload_result["success"]:
+            print(f"[UPLOAD] ✅ Model uploaded successfully!")
+            print(f"[UPLOAD]   Model ID: {upload_result.get('model_id')}")
+            print(f"[UPLOAD]   Version: v{upload_result.get('version')}")
+            print(f"[UPLOAD]   Storage: {upload_result.get('storage_path')}")
+        else:
+            print(f"[UPLOAD] ❌ Upload failed: {upload_result['error']}")
+            print(f"[UPLOAD] Model saved locally but not uploaded to storage")
+    except ImportError:
+        print("[UPLOAD] ⚠️ supabase_uploader not available, skipping upload")
+    except Exception as e:
+        print(f"[UPLOAD] ❌ Upload error: {str(e)}")
+        print(f"[UPLOAD] Model saved locally but not uploaded to storage")
 
 
 if __name__ == "__main__":
