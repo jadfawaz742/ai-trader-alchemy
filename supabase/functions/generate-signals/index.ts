@@ -244,16 +244,22 @@ serve(async (req) => {
             brokerAsset?.step_size || 0.001
           );
 
+          // **NEW CHECK**: Skip signal if qty normalization failed
+          if (normalizedQty === 0) {
+            console.error(`❌ Skipping signal for ${pref.asset} - quantity normalization failed`);
+            continue; // Skip this signal
+          }
+
           // Validate position size makes sense
           const positionValue = normalizedQty * tradingState.price;
           const expectedMinValue = pref.max_exposure_usd * 0.1; // At least 10% of max exposure
           
           if (positionValue < expectedMinValue) {
-            console.error(`❌ Position size too small! 
+            console.error(`❌ Position size suspiciously small! Skipping signal.
               - Position Value: $${positionValue.toFixed(2)}
               - Expected Min: $${expectedMinValue.toFixed(2)}
-              - Max Exposure: $${pref.max_exposure_usd}
-              - This indicates a calculation error!`);
+              - Max Exposure: $${pref.max_exposure_usd}`);
+            continue; // Skip this signal
           }
 
           // Create signal with dedupe key
@@ -554,26 +560,33 @@ function normalizeQuantity(qty: number, minQty: number, stepSize: number): numbe
     - Min Qty: ${minQty}
     - Step Size: ${stepSize}`);
   
-  // If calculated qty is 0, don't force it to minQty - something is wrong
-  if (qty === 0) {
-    console.error(`❌ Cannot normalize qty=0! Check position size calculation.`);
+  // If calculated qty is 0 or invalid, reject it
+  if (qty === 0 || !isFinite(qty)) {
+    console.error(`❌ Cannot normalize invalid qty=${qty}! Check position size calculation.`);
     return 0;
   }
   
-  // Ensure qty meets minimum
-  let normalized = Math.max(qty, minQty);
+  // **FIXED**: If calculated qty is less than minQty, reject it (don't force to minQty)
+  if (qty < minQty) {
+    console.error(`❌ Calculated qty (${qty}) is less than broker minimum (${minQty})!
+      This indicates max_exposure_usd is too low for this asset.
+      To fix: Increase max_exposure_usd in user preferences.`);
+    return 0;
+  }
   
   // Round down to nearest step size
+  let normalized = qty;
   if (stepSize > 0) {
-    normalized = Math.floor(normalized / stepSize) * stepSize;
+    normalized = Math.floor(qty / stepSize) * stepSize;
+  }
+  
+  // Ensure we still meet minimum after rounding
+  if (normalized < minQty) {
+    console.error(`❌ After rounding to step size, qty (${normalized}) is below minimum (${minQty})`);
+    return 0;
   }
   
   console.log(`✅ Normalized Qty: ${normalized}`);
-  
-  // Validate we didn't reduce it by more than 10%
-  if (normalized < qty * 0.9 && qty > minQty) {
-    console.warn(`⚠️ Normalized qty (${normalized}) is significantly less than calculated qty (${qty})`);
-  }
   
   return normalized;
 }
