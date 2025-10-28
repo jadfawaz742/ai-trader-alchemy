@@ -300,9 +300,10 @@ export async function makeAITradingDecision(
       const atr = state.indicators.atr;
       const currentPrice = state.price;
       
-      // Model outputs: tp_offset in [-0.5, 0.5] ATR, sl_tight in [0.5, 2.0]x
-      const tpDistance = (2.0 + inferenceResult.action.tp_offset) * atr; // Base 2.0 ATR + offset
-      const slDistance = inferenceResult.action.sl_tight * atr; // Direct multiplier
+      // Model outputs: tp_multiplier [1.2-2.0]x ATR, sl_multiplier [0.8-1.2]x ATR
+      // These match Python training bounds from ppo_env.py
+      const tpDistance = inferenceResult.action.tp_multiplier * atr;
+      const slDistance = inferenceResult.action.sl_multiplier * atr;
       
       let stopLoss = currentPrice;
       let takeProfit = currentPrice;

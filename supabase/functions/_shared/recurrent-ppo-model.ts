@@ -3,8 +3,8 @@
 
 export interface HybridAction {
   direction: number; // 0=flat, 1=long, 2=short
-  tp_offset: number; // [-0.5, 0.5] in ATR units
-  sl_tight: number;  // [0.5, 2.0] multiplier
+  tp_multiplier: number; // [1.2, 2.0] ATR multiplier (was tp_offset)
+  sl_multiplier: number;  // [0.8, 1.2] ATR multiplier (was sl_tight)
   size: number;      // [0.0, 1.0] fraction of risk budget
 }
 
@@ -221,15 +221,22 @@ export function forwardPass(
     ? directionProbs.indexOf(Math.max(...directionProbs))
     : sampleCategorical(directionProbs);
     
-  const tpOffset = deterministicMode ? tpMean : sampleGaussian(tpMean, tpStd);
-  const slTight = deterministicMode ? slMean : sampleGaussian(slMean, slStd);
+  const tpRaw = deterministicMode ? tpMean : sampleGaussian(tpMean, tpStd);
+  const slRaw = deterministicMode ? slMean : sampleGaussian(slMean, slStd);
   const size = deterministicMode ? sizeMean : sampleGaussian(sizeMean, sizeStd);
   
-  // Clamp to valid ranges
+  // Map neural network outputs to Python training bounds
+  // NN outputs are roughly in [-1, 1] → map to [1.2, 2.0] for TP, [0.8, 1.2] for SL
+  const tpNormalized = Math.max(-1, Math.min(1, tpRaw)); // Clamp to [-1, 1]
+  const slNormalized = Math.max(-1, Math.min(1, slRaw));
+  
+  const tpMultiplier = 1.2 + ((tpNormalized + 1) / 2) * (2.0 - 1.2); // Map [-1,1] → [1.2, 2.0]
+  const slMultiplier = 0.8 + ((slNormalized + 1) / 2) * (1.2 - 0.8); // Map [-1,1] → [0.8, 1.2]
+  
   const action: HybridAction = {
     direction,
-    tp_offset: Math.max(-0.5, Math.min(0.5, tpOffset)),
-    sl_tight: Math.max(0.5, Math.min(2.0, slTight)),
+    tp_multiplier: Math.max(1.2, Math.min(2.0, tpMultiplier)), // Safety clamp
+    sl_multiplier: Math.max(0.8, Math.min(1.2, slMultiplier)),
     size: Math.max(0.0, Math.min(1.0, sigmoid(size))) // Sigmoid to [0, 1]
   };
   
@@ -240,10 +247,10 @@ export function forwardPass(
   const directionLogProb = Math.log(directionProbs[direction] + 1e-8);
   
   const tpLogProb = -0.5 * Math.log(2 * Math.PI * tpStd * tpStd) -
-    0.5 * Math.pow(tpOffset - tpMean, 2) / (tpStd * tpStd);
+    0.5 * Math.pow(tpRaw - tpMean, 2) / (tpStd * tpStd);
     
   const slLogProb = -0.5 * Math.log(2 * Math.PI * slStd * slStd) -
-    0.5 * Math.pow(slTight - slMean, 2) / (slStd * slStd);
+    0.5 * Math.pow(slRaw - slMean, 2) / (slStd * slStd);
     
   const sizeLogProb = -0.5 * Math.log(2 * Math.PI * sizeStd * sizeStd) -
     0.5 * Math.pow(size - sizeMean, 2) / (sizeStd * sizeStd);

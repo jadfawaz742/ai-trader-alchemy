@@ -52,18 +52,7 @@ Deno.serve(async (req) => {
     let tradesDeleted = 0;
 
     if (clearType === 'complete') {
-      // Delete ALL signals (any status)
-      const { error: signalsError, count: sDeleted } = await supabaseClient
-        .from('signals')
-        .delete({ count: 'exact' })
-        .eq('user_id', userId);
-
-      if (signalsError) {
-        throw new Error(`Failed to delete signals: ${signalsError.message}`);
-      }
-      signalsDeleted = sDeleted || 0;
-
-      // Delete ALL paper trades (any status)
+      // Delete paper trades FIRST (child records)
       const { error: tradesError, count: tDeleted } = await supabaseClient
         .from('paper_trades')
         .delete({ count: 'exact' })
@@ -73,20 +62,19 @@ Deno.serve(async (req) => {
         throw new Error(`Failed to delete paper trades: ${tradesError.message}`);
       }
       tradesDeleted = tDeleted || 0;
-    } else {
-      // Delete queued signals only
+
+      // Delete signals AFTER (parent records)
       const { error: signalsError, count: sDeleted } = await supabaseClient
         .from('signals')
         .delete({ count: 'exact' })
-        .eq('user_id', userId)
-        .eq('status', 'queued');
+        .eq('user_id', userId);
 
       if (signalsError) {
         throw new Error(`Failed to delete signals: ${signalsError.message}`);
       }
       signalsDeleted = sDeleted || 0;
-
-      // Delete open paper trades only
+    } else {
+      // Delete open paper trades FIRST (child records)
       const { error: tradesError, count: tDeleted } = await supabaseClient
         .from('paper_trades')
         .delete({ count: 'exact' })
@@ -97,6 +85,18 @@ Deno.serve(async (req) => {
         throw new Error(`Failed to delete paper trades: ${tradesError.message}`);
       }
       tradesDeleted = tDeleted || 0;
+
+      // Delete queued signals AFTER (parent records)
+      const { error: signalsError, count: sDeleted } = await supabaseClient
+        .from('signals')
+        .delete({ count: 'exact' })
+        .eq('user_id', userId)
+        .eq('status', 'queued');
+
+      if (signalsError) {
+        throw new Error(`Failed to delete signals: ${signalsError.message}`);
+      }
+      signalsDeleted = sDeleted || 0;
     }
 
     return new Response(

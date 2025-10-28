@@ -113,8 +113,8 @@ export async function runPPOInference(
   console.log(`✅ PPO Inference Result:
     - Direction: ${result.action.direction} (0=flat, 1=long, 2=short)
     - Size: ${result.action.size.toFixed(4)} (0-1 scale)
-    - TP Offset: ${result.action.tp_offset.toFixed(4)} ATR
-    - SL Tight: ${result.action.sl_tight.toFixed(4)}x
+    - TP Multiplier: ${result.action.tp_multiplier.toFixed(4)}x ATR [1.2-2.0]
+    - SL Multiplier: ${result.action.sl_multiplier.toFixed(4)}x ATR [0.8-1.2]
     - Value: ${result.value.toFixed(4)}
     - Confidence: ${(confidence * 100).toFixed(1)}%`);
 
