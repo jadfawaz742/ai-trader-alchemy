@@ -10,6 +10,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { AlertCircle, TrendingUp, TrendingDown, Activity, AlertTriangle } from 'lucide-react';
 import { toast } from 'sonner';
 import { PaperTradingPerformance } from './PaperTradingPerformance';
+import { TradingModeToggle } from './TradingModeToggle';
 
 interface PaperPosition {
   id: string;
@@ -325,6 +326,18 @@ export function LiveTradingDashboard() {
 
   return (
     <div className="space-y-6 p-6">
+      {/* Paper Trading Mode Banner */}
+      <Alert className="bg-secondary/20 border-secondary">
+        <AlertCircle className="h-4 w-4" />
+        <AlertTitle className="flex items-center gap-2">
+          <Badge variant="secondary" className="text-sm">📄 Paper Trading Mode</Badge>
+          No Real Money at Risk
+        </AlertTitle>
+        <AlertDescription>
+          All trades are simulated by default. To enable live trading for specific assets, toggle "Paper Trading" mode off in the Trading Mode section below.
+        </AlertDescription>
+      </Alert>
+
       <div className="flex items-center justify-between">
         <div>
           <h1 className="text-3xl font-bold">Live Trading Dashboard</h1>
@@ -459,16 +472,17 @@ export function LiveTradingDashboard() {
                 <TableRow key={pref.asset}>
                   <TableCell className="font-medium">{pref.asset}</TableCell>
                   <TableCell>
-                    <Badge variant={pref.paper_trading_enabled !== false ? 'secondary' : 'default'}>
-                      {pref.paper_trading_enabled !== false ? 'Paper' : 'Live'}
+                    <Badge variant={pref.paper_trading_enabled !== false ? 'secondary' : 'destructive'}>
+                      {pref.paper_trading_enabled !== false ? '📄 Paper' : '⚠️ Live'}
                     </Badge>
                   </TableCell>
                   <TableCell>${pref.max_exposure_usd}</TableCell>
                   <TableCell className="capitalize">{pref.risk_mode}</TableCell>
                   <TableCell>
-                    <Switch
-                      checked={pref.paper_trading_enabled !== false}
-                      onCheckedChange={(checked) => togglePaperTrading(pref.asset, checked)}
+                    <TradingModeToggle
+                      asset={pref.asset}
+                      paperTradingEnabled={pref.paper_trading_enabled !== false}
+                      onToggle={togglePaperTrading}
                     />
                   </TableCell>
                 </TableRow>

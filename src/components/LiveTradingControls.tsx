@@ -15,6 +15,7 @@ interface AssetPreference {
   id: string;
   asset: string;
   enabled: boolean;
+  paper_trading_enabled?: boolean;
   max_exposure_usd: number;
   risk_mode: string;
   broker_id: string;
@@ -284,9 +285,43 @@ export function LiveTradingControls() {
   const totalExposure = assetPrefs
     .filter(p => p.enabled)
     .reduce((sum, p) => sum + p.max_exposure_usd, 0);
+  
+  const paperTradingAssets = assetPrefs.filter(p => p.paper_trading_enabled !== false).length;
+  const liveTradingAssets = assetPrefs.filter(p => p.paper_trading_enabled === false).length;
 
   return (
     <div className="space-y-6">
+      {/* Trading Mode Status */}
+      <Card>
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2">
+            Trading Mode Status
+          </CardTitle>
+          <CardDescription>
+            Default mode is Paper Trading - Live trading must be explicitly enabled per asset
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <div className="bg-secondary/50 rounded-lg p-4 border border-secondary">
+              <div className="text-sm text-muted-foreground mb-1">📄 Paper Trading</div>
+              <div className="text-2xl font-bold text-secondary-foreground">{paperTradingAssets} Assets</div>
+              <div className="text-xs text-muted-foreground mt-1">Simulated trades, no real money</div>
+            </div>
+            <div className="bg-destructive/10 rounded-lg p-4 border border-destructive/20">
+              <div className="text-sm text-muted-foreground mb-1">⚠️ Live Trading</div>
+              <div className="text-2xl font-bold text-destructive">{liveTradingAssets} Assets</div>
+              <div className="text-xs text-muted-foreground mt-1">Real trades with real money</div>
+            </div>
+            <div className="bg-muted/50 rounded-lg p-4">
+              <div className="text-sm text-muted-foreground mb-1">Total Assets</div>
+              <div className="text-2xl font-bold">{assetPrefs.length}</div>
+              <div className="text-xs text-muted-foreground mt-1">{enabledCount} enabled for trading</div>
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Summary */}
       <Card>
         <CardHeader>

@@ -2,11 +2,12 @@ import { useState, useEffect } from 'react';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Badge } from '@/components/ui/badge';
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from '@/components/ui/alert-dialog';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
-import { Play, Square, Zap, AlertTriangle, Activity } from 'lucide-react';
+import { Play, Square, Zap, AlertTriangle, Activity, AlertCircle } from 'lucide-react';
 
 export function LiveTradingMasterControl() {
   const { user } = useAuth();
@@ -103,17 +104,29 @@ export function LiveTradingMasterControl() {
   }
 
   return (
-    <Card className="border-2 border-primary/20">
+    <Card className="border-2 border-secondary/20">
       <CardHeader>
         <CardTitle className="flex items-center gap-2 text-2xl">
           <Activity className="h-6 w-6" />
-          Live Trading Master Control
+          Trading Master Control
         </CardTitle>
         <CardDescription>
-          Control automated trading execution and monitor trading status
+          Manually trigger automated trading cycles
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-6">
+        {/* Trading Mode Indicator */}
+        <div className="bg-secondary/20 border border-secondary rounded-lg p-4">
+          <div className="flex items-center gap-2 mb-2">
+            <Badge variant="secondary" className="text-base px-3 py-1">
+              📄 Paper Trading Mode
+            </Badge>
+          </div>
+          <p className="text-sm text-muted-foreground">
+            All signals are simulated. No real money is at risk. Enable live trading per asset in "Trading Setup" to execute real trades.
+          </p>
+        </div>
+
         {/* Status Display */}
         <div className="flex items-center justify-between p-4 bg-muted/50 rounded-lg">
           <div>
@@ -148,17 +161,14 @@ export function LiveTradingMasterControl() {
           </div>
         </div>
 
-        {/* Warning Notice */}
-        <div className="bg-amber-500/10 border border-amber-500/20 rounded-lg p-4 flex gap-3">
-          <AlertTriangle className="h-5 w-5 text-amber-500 flex-shrink-0 mt-0.5" />
-          <div className="text-sm">
-            <div className="font-semibold text-amber-500 mb-1">Live Trading Warning</div>
-            <div className="text-muted-foreground">
-              This will execute real trades with real money on your connected broker account.
-              Ensure you have reviewed and tested your strategy thoroughly before starting.
-            </div>
-          </div>
-        </div>
+        {/* Info Notice */}
+        <Alert>
+          <AlertCircle className="h-4 w-4" />
+          <AlertTitle>Trading Cycle</AlertTitle>
+          <AlertDescription>
+            This will generate signals for all enabled assets. Signals will be executed as paper trades by default (unless live trading is explicitly enabled for specific assets).
+          </AlertDescription>
+        </Alert>
 
         {/* Control Buttons */}
         <div className="grid gap-3">
