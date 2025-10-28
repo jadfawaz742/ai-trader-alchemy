@@ -198,23 +198,29 @@ serve(async (req) => {
     async function generateSignature(ts: number) {
       const hmacSecret = Deno.env.get('HMAC_SECRET');
       if (!hmacSecret) {
+        console.error('❌ HMAC_SECRET environment variable is not set!');
         throw new Error('HMAC_SECRET not configured');
       }
+      console.log(`✅ HMAC_SECRET is configured (length: ${hmacSecret.length})`);
 
+      // CRITICAL: Canonical format must match payload exactly (lowercase side/order_type)
       // Canonical format: signal_id|asset|side|qty|order_type|limit_price|tp|sl|ts
       const canonical = [
         signal.id,
         signal.asset,
-        signal.side,
+        signal.side.toLowerCase(),        // Match payload format
         normalizedQty.toString(),
-        signal.order_type,
-        normalizedLimitPrice?.toString() || 'null',
-        normalizedTp?.toString() || 'null',
-        normalizedSl?.toString() || 'null',
+        signal.order_type.toLowerCase(),  // Match payload format
+        normalizedLimitPrice?.toString() ?? '',  // Empty string for null
+        normalizedTp?.toString() ?? '',
+        normalizedSl?.toString() ?? '',
         ts.toString()
       ].join('|');
 
-      console.log('Canonical string for signature:', canonical);
+      console.log('🔐 HMAC Signature Generation:');
+      console.log('  Canonical string:', canonical);
+      console.log('  Timestamp:', ts);
+      console.log('  Secret length:', hmacSecret.length);
 
       const encoder = new TextEncoder();
       const key = await crypto.subtle.importKey(
@@ -234,6 +240,8 @@ serve(async (req) => {
       const signatureHex = Array.from(new Uint8Array(signature))
         .map(b => b.toString(16).padStart(2, '0'))
         .join('');
+
+      console.log('  Signature:', signatureHex);
 
       return signatureHex;
     }
