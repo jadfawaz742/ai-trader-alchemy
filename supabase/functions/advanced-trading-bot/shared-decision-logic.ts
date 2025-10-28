@@ -752,7 +752,7 @@ export function getDynamicConfluenceThreshold(state: TradingState, multiTimefram
   return Math.max(0.45, Math.min(0.60, threshold));
 }
 
-// Calculate risk parameters using Fibonacci + ATR + Support/Resistance
+// ✅ FIXED: Calculate risk parameters using ATR-only logic (matches Python training)
 export function calculateRiskParameters(
   state: TradingState,
   decision: TradingAction,
@@ -766,107 +766,32 @@ export function calculateRiskParameters(
   const atr = state.indicators.atr;
   const currentPrice = state.price;
   
+  // Use the ATR-based TP/SL from decision (already calculated correctly)
   let stopLoss = decision.stopLoss;
   let takeProfit = decision.takeProfit;
   
-  // Enhance with Fibonacci + Support/Resistance if available
-  if (state.indicators.fibonacci && state.indicators.supportResistance) {
-    const fibLevels = state.indicators.fibonacci.levels || [currentPrice];
-    const priceHigh = Math.max(...fibLevels);
-    const priceLow = Math.min(...fibLevels);
-    const priceRange = priceHigh - priceLow;
-    
-    if (decision.type === 'BUY') {
-      // Find nearest support level for better stop loss
-      const supportLevels = state.indicators.supportResistance
-        .filter(sr => sr.type === 'support' && sr.price < currentPrice)
-        .sort((a, b) => b.price - a.price);
-      
-      if (supportLevels.length > 0) {
-        const nearestSupport = supportLevels[0].price;
-        // PHASE 3: Wider stops - Use 50% or 61.8% Fib, 3.5-4.0 ATR for crypto
-        const fib50Stop = currentPrice - (priceRange * 0.5);
-        const fib618Stop = currentPrice - (priceRange * 0.618);
-        const isCrypto = state.price < 100000; // Rough heuristic: crypto typically < $100k
-        const atrMultiplier = isCrypto ? 3.5 : 2.5;
-        const atrStop = currentPrice - (atr * atrMultiplier);
-        
-        // Use the widest safe stop
-        stopLoss = Math.max(nearestSupport, fib618Stop, atrStop);
-        
-        // Enforce minimum stop distance
-        const minStopPercent = isCrypto ? 0.04 : 0.02; // 4% crypto, 2% stocks
-        const minStopPrice = currentPrice * (1 - minStopPercent);
-        stopLoss = Math.min(stopLoss, minStopPrice);
-      }
-      
-      // Find nearest resistance for target
-      const resistanceLevels = state.indicators.supportResistance
-        .filter(sr => sr.type === 'resistance' && sr.price > currentPrice)
-        .sort((a, b) => a.price - b.price);
-      
-      if (resistanceLevels.length > 0) {
-        const nearestResistance = resistanceLevels[0].price;
-        // Use Fibonacci extension or resistance, whichever is further for better reward
-        const fib1618Target = currentPrice + (priceRange * 0.618);
-        takeProfit = Math.max(nearestResistance, fib1618Target, currentPrice + (atr * 4));
-      }
-      
-    } else if (decision.type === 'SELL') {
-      // Find nearest resistance for better stop loss
-      const resistanceLevels = state.indicators.supportResistance
-        .filter(sr => sr.type === 'resistance' && sr.price > currentPrice)
-        .sort((a, b) => a.price - b.price);
-      
-      if (resistanceLevels.length > 0) {
-        const nearestResistance = resistanceLevels[0].price;
-        // PHASE 3: Wider stops for shorts
-        const fib50Stop = currentPrice + (priceRange * 0.5);
-        const fib618Stop = currentPrice + (priceRange * 0.618);
-        const isCrypto = state.price < 100000;
-        const atrMultiplier = isCrypto ? 3.5 : 2.5;
-        const atrStop = currentPrice + (atr * atrMultiplier);
-        
-        stopLoss = Math.min(nearestResistance, fib618Stop, atrStop);
-        
-        // Enforce minimum stop distance for shorts
-        const minStopPercent = isCrypto ? 0.04 : 0.02;
-        const maxStopPrice = currentPrice * (1 + minStopPercent);
-        stopLoss = Math.max(stopLoss, maxStopPrice);
-      }
-      
-      // Find nearest support for target
-      const supportLevels = state.indicators.supportResistance
-        .filter(sr => sr.type === 'support' && sr.price < currentPrice)
-        .sort((a, b) => b.price - a.price);
-      
-      if (supportLevels.length > 0) {
-        const nearestSupport = supportLevels[0].price;
-        const fib1618Target = currentPrice - (priceRange * 0.618);
-        takeProfit = Math.min(nearestSupport, fib1618Target, currentPrice - (atr * 4));
-      }
-    }
-  }
-  
-  // Adjust based on confidence - tighter stops and bigger targets for high confidence
-  if (decision.confidence > 85) {
-    const confidenceMultiplier = 1.2;
-    if (decision.type === 'BUY') {
-      stopLoss = Math.max(stopLoss, currentPrice - (atr * 1.5));
-      takeProfit = currentPrice + (Math.abs(takeProfit - currentPrice) * confidenceMultiplier);
-    } else if (decision.type === 'SELL') {
-      stopLoss = Math.min(stopLoss, currentPrice + (atr * 1.5));
-      takeProfit = currentPrice - (Math.abs(currentPrice - takeProfit) * confidenceMultiplier);
-    }
-  }
-  
+  // Validate that TP/SL are within reasonable bounds
+  const minRiskReward = 1.2;
   const riskAmount = Math.abs(currentPrice - stopLoss);
   const rewardAmount = Math.abs(takeProfit - currentPrice);
+  const actualRR = rewardAmount / (riskAmount || 1);
+  
+  if (actualRR < minRiskReward) {
+    console.warn(`⚠️ ${symbol} Risk/Reward too low (${actualRR.toFixed(2)}), adjusting TP...`);
+    if (decision.type === 'BUY') {
+      takeProfit = currentPrice + (riskAmount * minRiskReward);
+    } else if (decision.type === 'SELL') {
+      takeProfit = currentPrice - (riskAmount * minRiskReward);
+    }
+  }
+  
+  const finalRiskAmount = Math.abs(currentPrice - stopLoss);
+  const finalRewardAmount = Math.abs(takeProfit - currentPrice);
   
   return {
     stopLoss,
     takeProfit,
-    riskReward: rewardAmount / (riskAmount || 1),
-    maxDrawdown: (riskAmount / currentPrice) * 100
+    riskReward: finalRewardAmount / (finalRiskAmount || 1),
+    maxDrawdown: (finalRiskAmount / currentPrice) * 100
   };
 }

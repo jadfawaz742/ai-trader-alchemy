@@ -507,85 +507,48 @@ export async function makeAITradingDecision(
     }
   }
   
-  // Calculate stop loss and take profit using Fibonacci retracements/extensions + ATR
-  // 🌊 Market phase influences whether we favor retracements or extensions
+  // ✅ FIXED: Use ATR-only logic for TP/SL (matches Python training bounds)
+  // Training bounds: TP = 1.2-2.0x ATR, SL = 0.8-1.2x ATR
   const atr = state.indicators.atr;
   let stopLoss = 0;
   let takeProfit = 0;
   
-  const phase = state.marketPhase?.phase || 'accumulation';
-  const favorRetracements = phase === 'accumulation' || phase === 'distribution';
-  const favorExtensions = phase === 'uptrend' || phase === 'downtrend';
-  
   if (action === 'BUY') {
-    // Calculate Fibonacci retracement for stop loss
-    const fibLevels = state.indicators.fibonacci?.levels || [state.price];
-    const priceHigh = Math.max(...fibLevels);
-    const priceLow = Math.min(...fibLevels);
-    const priceRange = priceHigh - priceLow;
+    // Stop Loss: 0.9-1.0x ATR below entry (tighter for high confidence)
+    const slMultiplier = confidence > 80 ? 0.9 : 1.0;
+    stopLoss = state.price - (atr * slMultiplier);
     
-    // Use 38.2% Fibonacci retracement for stop loss (or 50% for lower confidence)
-    const fibRetracementLevel = confidence > 75 ? 0.382 : 0.5;
-    const fibStopLoss = state.price - (priceRange * fibRetracementLevel);
+    // Take Profit: 1.5-1.8x ATR above entry (wider for high confidence)
+    const tpMultiplier = confidence > 80 ? 1.8 : 1.5;
+    takeProfit = state.price + (atr * tpMultiplier);
     
-    // Use ATR-based stop loss as backup (NEW BOUNDS: 0.8-1.2x ATR)
-    const atrStopLoss = state.price - (atr * 1.0);
-    
-    // Choose the more conservative stop (further from price for safety)
-    stopLoss = Math.min(fibStopLoss, atrStopLoss);
-    
-    // Calculate Fibonacci extension for take profit
-    // 🌊 Phase adjustment: favor extensions in trends, retracements in consolidation
-    let fibExtensionLevel: number;
-    if (favorExtensions) {
-      // Uptrend: use aggressive Fibonacci extensions
-      fibExtensionLevel = confidence > 80 ? 1.618 : 1.272;
-    } else {
-      // Accumulation/Distribution: use conservative Fibonacci retracements
-      fibExtensionLevel = confidence > 80 ? 1.272 : 1.0;
-    }
-    const fibTakeProfit = state.price + (priceRange * (fibExtensionLevel - 1));
-    
-    // Use ATR-based take profit as backup (NEW BOUNDS: 1.2-2.0x ATR)
-    const atrTakeProfit = state.price + (atr * (confidence > 80 ? 1.8 : 1.5));
-    
-    // Choose the more aggressive target (further from price for better R:R)
-    takeProfit = Math.max(fibTakeProfit, atrTakeProfit);
+    console.log(`🎯 BUY TP/SL: Price=${state.price.toFixed(2)}, ATR=${atr.toFixed(2)}, SL=${stopLoss.toFixed(2)} (${slMultiplier}x), TP=${takeProfit.toFixed(2)} (${tpMultiplier}x)`);
     
   } else if (action === 'SELL') {
-    // Calculate Fibonacci retracement for stop loss
-    const fibLevels = state.indicators.fibonacci?.levels || [state.price];
-    const priceHigh = Math.max(...fibLevels);
-    const priceLow = Math.min(...fibLevels);
-    const priceRange = priceHigh - priceLow;
+    // Stop Loss: 0.9-1.0x ATR above entry
+    const slMultiplier = confidence > 80 ? 0.9 : 1.0;
+    stopLoss = state.price + (atr * slMultiplier);
     
-    // Use 38.2% Fibonacci retracement for stop loss (or 50% for lower confidence)
-    const fibRetracementLevel = confidence > 75 ? 0.382 : 0.5;
-    const fibStopLoss = state.price + (priceRange * fibRetracementLevel);
+    // Take Profit: 1.5-1.8x ATR below entry
+    const tpMultiplier = confidence > 80 ? 1.8 : 1.5;
+    takeProfit = state.price - (atr * tpMultiplier);
     
-    // Use ATR-based stop loss as backup (NEW BOUNDS: 0.8-1.2x ATR)
-    const atrStopLoss = state.price + (atr * 1.0);
-    
-    // Choose the more conservative stop (further from price for safety)
-    stopLoss = Math.max(fibStopLoss, atrStopLoss);
-    
-    // Calculate Fibonacci extension for take profit
-    // 🌊 Phase adjustment: favor extensions in trends, retracements in consolidation
-    let fibExtensionLevel: number;
-    if (favorExtensions) {
-      // Downtrend: use aggressive Fibonacci extensions
-      fibExtensionLevel = confidence > 80 ? 1.618 : 1.272;
-    } else {
-      // Accumulation/Distribution: use conservative Fibonacci retracements
-      fibExtensionLevel = confidence > 80 ? 1.272 : 1.0;
+    console.log(`🎯 SELL TP/SL: Price=${state.price.toFixed(2)}, ATR=${atr.toFixed(2)}, SL=${stopLoss.toFixed(2)} (${slMultiplier}x), TP=${takeProfit.toFixed(2)} (${tpMultiplier}x)`);
+  }
+  
+  // Guard rails: ensure TP/SL are reasonable
+  const minRiskReward = 1.2;
+  const riskAmount = Math.abs(state.price - stopLoss);
+  const rewardAmount = Math.abs(takeProfit - state.price);
+  const actualRR = rewardAmount / (riskAmount || 1);
+  
+  if (actualRR < minRiskReward) {
+    console.warn(`⚠️ Risk/Reward too low (${actualRR.toFixed(2)}), adjusting TP...`);
+    if (action === 'BUY') {
+      takeProfit = state.price + (riskAmount * minRiskReward);
+    } else if (action === 'SELL') {
+      takeProfit = state.price - (riskAmount * minRiskReward);
     }
-    const fibTakeProfit = state.price - (priceRange * (fibExtensionLevel - 1));
-    
-    // Use ATR-based take profit as backup (NEW BOUNDS: 1.2-2.0x ATR)
-    const atrTakeProfit = state.price - (atr * (confidence > 80 ? 1.8 : 1.5));
-    
-    // Choose the more aggressive target (further from price for better R:R)
-    takeProfit = Math.min(fibTakeProfit, atrTakeProfit);
   }
   
   return {
