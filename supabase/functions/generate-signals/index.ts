@@ -213,7 +213,9 @@ serve(async (req) => {
           // Apply model's size multiplier if provided (from PPO inference)
           qty: calculatePositionSize(
             { ...pref, sizeMultiplier: (decision as any).sizeMultiplier || 1.0 }, 
-            tradingState.price
+            tradingState.price,
+            decision.stopLoss,
+            pref.asset
           ),
           order_type: 'MARKET',
           tp: decision.takeProfit,
@@ -513,19 +515,39 @@ function calculateIchimoku(highs: number[], lows: number[], prices: number[]): {
   return { signal, cloud: { tenkan, kijun } };
 }
 
-function calculatePositionSize(pref: any, currentPrice: number): number {
-  // Position size as percentage of max exposure based on risk mode
-  // Conservative: 10%, Medium: 20%, High: 30%, Aggressive: 40%
-  const positionSizePct = {
-    'low': 0.10,
-    'medium': 0.20,
-    'high': 0.30,
-    'aggressive': 0.40,
-  }[pref.risk_mode] || 0.20;
-  
+function calculatePositionSize(pref: any, currentPrice: number, stopLoss: number, asset: string): number {
   const maxExposure = pref.max_exposure_usd || 0;
-  const positionValue = maxExposure * positionSizePct;
-  let rawQty = positionValue / currentPrice;
+  const isCrypto = asset.includes('USDT') || asset.includes('BTC') || asset.includes('ETH');
+  
+  // Risk per trade based on risk mode (percentage of equity to risk)
+  const riskPerTradePct = {
+    'low': 1.0,        // 1% risk per trade
+    'medium': 1.5,     // 1.5% risk per trade
+    'high': 2.0,       // 2% risk per trade
+    'aggressive': 2.5, // 2.5% risk per trade
+  }[pref.risk_mode] || 1.5;
+  
+  // Position size cap based on risk mode (percentage of equity as max position)
+  const maxPositionSizePct = {
+    'low': 10,
+    'medium': 20,
+    'high': 30,
+    'aggressive': 40,
+  }[pref.risk_mode] || 20;
+  
+  // ===== METHOD 1: Risk-Based Calculation =====
+  // How much $ we're willing to lose on this trade
+  const riskAmount = maxExposure * (riskPerTradePct / 100);
+  const slDistance = Math.abs(currentPrice - stopLoss);
+  const qtyFromRisk = slDistance > 0 ? riskAmount / slDistance : 0;
+  
+  // ===== METHOD 2: Position-Size-Based Calculation =====
+  // Max $ exposure as percentage of equity
+  const maxPositionValue = maxExposure * (maxPositionSizePct / 100);
+  const qtyFromPositionSize = maxPositionValue / currentPrice;
+  
+  // ===== Take the SMALLER of the two (safer) =====
+  let rawQty = Math.min(qtyFromRisk, qtyFromPositionSize);
   
   // Apply model's size multiplier if provided (from PPO inference)
   const sizeMultiplier = (pref as any).sizeMultiplier || 1.0;
@@ -534,20 +556,40 @@ function calculatePositionSize(pref: any, currentPrice: number): number {
     rawQty *= sizeMultiplier;
   }
   
+  // ===== SAFETY CAP: Crypto positions should never exceed 10% of equity =====
+  if (isCrypto) {
+    const maxCryptoValue = maxExposure * 0.10;
+    const qtyFromCryptoCap = maxCryptoValue / currentPrice;
+    if (rawQty > qtyFromCryptoCap) {
+      console.warn(`⚠️  Crypto safety cap applied: ${rawQty.toFixed(8)} → ${qtyFromCryptoCap.toFixed(8)}`);
+      rawQty = qtyFromCryptoCap;
+    }
+  }
+  
   const finalQty = Math.floor(rawQty * 100000) / 100000; // Keep 5 decimals for crypto
   
-  console.log(`💰 Position Size Calculation:
-    - Max Exposure: $${maxExposure.toLocaleString()}
-    - Position Size %: ${(positionSizePct * 100).toFixed(0)}%
-    - Position Value: $${positionValue.toLocaleString()}
-    - Current Price: $${currentPrice.toLocaleString()}
+  console.log(`💰 Position Size Calculation (${asset}):
+    - Max Exposure (Equity): $${maxExposure.toLocaleString()}
     - Risk Mode: ${pref.risk_mode}
+    
+    METHOD 1: Risk-Based
+    - Risk Per Trade: ${riskPerTradePct}% = $${riskAmount.toLocaleString()}
+    - Entry Price: $${currentPrice.toLocaleString()}
+    - Stop Loss: $${stopLoss.toLocaleString()}
+    - SL Distance: $${slDistance.toLocaleString()} (${((slDistance / currentPrice) * 100).toFixed(2)}%)
+    - Qty from Risk: ${qtyFromRisk.toFixed(8)} (Position Value: $${(qtyFromRisk * currentPrice).toLocaleString()})
+    
+    METHOD 2: Position-Size-Based
+    - Max Position Size: ${maxPositionSizePct}% = $${maxPositionValue.toLocaleString()}
+    - Qty from Position Size: ${qtyFromPositionSize.toFixed(8)} (Position Value: $${(qtyFromPositionSize * currentPrice).toLocaleString()})
+    
+    SELECTED: ${rawQty === qtyFromRisk ? 'RISK-BASED (safer)' : 'POSITION-SIZE-BASED (safer)'}
     - Size Multiplier: ${sizeMultiplier.toFixed(3)}x
-    - Raw Qty: ${rawQty.toFixed(8)}
-    - Final Qty: ${finalQty.toFixed(8)}`);
+    - Final Qty: ${finalQty.toFixed(8)}
+    - Final Position Value: $${(finalQty * currentPrice).toLocaleString()} (${((finalQty * currentPrice / maxExposure) * 100).toFixed(2)}% of equity)`);
   
   if (finalQty === 0 || !isFinite(finalQty)) {
-    console.error(`❌ Invalid qty calculated! max_exposure=${maxExposure}, price=${currentPrice}, positionPct=${positionSizePct}`);
+    console.error(`❌ Invalid qty calculated! max_exposure=${maxExposure}, price=${currentPrice}, stopLoss=${stopLoss}`);
     return 0;
   }
   
