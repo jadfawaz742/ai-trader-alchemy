@@ -29,36 +29,22 @@ serve(async (req) => {
     
     const { signal_id } = validatedData;
 
-    // Fetch signal with related data including broker capabilities
+    // Fetch signal with broker info
     const { data: signal, error: signalError } = await supabaseClient
       .from('signals')
       .select(`
         *,
-        broker_connections!inner(
+        brokers:broker_id(
           id,
-          broker_id,
-          encrypted_api_key,
-          encrypted_api_secret,
-          encrypted_credentials,
-          brokers!inner(
-            name,
-            supports_crypto,
-            supports_stocks
-          )
+          name,
+          supports_crypto,
+          supports_stocks
         )
       `)
       .eq('id', signal_id)
       .eq('status', 'queued')
       .single();
     
-    // Audit log for signal processing
-    await supabaseClient.from('service_role_audit').insert({
-      function_name: 'execute-signal',
-      action: 'signal_processing_started',
-      user_id: signal?.user_id,
-      metadata: { signal_id, asset: signal?.asset }
-    });
-
     if (signalError || !signal) {
       console.error('Signal not found or not queued:', signalError);
       return new Response(JSON.stringify({ error: 'Signal not found' }), {
@@ -66,6 +52,30 @@ serve(async (req) => {
         headers: { ...corsHeaders, 'Content-Type': 'application/json' },
       });
     }
+
+    // Fetch broker connection separately
+    const { data: brokerConnection, error: connError } = await supabaseClient
+      .from('broker_connections')
+      .select('*')
+      .eq('user_id', signal.user_id)
+      .eq('broker_id', signal.broker_id)
+      .single();
+    
+    if (connError || !brokerConnection) {
+      console.error('Broker connection not found:', connError);
+      return new Response(JSON.stringify({ error: 'Broker connection not found' }), {
+        status: 404,
+        headers: { ...corsHeaders, 'Content-Type': 'application/json' },
+      });
+    }
+    
+    // Audit log for signal processing
+    await supabaseClient.from('service_role_audit').insert({
+      function_name: 'execute-signal',
+      action: 'signal_processing_started',
+      user_id: signal.user_id,
+      metadata: { signal_id, asset: signal.asset }
+    });
 
     console.log('Processing signal:', signal_id, 'for asset:', signal.asset);
 
@@ -127,7 +137,7 @@ serve(async (req) => {
     const { data: brokerAsset, error: assetError } = await supabaseClient
       .from('broker_assets')
       .select('*')
-      .eq('broker_id', signal.broker_connections.broker_id)
+      .eq('broker_id', signal.broker_id)
       .eq('asset', signal.asset)
       .single();
 
@@ -266,7 +276,7 @@ serve(async (req) => {
         const payload = {
           signal_id: signal.id,
           user_id: signal.user_id,
-          broker_conn_id: signal.broker_connections.id,
+          broker_conn_id: brokerConnection.id,
           asset: signal.asset,
           side: signal.side.toLowerCase(),
           qty: normalizedQty,
@@ -276,7 +286,7 @@ serve(async (req) => {
           sl: normalizedSl,
           model_id: signal.model_id || 'ppo_default',
           model_version: signal.model_version || 'v1.0',
-          account_type: signal.broker_connections.encrypted_credentials?.account_type || 'live',
+          account_type: brokerConnection.encrypted_credentials?.account_type || 'live',
           ts: ts,
           dedupe_key: dedupeKey,
           sig: signatureHex  // Signature in body, not header
@@ -373,7 +383,7 @@ serve(async (req) => {
             .insert({
               signal_id: signal.id,
               user_id: signal.user_id,
-              broker_id: signal.broker_connections.broker_id,
+              broker_id: signal.broker_id,
               asset: signal.asset,
               side: signal.side,
               qty: normalizedQty,
