@@ -252,17 +252,22 @@ serve(async (req) => {
             continue; // Skip this signal
           }
 
-          // Validate position size makes sense
+          // Validate position size makes sense (allow 5% tolerance for rounding)
           const positionValue = normalizedQty * tradingState.price;
-          const expectedMinValue = pref.max_exposure_usd * 0.1; // At least 10% of max exposure
+          const expectedMinValue = pref.max_exposure_usd * 0.095; // At least 9.5% of max exposure (5% tolerance)
           
           if (positionValue < expectedMinValue) {
             console.error(`❌ Position size suspiciously small! Skipping signal.
               - Position Value: $${positionValue.toFixed(2)}
-              - Expected Min: $${expectedMinValue.toFixed(2)}
+              - Expected Min: $${expectedMinValue.toFixed(2)} (9.5% of max exposure with 5% tolerance)
               - Max Exposure: $${pref.max_exposure_usd}`);
             continue; // Skip this signal
           }
+          
+          console.log(`✅ Position validation passed:
+            - Position Value: $${positionValue.toFixed(2)}
+            - Min Required: $${expectedMinValue.toFixed(2)}
+            - Max Exposure: $${pref.max_exposure_usd}`);
 
           // Create signal with dedupe key
           const dedupeKey = `${pref.user_id}_${pref.asset}_${Date.now()}`;
@@ -557,12 +562,16 @@ function calculatePositionSize(pref: any, currentPrice: number, stopLoss: number
   }
   
   // ===== SAFETY CAP: Crypto positions should never exceed 10% of equity =====
+  // Directly calculate to target exactly 10% for crypto instead of capping after
   if (isCrypto) {
     const maxCryptoValue = maxExposure * 0.10;
-    const qtyFromCryptoCap = maxCryptoValue / currentPrice;
-    if (rawQty > qtyFromCryptoCap) {
-      console.warn(`⚠️  Crypto safety cap applied: ${rawQty.toFixed(8)} → ${qtyFromCryptoCap.toFixed(8)}`);
-      rawQty = qtyFromCryptoCap;
+    const cryptoCapQty = maxCryptoValue / currentPrice;
+    
+    // Take the smaller of calculated qty or 10% equity target
+    if (rawQty > cryptoCapQty) {
+      console.warn(`⚠️  Crypto safety cap applied: ${rawQty.toFixed(8)} → ${cryptoCapQty.toFixed(8)}`);
+      console.log(`   Target crypto position: $${maxCryptoValue.toLocaleString()} (10% of equity)`);
+      rawQty = cryptoCapQty;
     }
   }
   
