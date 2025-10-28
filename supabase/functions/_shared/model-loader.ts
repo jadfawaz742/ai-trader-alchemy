@@ -17,33 +17,46 @@ export interface ModelMetadata {
 }
 
 /**
- * Validate model structure has required PyTorch layer weights
+ * Validate model structure has required layer weights
+ * Supports both RecurrentPPO (new) and feedforward PyTorch (old) architectures
  */
 function validateModelStructure(weights: any): boolean {
-  const required = [
-    'shared.0.weight',
-    'shared.0.bias',
-    'shared.2.weight',
-    'shared.2.bias',
-    'actor_discrete.weight',
-    'actor_discrete.bias',
-    'actor_mu.weight',
-    'actor_mu.bias',
-    'actor_logstd',
-    'critic.weight',
-    'critic.bias'
+  const presentKeys = Object.keys(weights);
+  
+  // Check for NEW RecurrentPPO architecture
+  const recurrentPPOKeys = [
+    'lstm_weights',
+    'actor_direction',
+    'actor_tp',
+    'actor_sl',
+    'actor_size',
+    'critic'
   ];
   
-  const presentKeys = Object.keys(weights);
-  const missingKeys = required.filter(key => !presentKeys.includes(key));
+  const hasRecurrentPPO = recurrentPPOKeys.every(key => key in weights);
   
-  if (missingKeys.length > 0) {
-    console.error(`❌ Missing required model parameters: ${missingKeys.join(', ')}`);
-    return false;
+  // Check for OLD feedforward architecture
+  const oldArchKeys = [
+    'shared.0.weight',
+    'actor_discrete.weight',
+    'actor_mu.weight',
+    'critic.weight'
+  ];
+  
+  const hasOldArchitecture = oldArchKeys.every(key => presentKeys.includes(key));
+  
+  if (hasRecurrentPPO) {
+    console.log(`✅ RecurrentPPO model validated: ${presentKeys.length} parameters`);
+    return true;
   }
   
-  console.log(`✅ Model structure validated: ${presentKeys.length} parameters found`);
-  return true;
+  if (hasOldArchitecture) {
+    console.log(`✅ Old feedforward model validated: ${presentKeys.length} parameters`);
+    return true;
+  }
+  
+  console.error(`❌ Unknown model architecture. Keys: ${presentKeys.slice(0, 10).join(', ')}`);
+  return false;
 }
 
 /**

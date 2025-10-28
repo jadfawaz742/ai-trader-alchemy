@@ -528,8 +528,8 @@ export async function makeAITradingDecision(
     const fibRetracementLevel = confidence > 75 ? 0.382 : 0.5;
     const fibStopLoss = state.price - (priceRange * fibRetracementLevel);
     
-    // Use ATR-based stop loss as backup
-    const atrStopLoss = state.price - (atr * 2);
+    // Use ATR-based stop loss as backup (NEW BOUNDS: 0.8-1.2x ATR)
+    const atrStopLoss = state.price - (atr * 1.0);
     
     // Choose the more conservative stop (further from price for safety)
     stopLoss = Math.min(fibStopLoss, atrStopLoss);
@@ -546,8 +546,8 @@ export async function makeAITradingDecision(
     }
     const fibTakeProfit = state.price + (priceRange * (fibExtensionLevel - 1));
     
-    // Use ATR-based take profit as backup
-    const atrTakeProfit = state.price + (atr * (confidence > 80 ? 5 : 4));
+    // Use ATR-based take profit as backup (NEW BOUNDS: 1.2-2.0x ATR)
+    const atrTakeProfit = state.price + (atr * (confidence > 80 ? 1.8 : 1.5));
     
     // Choose the more aggressive target (further from price for better R:R)
     takeProfit = Math.max(fibTakeProfit, atrTakeProfit);
@@ -563,8 +563,8 @@ export async function makeAITradingDecision(
     const fibRetracementLevel = confidence > 75 ? 0.382 : 0.5;
     const fibStopLoss = state.price + (priceRange * fibRetracementLevel);
     
-    // Use ATR-based stop loss as backup
-    const atrStopLoss = state.price + (atr * 2);
+    // Use ATR-based stop loss as backup (NEW BOUNDS: 0.8-1.2x ATR)
+    const atrStopLoss = state.price + (atr * 1.0);
     
     // Choose the more conservative stop (further from price for safety)
     stopLoss = Math.max(fibStopLoss, atrStopLoss);
@@ -581,8 +581,8 @@ export async function makeAITradingDecision(
     }
     const fibTakeProfit = state.price - (priceRange * (fibExtensionLevel - 1));
     
-    // Use ATR-based take profit as backup
-    const atrTakeProfit = state.price - (atr * (confidence > 80 ? 5 : 4));
+    // Use ATR-based take profit as backup (NEW BOUNDS: 1.2-2.0x ATR)
+    const atrTakeProfit = state.price - (atr * (confidence > 80 ? 1.8 : 1.5));
     
     // Choose the more aggressive target (further from price for better R:R)
     takeProfit = Math.min(fibTakeProfit, atrTakeProfit);

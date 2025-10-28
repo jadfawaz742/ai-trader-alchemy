@@ -41,7 +41,9 @@ export async function runPPOInference(
 
   // Validate model weights structure
   if (!modelWeights.lstm_weights || !modelWeights.actor_direction) {
-    throw new Error('Invalid model weights: missing required neural network parameters');
+    const availableKeys = Object.keys(modelWeights).slice(0, 10).join(', ');
+    console.error(`❌ Model is not RecurrentPPO architecture. Available keys: ${availableKeys}`);
+    throw new Error('Model architecture incompatible: requires RecurrentPPO model (retrain with new architecture)');
   }
 
   const featureSize = modelWeights.feature_size || 25;
