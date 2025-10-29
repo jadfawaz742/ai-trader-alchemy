@@ -79,6 +79,17 @@ serve(async (req) => {
 
     console.log('Processing signal:', signal_id, 'for asset:', signal.asset);
 
+    // Fetch user's paper trading preference
+    const { data: userPref } = await supabaseClient
+      .from('user_asset_prefs')
+      .select('paper_trading_enabled')
+      .eq('user_id', signal.user_id)
+      .eq('asset', signal.asset)
+      .single();
+
+    const isTestMode = userPref?.paper_trading_enabled ?? true; // Default to paper trading for safety
+    console.log(`📋 Paper trading mode for ${signal.asset}: ${isTestMode}`);
+
     // PHASE 4: Pre-execution risk checks
     const { data: userPositions } = await supabaseClient
       .from('executions')
@@ -204,7 +215,7 @@ serve(async (req) => {
       console.log(`✅ HMAC_SECRET is configured (length: ${hmacSecret.length})`);
 
       // CRITICAL: Canonical format must match payload exactly (lowercase side/order_type)
-      // Canonical format: signal_id|asset|side|qty|order_type|limit_price|tp|sl|ts
+      // Canonical format: signal_id|asset|side|qty|order_type|limit_price|tp|sl|ts|test_mode
       const canonical = [
         signal.id,
         signal.asset,
@@ -214,7 +225,8 @@ serve(async (req) => {
         normalizedLimitPrice?.toString() ?? '',  // Empty string for null
         normalizedTp?.toString() ?? '',
         normalizedSl?.toString() ?? '',
-        ts.toString()
+        ts.toString(),
+        isTestMode.toString()  // Include test_mode in signature
       ].join('|');
 
       console.log('🔐 HMAC Signature Generation:');
@@ -297,7 +309,8 @@ serve(async (req) => {
           account_type: brokerConnection.encrypted_credentials?.account_type || 'live',
           ts: ts,
           dedupe_key: dedupeKey,
-          sig: signatureHex  // Signature in body, not header
+          sig: signatureHex,  // Signature in body, not header
+          test_mode: isTestMode  // Enable paper trading via VPS Binance testnet
         };
 
         console.log('Sending payload to VPS:', JSON.stringify(payload, null, 2));
@@ -370,7 +383,52 @@ serve(async (req) => {
             })
             .eq('id', signal_id);
 
-          // Create episode entry for online learning
+          if (isTestMode) {
+            // ✅ PAPER TRADING: Create paper_trades record for dashboard tracking
+            console.log(`📄 Creating paper trade record for ${signal.asset}`);
+            
+            // Calculate simulated entry price with realistic slippage (0.1%)
+            const entryPrice = signal.side.toLowerCase() === 'buy'
+              ? (normalizedLimitPrice || 0) * 1.001
+              : (normalizedLimitPrice || 0) * 0.999;
+            
+            await supabaseClient
+              .from('paper_trades')
+              .insert({
+                signal_id: signal.id,
+                user_id: signal.user_id,
+                asset: signal.asset,
+                side: signal.side.toLowerCase(),
+                qty: normalizedQty,
+                entry_price: entryPrice,
+                sl: normalizedSl,
+                tp: normalizedTp,
+                status: 'open',
+              });
+            
+            console.log(`✅ Paper trade created successfully`);
+          } else {
+            // 💰 LIVE TRADING: Create executions record
+            console.log(`💰 Creating live execution record for ${signal.asset}`);
+            
+            await supabaseClient
+              .from('executions')
+              .insert({
+                signal_id: signal.id,
+                user_id: signal.user_id,
+                broker_id: signal.broker_id,
+                asset: signal.asset,
+                side: signal.side,
+                qty: normalizedQty,
+                status: responseData.status || 'executed',
+                latency_ms: responseData.latency_ms || latency,
+                raw_response: responseData,
+                executed_price: responseData.executed_price || normalizedLimitPrice,
+                executed_qty: responseData.executed_qty || normalizedQty,
+              });
+          }
+
+          // Create episode entry for online learning (both modes)
           await supabaseClient
             .from('episodes')
             .insert({
@@ -383,29 +441,17 @@ serve(async (req) => {
                 side: signal.side,
                 qty: normalizedQty,
                 vps_latency_ms: responseData.latency_ms || latency,
+                test_mode: isTestMode
               },
             });
 
-          await supabaseClient
-            .from('executions')
-            .insert({
-              signal_id: signal.id,
-              user_id: signal.user_id,
-              broker_id: signal.broker_id,
-              asset: signal.asset,
-              side: signal.side,
-              qty: normalizedQty,
-              status: responseData.status || 'executed',
-              latency_ms: responseData.latency_ms || latency,
-              raw_response: responseData,
-            });
-
-          console.log(`Signal ${signal_id} executed successfully in ${latency}ms`);
+          console.log(`Signal ${signal_id} ${isTestMode ? 'paper traded' : 'executed'} successfully in ${latency}ms`);
 
           return new Response(JSON.stringify({
             success: true,
             execution: responseData,
             latency_ms: latency,
+            test_mode: isTestMode
           }), {
             headers: { ...corsHeaders, 'Content-Type': 'application/json' },
           });
