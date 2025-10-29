@@ -35,6 +35,7 @@ interface QueuedSignal {
   tp: number;
   status: string;
   created_at: string;
+  executed_at?: string;
 }
 
 interface TradingAlert {
@@ -58,6 +59,8 @@ export function LiveTradingDashboard() {
   const { user } = useAuth();
   const [positions, setPositions] = useState<PaperPosition[]>([]);
   const [queuedSignals, setQueuedSignals] = useState<QueuedSignal[]>([]);
+  const [allSignals, setAllSignals] = useState<QueuedSignal[]>([]);
+  const [signalFilter, setSignalFilter] = useState<'all' | 'queued' | 'executed'>('all');
   const [alerts, setAlerts] = useState<TradingAlert[]>([]);
   const [assetPrefs, setAssetPrefs] = useState<AssetPref[]>([]);
   const [loading, setLoading] = useState(true);
@@ -134,6 +137,19 @@ export function LiveTradingDashboard() {
         .order('created_at', { ascending: false });
 
       setQueuedSignals(signalsData || []);
+
+      // Load all recent signals (last 24 hours)
+      const twentyFourHoursAgo = new Date();
+      twentyFourHoursAgo.setHours(twentyFourHoursAgo.getHours() - 24);
+      
+      const { data: allSignalsData } = await supabase
+        .from('signals')
+        .select('*')
+        .eq('user_id', user.id)
+        .gte('created_at', twentyFourHoursAgo.toISOString())
+        .order('created_at', { ascending: false });
+
+      setAllSignals(allSignalsData || []);
 
       // Load alerts
       const { data: alertsData } = await supabase
@@ -319,6 +335,33 @@ export function LiveTradingDashboard() {
       default: return 'default';
     }
   };
+
+  const getStatusBadgeVariant = (status: string): "default" | "secondary" | "destructive" | "outline" => {
+    switch (status) {
+      case 'queued': return 'outline';
+      case 'executed': return 'default';
+      case 'failed': return 'destructive';
+      case 'cancelled': return 'secondary';
+      default: return 'outline';
+    }
+  };
+
+  const calculateExecutionTime = (createdAt: string, executedAt?: string) => {
+    if (!executedAt) return '-';
+    const created = new Date(createdAt).getTime();
+    const executed = new Date(executedAt).getTime();
+    const diffMs = executed - created;
+    if (diffMs < 1000) return `${diffMs}ms`;
+    if (diffMs < 60000) return `${(diffMs / 1000).toFixed(1)}s`;
+    return `${(diffMs / 60000).toFixed(1)}m`;
+  };
+
+  const filteredSignals = allSignals.filter(signal => {
+    if (signalFilter === 'all') return true;
+    if (signalFilter === 'queued') return signal.status === 'queued';
+    if (signalFilter === 'executed') return signal.status === 'executed';
+    return true;
+  });
 
   if (loading) {
     return <div className="flex items-center justify-center p-8">Loading dashboard...</div>;
@@ -539,6 +582,102 @@ export function LiveTradingDashboard() {
           </CardContent>
         </Card>
       )}
+
+      {/* Recent Signals History */}
+      <Card>
+        <CardHeader>
+          <div className="flex items-center justify-between">
+            <div>
+              <CardTitle>Recent Signals History</CardTitle>
+              <CardDescription>All signals from the last 24 hours</CardDescription>
+            </div>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setSignalFilter('all')}
+                className={`px-3 py-1 text-sm rounded-md transition-colors ${
+                  signalFilter === 'all' 
+                    ? 'bg-primary text-primary-foreground' 
+                    : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+                }`}
+              >
+                All ({allSignals.length})
+              </button>
+              <button
+                onClick={() => setSignalFilter('queued')}
+                className={`px-3 py-1 text-sm rounded-md transition-colors ${
+                  signalFilter === 'queued' 
+                    ? 'bg-primary text-primary-foreground' 
+                    : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+                }`}
+              >
+                Queued ({allSignals.filter(s => s.status === 'queued').length})
+              </button>
+              <button
+                onClick={() => setSignalFilter('executed')}
+                className={`px-3 py-1 text-sm rounded-md transition-colors ${
+                  signalFilter === 'executed' 
+                    ? 'bg-primary text-primary-foreground' 
+                    : 'bg-secondary text-secondary-foreground hover:bg-secondary/80'
+                }`}
+              >
+                Executed ({allSignals.filter(s => s.status === 'executed').length})
+              </button>
+            </div>
+          </div>
+        </CardHeader>
+        <CardContent>
+          {filteredSignals.length === 0 ? (
+            <p className="text-center text-muted-foreground py-4">No signals found</p>
+          ) : (
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead>Asset</TableHead>
+                  <TableHead>Side</TableHead>
+                  <TableHead>Qty</TableHead>
+                  <TableHead>Price</TableHead>
+                  <TableHead>SL</TableHead>
+                  <TableHead>TP</TableHead>
+                  <TableHead>Status</TableHead>
+                  <TableHead>Created</TableHead>
+                  <TableHead>Executed</TableHead>
+                  <TableHead>Time</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {filteredSignals.map(signal => (
+                  <TableRow key={signal.id}>
+                    <TableCell className="font-medium">{signal.asset}</TableCell>
+                    <TableCell>
+                      <Badge variant={signal.side === 'BUY' ? 'default' : 'secondary'}>
+                        {signal.side}
+                      </Badge>
+                    </TableCell>
+                    <TableCell>{signal.qty}</TableCell>
+                    <TableCell>${signal.limit_price?.toFixed(2) || '-'}</TableCell>
+                    <TableCell>${signal.sl?.toFixed(2) || '-'}</TableCell>
+                    <TableCell>${signal.tp?.toFixed(2) || '-'}</TableCell>
+                    <TableCell>
+                      <Badge variant={getStatusBadgeVariant(signal.status)}>
+                        {signal.status}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {new Date(signal.created_at).toLocaleString()}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {signal.executed_at ? new Date(signal.executed_at).toLocaleString() : '-'}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {calculateExecutionTime(signal.created_at, signal.executed_at)}
+                    </TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          )}
+        </CardContent>
+      </Card>
 
       {/* Active Positions */}
       <Card>
