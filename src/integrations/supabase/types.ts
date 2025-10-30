@@ -2360,8 +2360,8 @@ export type Database = {
       }
       cleanup_old_audit_logs: { Args: never; Returns: undefined }
       cleanup_old_rate_limits: { Args: never; Returns: undefined }
-      decrypt_api_key: { Args: { encrypted_data: string }; Returns: string }
-      decrypt_api_secret: { Args: { encrypted_data: string }; Returns: string }
+      decrypt_api_key: { Args: never; Returns: string }
+      decrypt_api_secret: { Args: never; Returns: string }
       has_role: {
         Args: {
           _role: Database["public"]["Enums"]["app_role"]
