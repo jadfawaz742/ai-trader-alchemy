@@ -17,6 +17,11 @@ import logging
 from dotenv import load_dotenv
 from datetime import datetime
 from typing import Optional, Dict, Any
+import hmac
+import hashlib
+import time
+import requests
+from supabase import create_client, Client
 
 # ------------------------------------------------------------
 # Load env + Configure logging FIRST
@@ -33,6 +38,11 @@ logger = logging.getLogger(__name__)
 GPU_API_KEY = os.getenv("GPU_API_KEY")
 if not GPU_API_KEY:
     logger.warning("⚠️ GPU_API_KEY not set - API authentication disabled!")
+
+# Initialize Supabase client
+SUPABASE_URL = os.getenv("SUPABASE_URL")
+SUPABASE_KEY = os.getenv("SUPABASE_SERVICE_ROLE_KEY")
+supabase: Client = create_client(SUPABASE_URL, SUPABASE_KEY)
 
 # ------------------------------------------------------------
 # FastAPI app
@@ -160,6 +170,18 @@ class TrainingStatus(BaseModel):
     device: Optional[str] = None
 
 
+class TradeExecutionRequest(BaseModel):
+    broker_conn_id: str
+    asset: str
+    side: str  # "BUY" or "SELL"
+    qty: float
+    order_type: str  # "MARKET" or "LIMIT"
+    limit_price: Optional[float] = None
+    tp: Optional[float] = None
+    sl: Optional[float] = None
+    account_type: Optional[str] = "testnet"
+
+
 @app.post("/train")
 async def train_model(
     request: TrainingRequest,
@@ -264,6 +286,106 @@ async def list_jobs():
         "count": len(active_jobs),
         "gpu_jobs": gpu_jobs,
     }
+
+
+@app.post("/execute_trade")
+async def execute_trade(
+    request: TradeExecutionRequest,
+    x_api_key: Optional[str] = Header(None)
+):
+    """
+    Execute a trade on Binance using decrypted credentials from Supabase.
+    """
+    # Auth check
+    if GPU_API_KEY and x_api_key != GPU_API_KEY:
+        raise HTTPException(status_code=401, detail="Invalid API key")
+
+    try:
+        logger.info(f"🔄 Executing trade: {request.side} {request.qty} {request.asset}")
+        
+        # Call Supabase RPC to decrypt credentials
+        logger.info(f"🔑 Decrypting credentials for broker_conn_id: {request.broker_conn_id}")
+        
+        api_key_response = supabase.rpc(
+            'decrypt_api_key',
+            {'broker_conn_id': request.broker_conn_id}
+        ).execute()
+        
+        api_secret_response = supabase.rpc(
+            'decrypt_api_secret',
+            {'broker_conn_id': request.broker_conn_id}
+        ).execute()
+        
+        api_key = api_key_response.data
+        api_secret = api_secret_response.data
+        
+        if not api_key or not api_secret:
+            raise HTTPException(status_code=400, detail="Failed to decrypt credentials")
+        
+        logger.info("✅ Credentials decrypted successfully")
+        
+        # Determine Binance endpoint
+        if request.account_type == "testnet":
+            base_url = "https://testnet.binance.vision"
+        else:
+            base_url = "https://api.binance.com"
+        
+        # Prepare order parameters
+        timestamp = int(time.time() * 1000)
+        params = {
+            "symbol": request.asset,
+            "side": request.side,
+            "type": request.order_type,
+            "quantity": request.qty,
+            "timestamp": timestamp
+        }
+        
+        # Add limit price if LIMIT order
+        if request.order_type == "LIMIT" and request.limit_price:
+            params["price"] = request.limit_price
+            params["timeInForce"] = "GTC"
+        
+        # Create signature
+        query_string = "&".join([f"{k}={v}" for k, v in params.items()])
+        signature = hmac.new(
+            api_secret.encode('utf-8'),
+            query_string.encode('utf-8'),
+            hashlib.sha256
+        ).hexdigest()
+        params["signature"] = signature
+        
+        # Execute order
+        headers = {"X-MBX-APIKEY": api_key}
+        response = requests.post(
+            f"{base_url}/api/v3/order",
+            params=params,
+            headers=headers,
+            timeout=10
+        )
+        
+        if response.status_code != 200:
+            logger.error(f"❌ Binance API error: {response.text}")
+            return {
+                "success": False,
+                "error": response.text,
+                "status_code": response.status_code
+            }
+        
+        result = response.json()
+        logger.info(f"✅ Trade executed: {result}")
+        
+        return {
+            "success": True,
+            "order_id": result.get("orderId"),
+            "status": result.get("status"),
+            "executed_qty": result.get("executedQty"),
+            "price": result.get("price"),
+            "result": result
+        }
+        
+    except Exception as e:
+        logger.error(f"❌ Trade execution error: {str(e)}")
+        raise HTTPException(status_code=500, detail=str(e))
 
 
 # ------------------------------------------------------------
