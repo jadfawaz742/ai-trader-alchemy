@@ -1476,6 +1476,7 @@ export type Database = {
           created_at: string
           dedupe_key: string | null
           error_message: string | null
+          exec_message: string | null
           executed_at: string | null
           fib_alignment: number | null
           id: string
@@ -1501,6 +1502,7 @@ export type Database = {
           created_at?: string
           dedupe_key?: string | null
           error_message?: string | null
+          exec_message?: string | null
           executed_at?: string | null
           fib_alignment?: number | null
           id?: string
@@ -1526,6 +1528,7 @@ export type Database = {
           created_at?: string
           dedupe_key?: string | null
           error_message?: string | null
+          exec_message?: string | null
           executed_at?: string | null
           fib_alignment?: number | null
           id?: string
